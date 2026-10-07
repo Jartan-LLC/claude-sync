@@ -53,7 +53,7 @@ body:
     id: environment
     attributes:
       label: Version / Environment
-      placeholder: e.g., v1.2.0, macOS 15, Python 3.12
+      placeholder: e.g., v1.2.0, Ubuntu 24.04, Docker and Syncthing versions
 
   - type: textarea
     id: logs
