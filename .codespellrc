@@ -1,0 +1,4 @@
+[codespell]
+# Skip generated/legal/vendored text. Add false positives via:
+#   ignore-words-list = word1,word2
+skip = ./.git,./.venv,./node_modules,./dist,./build,*.lock,*-lock.json,LICENSE*

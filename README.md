@@ -1,37 +1,40 @@
-# scaffold
+# claude-sync
 
-[![CI](https://github.com/Jartan-LLC/scaffold/actions/workflows/ci.yml/badge.svg)](https://github.com/Jartan-LLC/scaffold/actions/workflows/ci.yml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Jartan-LLC/scaffold/badge)](https://scorecard.dev/viewer/?uri=github.com/Jartan-LLC/scaffold)
+[![CI](https://github.com/Jartan-LLC/claude-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/Jartan-LLC/claude-sync/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Jartan-LLC/claude-sync/badge)](https://scorecard.dev/viewer/?uri=github.com/Jartan-LLC/claude-sync)
 
-A production-grade Python repo, already wired: dev container, quality gate, hardened CI,
-releases and auto-updates, green on the first push.
+Continuous sync of `~/.claude` across devices: change a setting or write a memory on one
+machine, and it is there on the others.
 
-Python-first, with Node/JS supported second. For another stack, the Python parts delete
-cleanly ([how](docs/onboard.md#not-a-python-project)).
+> **Status:** planned, not yet built.
 
-## Quick start
+## How it works
 
-1. [Use this template](https://github.com/new?template_name=scaffold&template_owner=Jartan-LLC),
-   then open your new repository in its dev container.
-2. Run `/onboard` in Claude Code. It interviews you, configures the project and lists the
-   manual steps left. To set up by hand instead, follow the
-   [setup checklist](docs/onboard.md).
-3. Run `make check`: the lint, type checks, tests, build, audit and docs CI runs.
+- A [Syncthing](https://syncthing.net/) container on each host mounts the `claude-data`
+  Docker volume that holds `~/.claude` and keeps it in sync with the other devices.
+- It runs on the host, not in a dev container, so it survives reboots and needs no change
+  to any `devcontainer.json`.
+- `install.sh` sets up a device: the Syncthing service, its ignore list and a weekly volume
+  backup.
 
-## What you get
+## What syncs
 
-| | On day one |
+Everything in `~/.claude` except what is meaningless or harmful on another machine:
+
+| Not synced | Why |
 |---|---|
-| [Dev container](.devcontainer/) | Python, Node/pnpm and the project tools preinstalled; CI rebuilds and checks it whenever it changes, and weekly |
-| [Quality gate](Makefile) | `make check` runs lint, type checks, tests, build, dependency audit and docs: the same checks CI runs |
-| [Security-first](.github/workflows/) | Actions pinned to exact commits, a security linter for the workflows themselves, token-free PyPI publishing, and an OpenSSF Scorecard security rating |
-| [CI & releases](.github/workflows/ci.yml) | CI on every pull request; pushing a version tag publishes a GitHub Release, the PyPI package and multi-arch container images |
-| [Auto-updates](.github/dependabot.yml) | Dependabot updates after a 7-day cooldown, minor and patch ones merged automatically; weekly broken-link and vulnerability checks that open, update and close their own issue |
-| [AI-ready](CLAUDE.md) | Claude Code working under tiered project rules, and optional [Liza](docs/scaffold.md#liza) multi-agent runs |
+| `.credentials.json` | Your login: one per device |
+| `sessions/*.json`, `sessions/*.key`, `plugins/cache/**/.in_use` | Keyed by a process ID on one machine |
+| `*.lock` | Lock files |
+| `*.tmp*` | Half-written files mid-save |
 
-Not for you if you want a minimal template: this one is deliberately complete.
+Each device keeps deleted or overwritten files for 14 days in Syncthing's trash can.
 
-Every file, and how the parts work: [docs/scaffold.md](docs/scaffold.md). To pull in later
-template improvements, see [Syncing template updates](docs/scaffold.md#syncing-template-updates).
+## Development
 
-Scaffold is [MIT-licensed](LICENSE); your project picks its own license during setup.
+See [CONTRIBUTING.md](CONTRIBUTING.md); `make check` runs the CI gate.
+[docs/scaffold.md](docs/scaffold.md) covers the dev container, CI and Liza.
+
+## License
+
+[MIT](LICENSE)
