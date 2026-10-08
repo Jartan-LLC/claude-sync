@@ -1,5 +1,5 @@
 # Tools that run the gate, exact-pinned; Dependabot's "/ci" entry bumps them.
 # The lint tools are versioned by their hook revs in .pre-commit-config.yaml.
 
-uv==0.12.19         # installer, resolver, venv manager and build frontend
+uv==0.12.21         # installer, resolver, venv manager and build frontend
 pre-commit==4.6.2  # git hook runner; manages its own hook envs
