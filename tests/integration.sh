@@ -228,11 +228,15 @@ cleanup() {
 }
 
 on_exit() {
-    local status=$? node
+    local status=$? node job
+    for job in $(jobs -p); do
+        kill "$job" 2>/dev/null || true
+    done
     if ((status != 0)); then
         for node in "$a" "$b" "$c" "$d"; do
             docker logs --tail 30 "$node" 2>&1 | sed "s/^/[$node] /" || true
         done
+        [[ ! -s $scratch/join.out ]] || sed 's/^/[join] /' "$scratch/join.out"
     fi
     cleanup
     [[ -z $scratch ]] || rm -rf -- "$scratch"
@@ -347,13 +351,18 @@ check "Syncthing writes as the volume's owner" wait_for owned_by "$mount_b" .stf
 echo "# pair, the first two devices"
 check "a private device needs --address" fails_with "--address" pair_bounded "$a" "$id_b" --keep
 check "  and adds no device" [ "$(st "$a" "$owner_a" config devices list)" = "$id_a" ]
+# B starts joining before A pairs with it, and is cut off while it waits.
+check "a join cut off while waiting" fails env CLAUDE_SYNC_NAME="$b" timeout 10 \
+    "$root/claude-sync" pair "$id_a" --address "tcp://$a:22000"
+check "  leaves B's folder receive-only" [ "$(folder_type "$b" "$owner_b")" = receiveonly ]
 check "A pairs with B, keeping its files" pair_bounded "$a" "$id_b" --address "tcp://$b:22000" --keep
 check "pairing again changes nothing" pair_bounded "$a" "$id_b" --address "tcp://$b:22000"
-check "B joins through A" pair_bounded "$b" "$id_a" --address "tcp://$a:22000"
+check "B's join finishes when re-run" pair_bounded "$b" "$id_a" --address "tcp://$a:22000"
 check "B trusts A as introducer" trusts "$b" "$owner_b" "$id_a"
 check "A trusts B as introducer" trusts "$a" "$owner_a" "$id_b"
 check "B's folder is send-receive after joining" [ "$(folder_type "$b" "$owner_b")" = sendreceive ]
 check "pairing B again changes nothing" pair_bounded "$b" "$id_a" --address "tcp://$a:22000"
+check "  and leaves it send-receive" [ "$(folder_type "$b" "$owner_b")" = sendreceive ]
 
 echo "# ignore list, across two devices"
 if wait_for synced_to_b; then
@@ -410,9 +419,9 @@ echo "# pair, a device with its own files joining"
 # Started before A accepts C, so nothing can let it finish but waiting for A.
 pair_bounded "$c" "$id_a" --address "tcp://$a:22000" >"$scratch/join.out" 2>&1 &
 joining=$!
-sleep 5
-check "a join waits for the device it joins through" kill -0 "$joining"
-check "  says what to run there" grep -qF "claude-sync pair $id_c" "$scratch/join.out"
+check "a join says what to run on the device it joins through" \
+    wait_for grep -qF "claude-sync pair $id_c" "$scratch/join.out"
+check "  and waits for it" kill -0 "$joining"
 check "  and leaves C's files alone meanwhile" [ "$(in_target "$mount_c" 'cat /t/claude.json')" = "c claude.json" ]
 pair_bounded "$a" "$id_c" --address "tcp://$c:22000" >/dev/null
 check "C joins once A accepts" wait "$joining"
@@ -428,12 +437,19 @@ check "C's edits reach A" wait_for in_target "$mount_a" '[ -e /t/from-c.md ]'
 echo "# every device introduces the others"
 check "B learns of C" wait_for knows_device "$b" "$owner_b" "$id_c"
 check "C learns of B" wait_for knows_device "$c" "$owner_c" "$id_b"
-# D starts over, empty, and joins through B rather than A.
+# D starts over with a file of its own and pairs through B rather than A. Its join is cut
+# off, and --keep finishes it without discarding the file.
 claude_sync "$d" uninstall >/dev/null
+in_target "type=volume,src=$vol_d" "echo d >/t/d-only.md && chown $owner_d /t/d-only.md"
 claude_sync "$d" setup --volume "$vol_d" --private >/dev/null
 id_d=$(docker exec -u "$owner_d" "$d" syncthing device-id)
+check "a join cut off while waiting" fails env CLAUDE_SYNC_NAME="$d" timeout 10 \
+    "$root/claude-sync" pair "$id_b" --address "tcp://$b:22000"
 pair_bounded "$b" "$id_d" --address "tcp://$d:22000" >/dev/null
-check "D joins through B" pair_bounded "$d" "$id_b" --address "tcp://$b:22000"
+check "--keep ends it" pair_bounded "$d" "$id_b" --address "tcp://$b:22000" --keep
+check "  leaving D's folder send-receive" [ "$(folder_type "$d" "$owner_d")" = sendreceive ]
+check "  and D's own file in place" in_target "type=volume,src=$vol_d" '[ -e /t/d-only.md ]'
+check "D's own file reaches A" wait_for in_target "$mount_a" '[ -e /t/d-only.md ]'
 check "A learns of D" wait_for knows_device "$a" "$owner_a" "$id_d"
 check "C learns of D" wait_for knows_device "$c" "$owner_c" "$id_d"
 check "D learns of A and C" wait_for knows_device "$d" "$owner_d" "$id_a"

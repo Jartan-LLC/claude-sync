@@ -21,8 +21,9 @@ usage() {
 Usage:
   claude-sync setup --volume NAME   Sync the Docker volume NAME that holds ~/.claude
   claude-sync setup --path DIR      Sync the directory DIR on this host
-      --private                     Reach other devices only at the addresses pair is
-                                    given: no global discovery, relays or NAT traversal
+      --private                     No global discovery, relays or NAT traversal: other
+                                    devices are found on the LAN or at the address pair
+                                    is given
       --public                      Back to Syncthing's defaults
   claude-sync pair DEVICE-ID        Sync with the device DEVICE-ID; run on both devices.
                                     A device that syncs with no other yet joins: its
@@ -97,6 +98,10 @@ wait_folder_started() {
 
 add_folder() {
     st config folders add --id "$folder_id" --label claude --path "$folder_path" --type "$1"
+    set_trash_can
+}
+
+set_trash_can() {
     st config folders "$folder_id" versioning type set trashcan
     st config folders "$folder_id" versioning params set cleanoutDays "$trash_days"
 }
@@ -266,16 +271,24 @@ pair() {
 
     # Before the folder changes below, so a bad ID changes nothing. Added but not yet
     # shared with, the device gets no data. A no-op for a device already added.
-    local err
+    local devices known="" err
+    devices=$(st config devices list)
+    if grep -qxF -- "$id" <<<"$devices"; then
+        known=1
+    fi
     err=$(st config devices add --device-id "$id" --addresses "$address" 2>&1) ||
         die "cannot add device $id: $err"
 
     # A device syncing with no other yet is the one being added, so it joins; receive-only
     # means a join was interrupted.
-    local type shared join=""
+    local type sharing shared join=""
     type=$(st config folders "$folder_id" type get 2>/dev/null) || die "no $folder_id folder; run setup first"
-    shared=$(st config folders "$folder_id" devices list | grep -cvxF -- "$self") || true
-    if [[ $type == receiveonly ]]; then
+    sharing=$(st config folders "$folder_id" devices list)
+    shared=$(grep -cvxF -- "$self" <<<"$sharing") || true
+    if [[ $type == receiveonly && -n $keep ]]; then
+        # Ends the interrupted join without discarding anything, as --keep promises.
+        st config folders "$folder_id" type set sendreceive
+    elif [[ $type == receiveonly ]]; then
         join=1
     elif ((shared == 0)) && [[ -z $keep ]]; then
         join=1
@@ -296,46 +309,70 @@ pair() {
         return
     fi
 
-    join_wait "$id" "$self"
-    local status
-    status=$(folder_status)
+    local at=""
+    [[ $address == dynamic ]] || at=" --address $address"
+    join_wait "$id" "$self" "$at"
     # Joining devices with no files would only discard this device's: likely the first
-    # pairing of a new set, missing --keep. Nothing here was sent while receive-only, so
+    # pairing of a new set, missing --keep. Read twice, since the other device's index can
+    # arrive just after it starts sharing. Nothing here was sent while receive-only, so
     # undoing the pairing restores the device as it was.
-    if [[ $(field globalTotalItems <<<"$status") == 0 && $(field receiveOnlyTotalItems <<<"$status") != 0 ]]; then
+    if nothing_to_join && sleep 5 && nothing_to_join; then
         st config folders "$folder_id" devices "$id" delete
-        st config devices "$id" delete
+        [[ -n $known ]] || st config devices "$id" delete
         st config folders "$folder_id" type set sendreceive
-        die "$id has no files to join, so joining would only discard this device's; undone, nothing was discarded. If this device's files are the ones to start from, rerun: claude-sync pair $id --keep"
+        die "$id has no files to join, so joining would only discard this device's; undone, nothing was discarded. If this device's files are the ones to start from, rerun: claude-sync pair $id$at --keep"
     fi
     # Undo what changed here while receive-only, until nothing is left: once send-receive,
     # any change still left would be sent to every device. Repeated for changes a running
     # Claude Code makes meanwhile. Not the CLI's folder-override, which leaves a
     # receive-only folder's changes in place (2.1.6).
-    until status=$(folder_status) && [[ $(field receiveOnlyTotalItems <<<"$status") == 0 ]]; do
-        rest "/rest/db/revert?folder=$folder_id" -X POST >/dev/null || true
+    set_trash_can
+    local status i
+    for ((i = 0; ; i++)); do
+        status=$(folder_status) || die "cannot reach Syncthing in container $name; rerun to finish the join"
+        [[ $(field receiveOnlyTotalItems <<<"$status") != 0 ]] || break
+        ((i < 60)) || die "this device's changes are still not undone after two minutes; rerun to finish the join"
+        rest "/rest/db/revert?folder=$folder_id" -X POST >/dev/null ||
+            die "cannot reach Syncthing in container $name; rerun to finish the join"
         sleep 2
     done
+    # The undone files are pulled again; a scan before they arrive would send this
+    # device's copies.
+    join_wait "$id" "$self" "$at"
     st config folders "$folder_id" type set sendreceive
     printf 'Joined through %s; this device now syncs both ways.\n' "$id"
 }
 
 # Until this device has the folder as the device joined through has it.
 join_wait() {
-    local id=$1 self=$2 told="" remote status
+    local id=$1 self=$2 at=$3 told="" failures=0 polls=0 remote status need
     while :; do
-        remote=$(rest "/rest/db/completion?folder=$folder_id&device=$id" | field remoteState) || remote=""
-        status=$(folder_status) || status=""
+        if ! status=$(folder_status) ||
+            ! remote=$(rest "/rest/db/completion?folder=$folder_id&device=$id" | field remoteState); then
+            ((++failures < 15)) || die "cannot reach Syncthing in container $name; rerun to finish the join"
+            sleep 2
+            continue
+        fi
+        failures=0
         [[ $(field state <<<"$status") != error ]] ||
             die "Syncthing cannot sync the folder: $(field error <<<"$status")"
+        need=$(field needTotalItems <<<"$status")
         if [[ $remote == valid ]]; then
-            [[ $(field state <<<"$status") != idle || $(field needTotalItems <<<"$status") != 0 ]] || return 0
+            [[ $(field state <<<"$status") != idle || $need != 0 ]] || return 0
+            ((++polls % 15)) || echo "Still syncing: $need files and directories to go."
         elif [[ -z $told ]]; then
-            printf 'Waiting for %s; if not done yet, run there: claude-sync pair %s\n' "$id" "$self"
+            printf 'Waiting for %s; if not done yet, run there: claude-sync pair %s%s\n' "$id" "$self" "${at:+ --address tcp://THIS-HOST:22000}"
             told=1
         fi
         sleep 2
     done
+}
+
+# The device joined through has no files, while this device has changes to undo.
+nothing_to_join() {
+    local status
+    status=$(folder_status) || return 1
+    [[ $(field globalTotalItems <<<"$status") == 0 && $(field receiveOnlyTotalItems <<<"$status") != 0 ]]
 }
 
 uninstall() {

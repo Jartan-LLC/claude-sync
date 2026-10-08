@@ -58,11 +58,13 @@ files, then moves its own changes to the trash can, such as a fresh `settings.js
 Claude Code, and syncs both ways. Without this, those newer files would replace yours on
 every device. `pair` waits until the join is done, and is safe to interrupt and re-run.
 
-`--keep` skips the join. On a device joining devices that already have files, its files
-merge with theirs: for each file the newer copy wins and the other stays as a conflict
-copy. If a joining device finds the others have no files, which happens when the first
-pairing is missing `--keep`, `pair` stops and undoes the pairing without discarding
-anything.
+`--keep` keeps this device's files instead, including on a re-run that finishes an
+interrupted join. Paired with devices that already have files, its files merge with
+theirs: for each file the newer copy wins and the other stays as a conflict copy.
+
+If a device with files of its own would join devices that have none, which happens when
+the first pairing is missing `--keep`, `pair` stops and undoes the pairing without
+discarding anything.
 
 ### Private networks
 
@@ -112,7 +114,13 @@ path. Copy it back as the folder's owner:
 cp ~/.claude/.stversions/settings.json ~/.claude/settings.json
 ```
 
-For a Docker volume, do the same from any container that mounts it, running as its owner.
+For a Docker volume, run the copy in a container that mounts it, as the volume's owner
+(1000:1000 here; `ls -n` inside the volume shows yours):
+
+```bash
+docker run --rm --user 1000:1000 -v claude-data:/claude busybox \
+    cp /claude/.stversions/settings.json /claude/settings.json
+```
 
 When two devices change a file before syncing, the newer change wins and the other is
 kept beside it as `NAME.sync-conflict-DATE-TIME-DEVICE.EXT`, on every device.
