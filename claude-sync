@@ -29,8 +29,8 @@ Usage:
                                     Needs Syncthing 2 or newer and curl, not Docker
       --private                     No global discovery, relays or NAT traversal: other
                                     devices are found on the LAN or at the address given
-                                    to pair
-      --public                      Back to Syncthing's defaults. Neither works with
+                                    to pair. Not with --use-host-syncthing
+      --public                      Back to Syncthing's defaults. Not with
                                     --use-host-syncthing
   claude-sync pair DEVICE-ID        Sync with the device DEVICE-ID; run on both devices.
                                     A device that syncs with no other yet joins: it waits
