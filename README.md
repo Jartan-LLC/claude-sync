@@ -13,11 +13,11 @@ machine, and it is there on the others.
 - `claude-sync` runs [Syncthing](https://syncthing.net/) in a container that syncs your
   `~/.claude`, whether it is a directory or a Docker volume mounted into dev containers.
 - The container restarts with Docker, so sync survives reboots.
-- If you already run Syncthing on the host, claude-sync can add its folder to that
-  Syncthing instead (see [Use your own Syncthing](#use-your-own-syncthing)).
 - Syncthing runs as the owner of your `~/.claude`. Its web UI has no password and
   listens only on `127.0.0.1:8384` of the host running Docker; reach it from another
   machine through an SSH tunnel (`ssh -L 8384:127.0.0.1:8384 HOST`).
+- If you already run Syncthing on the host, claude-sync can add its folder to that
+  Syncthing instead (see [Use your own Syncthing](#use-your-own-syncthing)).
 
 ## Requirements
 
@@ -52,11 +52,13 @@ If Syncthing 2 or newer already runs on the host, as the user who runs Claude Co
 This needs curl but not Docker, and works only with `--path`. claude-sync changes nothing
 in that Syncthing beyond its own folder and the devices you pair, and `pair` and
 `uninstall` find it on their own. `--private` and `--public` are refused, since they
-would change how your other folders connect; set those options in Syncthing itself.
+would change how your other folders connect; set those options in Syncthing itself. If
+global discovery is off there, `pair` needs `--address`, as on a [private
+network](#private-networks).
 
-A device that already syncs other folders with your Syncthing is not made an introducer,
-since the devices it introduces would join those folders too. `pair` then says so, and
-this device needs pairing with each of the others directly.
+When you pair (see below), a device that already syncs other folders with your Syncthing
+is not made an introducer, since the devices it introduces would join those folders too.
+`pair` then says so, and this device needs pairing with each of the others directly.
 
 ## Pair devices
 

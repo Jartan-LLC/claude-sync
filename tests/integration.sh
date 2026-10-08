@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Integration tests: claude-sync against real Syncthing containers on throwaway targets.
-# Every container, volume and network this keeps is named claude-sync-test-*, and cleanup
+# Every container, volume, network and image this keeps is named claude-sync-test-*, and cleanup
 # refuses anything else: a dev container may share the host's live Docker daemon, where a
 # real ~/.claude volume lives.
 set -euo pipefail
@@ -225,6 +225,13 @@ host_config() {
 }
 
 # Without .stfolder, Syncthing's marker, which it deletes along with the folder.
+host_idle() {
+    # shellcheck disable=SC2016 # expanded by the fixture's shell
+    on_host sh -c 'curl -kfsS -H "X-API-Key: $(syncthing cli config gui apikey get)" \
+        "https://127.0.0.1:8384/rest/db/status?folder=claude-sync"' |
+        jq -e '.state == "idle" and .needTotalItems == 0'
+}
+
 host_snapshot() {
     on_host sh -c 'cd claude && find . -path ./.stfolder -prune -o -print | sort &&
         find . -path ./.stfolder -prune -o -type f -exec sha256sum {} + | sort'
@@ -261,7 +268,7 @@ cleanup() {
     local x
     for x in "$a" "$b" "$c" "$d" "$h" "$bad_name" "$listener" "$foreign"; do
         guard "$x"
-        docker rm --force "$x" >/dev/null 2>&1 || true
+        docker rm --force -v "$x" >/dev/null 2>&1 || true
     done
     guard "$host_image"
     docker image rm "$host_image" >/dev/null 2>&1 || true
@@ -335,7 +342,7 @@ check "  suggesting the Syncthing already there" fails_with "--use-host-syncthin
     CLAUDE_SYNC_NAME="$c" "$root/claude-sync" setup --volume "$vol_c"
 check "  and leaves no Syncthing state" fails docker volume inspect "$c-config"
 check "  nor writes to the target" in_target "$mount_c" '[ ! -e /t/.stignore ]'
-docker rm --force "$listener" >/dev/null
+docker rm --force -v "$listener" >/dev/null
 check "no container or state is left behind" fails docker container inspect "$a"
 check "  nor Syncthing state" fails docker volume inspect "$a-config"
 
@@ -474,7 +481,7 @@ check "  all of them" in_target "$mount_c" '[ -e /t/c-only.md ]'
 check "  and is unpaired" [ "$(st "$c" "$owner_c" config devices list)" = "$id_c" ]
 check "  and send-receive again" [ "$(folder_type "$c" "$owner_c")" = sendreceive ]
 kill "$d_pairing" 2>/dev/null || true
-docker rm --force "$d" >/dev/null
+docker rm --force -v "$d" >/dev/null
 wait "$d_pairing" || true
 
 echo "# pair, a device with its own files joining"
@@ -536,8 +543,9 @@ docker cp -q "$root/claude-sync" "$h:/opt/claude-sync/"
 docker cp -q "$root/stignore" "$h:/opt/claude-sync/"
 wait_for on_host syncthing cli show version
 id_h=$(on_host syncthing device-id)
-# The user's own Syncthing: folders of their own, one shared with B, and private options.
-on_host mkdir claude photos notes
+# The user's own Syncthing: folders of their own, one shared with B, private options, and
+# a web UI address with no host.
+on_host mkdir claude photos photos/sub notes other
 on_host sh -c 'echo h >claude/h-only.md'
 on_host syncthing cli config devices add --device-id "$id_b" --addresses "tcp://$b:22000"
 on_host syncthing cli config folders add --id photos --label photos --path /home/user/photos
@@ -546,6 +554,7 @@ on_host syncthing cli config folders add --id notes --label notes --path /home/u
 for option in global-ann-enabled relays-enabled natenabled; do
     on_host syncthing cli config options "$option" set false
 done
+on_host syncthing cli config gui raw-address set :8384
 host_before=$(host_config)
 check "--volume is refused" fails_with "only with --path" \
     host_sync setup --volume "$vol_a" --use-host-syncthing
@@ -553,6 +562,10 @@ check "--private is refused" fails_with "set them in that Syncthing" \
     host_sync setup --path claude --use-host-syncthing --private
 check "a directory another folder syncs is refused" fails_with "folder notes already syncs" \
     host_sync setup --path notes --use-host-syncthing
+check "  and one inside another folder" fails_with "folder photos already syncs" \
+    host_sync setup --path photos/sub --use-host-syncthing
+check "  and one around another folder" fails_with "already syncs" \
+    host_sync setup --path /home/user --use-host-syncthing
 docker exec -i -u user "$h" sh -c 'mkdir -p /home/user/old && cat >/home/user/old/syncthing &&
     chmod +x /home/user/old/syncthing' <<'EOF'
 #!/bin/sh
@@ -567,6 +580,7 @@ check "Syncthing 1 is refused" fails_with "needs Syncthing 2" \
     on_host env PATH=/home/user/old:/usr/bin:/bin /opt/claude-sync/claude-sync setup --path claude \
     --use-host-syncthing
 check "  and nothing is set up" fails on_host test -e claude/.stignore
+check "  nor any claude-sync folder, by any refusal" fails host_has_folder
 out=$(host_sync setup --path claude --use-host-syncthing)
 check "prints this device's ID" grep -qF "This device ID: $id_h" <<<"$out"
 check "the folder is the directory, made absolute" \
@@ -575,7 +589,12 @@ check ".stignore is the repo's stignore" on_host cmp -s claude/.stignore /opt/cl
 check "trash can versioning, 14 days" host_trash_can_14_days
 check "setup again, naming the directory another way" host_sync setup --path ./claude/ --use-host-syncthing
 check "  and refuses a different directory" fails_with "already set up for /home/user/claude" \
-    host_sync setup --path /home/user --use-host-syncthing
+    host_sync setup --path other --use-host-syncthing
+# Another Syncthing home whose web UI nothing listens on: this user's Syncthing, stopped.
+on_host sh -c 'mkdir stopped && cp .local/state/syncthing/*.pem .local/state/syncthing/config.xml stopped/ &&
+    sed -i "s|:8384</address>|:1</address>|" stopped/config.xml'
+check "uninstall with the host's Syncthing stopped says so" fails_with "cannot reach the Syncthing" \
+    on_host env STHOMEDIR=/home/user/stopped /opt/claude-sync/claude-sync uninstall
 
 echo "# pair, on the host's Syncthing"
 check "a private host Syncthing needs --address" fails_with "--address" host_sync pair "$id_b"
@@ -585,6 +604,8 @@ check "joins through B" grep -qF "Joined through $id_b" <<<"$out"
 check "  and gets B's claude.json" [ "$(on_host cat claude/claude.json)" = "fixture claude.json" ]
 check "  moving its own file to the trash can" on_host test -e claude/.stversions/h-only.md
 check "  out of the folder" fails on_host test -e claude/h-only.md
+check "  and syncs both ways afterwards" \
+    [ "$(on_host syncthing cli config folders claude-sync type get)" = sendreceive ]
 check "B, which shares another folder here, is not made introducer" \
     [ "$(host_introducer "$id_b")" = false ]
 check "  and pairing says to pair with each device" grep -qF "pair this device with each" <<<"$out"
@@ -593,6 +614,9 @@ check "pairing with A, which shares nothing else here" host_sync pair "$id_a" --
 check "  makes A introducer" [ "$(host_introducer "$id_a")" = true ]
 on_host sh -c 'echo h >claude/from-h.md'
 check "the host device's edits reach A" wait_for in_target "$mount_a" '[ -e /t/from-h.md ]'
+# Checked once its edits have spread, so anything it sent on joining would have too.
+check "  but never its discarded file" in_target "$mount_a" '[ ! -e /t/h-only.md ]'
+check "  nor conflict files" no_conflict_files "$mount_a"
 check "the user's other folders and options are untouched" [ "$(host_config)" = "$host_before" ]
 on_host syncthing cli config gui raw-use-tls set true
 wait_for on_host curl -kfs https://127.0.0.1:8384/rest/noauth/health
@@ -601,9 +625,11 @@ check "pair reaches a web UI that uses TLS" \
 host_before=$(host_config)
 
 echo "# uninstall, on the host's Syncthing"
+wait_for host_idle
 before=$(host_snapshot)
 host_sync uninstall >/dev/null
 check "removes claude-sync's folder" fails host_has_folder
+check "keeps the devices it paired" on_host sh -c "syncthing cli config devices list | grep -qx $id_a"
 check "keeps the user's other folders and options" [ "$(host_config)" = "$host_before" ]
 check "leaves the synced data byte-identical" [ "$(host_snapshot)" = "$before" ]
 check "Syncthing keeps running" on_host syncthing cli show version
@@ -615,7 +641,7 @@ docker run -d --name "$foreign" --entrypoint sleep "$image" 600 >/dev/null
 check "a foreign container is refused" fails_with "container $foreign was not created by claude-sync" \
     claude_sync "$foreign" uninstall
 check "  and survives" docker container inspect "$foreign"
-docker rm --force "$foreign" >/dev/null
+docker rm --force -v "$foreign" >/dev/null
 docker volume create "$foreign-config" >/dev/null
 check "a foreign volume is refused" fails_with "volume $foreign-config was not created by claude-sync" \
     claude_sync "$foreign" uninstall

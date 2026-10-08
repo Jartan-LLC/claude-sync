@@ -29,8 +29,9 @@ Usage:
                                     or newer and curl, not Docker
       --private                     No global discovery, relays or NAT traversal: other
                                     devices are found on the LAN or at the address given
-                                    to pair. Not with --use-host-syncthing
-      --public                      Back to Syncthing's defaults
+                                    to pair
+      --public                      Back to Syncthing's defaults. Neither works with
+                                    --use-host-syncthing
   claude-sync pair DEVICE-ID        Sync with the device DEVICE-ID; run on both devices.
                                     A device that syncs with no other yet joins: it waits
                                     for the files of DEVICE-ID and the devices it syncs
@@ -148,8 +149,12 @@ current_target() {
         "$name" 2>/dev/null
 }
 
-host_has_folder() {
-    command -v syncthing >/dev/null && syncthing cli config folders list 2>/dev/null | grep -qxF "$folder_id"
+# Whether this user has a Syncthing on this host, running or not: its config file exists.
+host_syncthing_configured() {
+    local config
+    command -v syncthing >/dev/null || return 1
+    config=$(syncthing paths | sed -n '/^Configuration file:/{n;s/^[[:space:]]*//p;}')
+    [[ -f $config ]]
 }
 
 # Points the helpers at the Syncthing running as this user on this host.
@@ -160,6 +165,8 @@ use_host() {
     local address
     { address=$(st config gui raw-address get) && api_key=$(st config gui apikey get); } 2>/dev/null ||
         die "cannot reach the Syncthing on this host; is it running as $(id -un)?"
+    # An address with no host listens on all of them.
+    [[ $address != :* ]] || address=127.0.0.1$address
     api_url=http://$address
     if [[ $(st config gui raw-use-tls get) == true ]]; then
         # Its certificate is self-signed.
@@ -175,11 +182,12 @@ detect_mode() {
         local env
         env=$(docker container inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$name")
         owner=$(sed -n 's/^PUID=//p' <<<"$env"):$(sed -n 's/^PGID=//p' <<<"$env")
-    elif host_has_folder; then
+    elif host_syncthing_configured; then
         use_host
-        folder_path=$(st config folders "$folder_id" path get)
+        folder_path=$(st config folders "$folder_id" path get 2>/dev/null) ||
+            die "claude-sync is not set up on this device; run setup first"
     else
-        die "claude-sync is not set up on this device, or the Syncthing it uses is not running; run setup first"
+        die "claude-sync is not set up on this device; run setup first"
     fi
 }
 
@@ -319,17 +327,21 @@ setup_host() {
         die "this host runs Syncthing $version; claude-sync needs Syncthing 2 or newer"
     fi
     local id path
+    # A folder inside or around another would sync the same files twice, and the join's
+    # undo would reach the other folder's devices.
     while IFS= read -r id; do
         path=$(st config folders "$id" path get)
+        path=${path/#\~/$HOME}
+        path=${path%/}
         if [[ $id == "$folder_id" ]]; then
             [[ $path == "$target" ]] || die "already set up for $path; run uninstall first"
-        elif [[ $path == "$target" ]]; then
-            die "this host's Syncthing folder $id already syncs $target; remove it there first"
+        elif [[ $target == "$path" || $target == "$path"/* || $path == "$target"/* ]]; then
+            die "this host's Syncthing folder $id already syncs $path, which overlaps $target; choose another directory"
         fi
     done < <(st config folders list)
     folder_path=$target
 
-    # Written before Syncthing first scans the folder, so ignored files are never indexed.
+    # Before the folder is added, as in setup.
     cp "$here/stignore" "$target/.stignore"
     st config folders list | grep -qxF "$folder_id" || add_folder sendreceive
     wait_folder_started
@@ -528,10 +540,12 @@ uninstall() {
             volume=1
         fi
     fi
-    if [[ -z $container$volume ]] && host_has_folder; then
+    if [[ -z $container ]] && host_syncthing_configured; then
         use_host
-        st config folders "$folder_id" delete
-        echo "Removed the $folder_id folder from the Syncthing on this host; its devices and other folders stay."
+        if st config folders list | grep -qxF "$folder_id"; then
+            st config folders "$folder_id" delete
+            echo "Removed the $folder_id folder from the Syncthing on this host; its devices and other folders stay."
+        fi
     fi
     if [[ -n $container ]]; then
         docker rm --force "$name" >/dev/null
