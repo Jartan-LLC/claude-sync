@@ -23,9 +23,11 @@ Runs the lint and integration checks CI runs (CI also builds the dev container);
 pass before merge.
 
 `make test` (`tests/integration.sh`) runs claude-sync against real Syncthing containers and
-needs Docker. Every container, volume and network it keeps is named `claude-sync-test-*` and
-removed afterwards, and it removes nothing else, which matters when the dev container shares
-the host's Docker daemon.
+needs Docker. Every container, volume, network and image it keeps is named
+`claude-sync-test-*` and removed afterwards, and it removes nothing else, which matters when
+the dev container shares the host's Docker daemon. It never reaches a Syncthing of your
+own: `--use-host-syncthing` is tested in a container standing in for a computer with
+Syncthing installed (`tests/host.Dockerfile`).
 It points claude-sync at its own objects with `CLAUDE_SYNC_NAME`, and swaps host networking
 for a bridge with `CLAUDE_SYNC_COMPOSE_OVERRIDE=tests/compose.test.yaml`.
 

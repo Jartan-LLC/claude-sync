@@ -7,7 +7,8 @@ readonly here
 export CLAUDE_SYNC_NAME=${CLAUDE_SYNC_NAME:-claude-sync}
 readonly name=$CLAUDE_SYNC_NAME
 readonly folder_id=claude-sync
-readonly folder_path=/var/syncthing/claude
+# The synced folder as Syncthing sees it; with --use-host-syncthing, the directory itself.
+folder_path=/var/syncthing/claude
 readonly trash_days=14
 # TCP ports another Syncthing would hold (21027/udp is not probed). `up --wait` cannot
 # catch a clash on 8384: its health check would reach the other Syncthing's GUI.
@@ -15,15 +16,20 @@ readonly ports=(8384 22000)
 readonly label=claude-sync=config
 owner=""
 compose_files=()
+# Set by use_host for the Syncthing on this host.
+mode=container where="in container $name" api_url="" api_key="" api_tls=()
 
 usage() {
     cat <<'EOF'
 Usage:
   claude-sync setup --volume NAME   Sync the Docker volume NAME that holds ~/.claude
   claude-sync setup --path DIR      Sync the directory DIR on this host
+      --use-host-syncthing          Use the Syncthing already running as this user on
+                                    this host instead of a container. Needs Syncthing 2
+                                    or newer and curl, not Docker
       --private                     No global discovery, relays or NAT traversal: other
                                     devices are found on the LAN or at the address given
-                                    to pair
+                                    to pair. Not with --use-host-syncthing
       --public                      Back to Syncthing's defaults
   claude-sync pair DEVICE-ID        Sync with the device DEVICE-ID; run on both devices.
                                     A device that syncs with no other yet joins: it waits
@@ -36,8 +42,9 @@ Usage:
                                     conflict copy
       --address tcp://HOST:22000    Where to reach DEVICE-ID; required on a private device.
                                     Pairing again with it replaces the address
-  claude-sync uninstall             Remove claude-sync's container and Syncthing state;
-                                    the synced folder is left untouched
+  claude-sync uninstall             Remove claude-sync's container and Syncthing state,
+                                    or its folder from the Syncthing on this host; the
+                                    synced folder is left untouched
   claude-sync help
 EOF
 }
@@ -54,8 +61,16 @@ check_name() {
         die "CLAUDE_SYNC_NAME must be two or more lowercase letters, digits, '-' or '_', starting with a letter or digit: $name"
 }
 
+syncthing_run() {
+    if [[ $mode == host ]]; then
+        syncthing "$@"
+    else
+        docker exec -u "$owner" "$name" syncthing "$@"
+    fi
+}
+
 st() {
-    docker exec -u "$owner" "$name" syncthing cli "$@"
+    syncthing_run cli "$@"
 }
 
 compose() {
@@ -65,6 +80,13 @@ compose() {
 # The running instance's REST API at PATH, then extra curl options, for what
 # `syncthing cli` does not cover.
 rest() {
+    if [[ $mode == host ]]; then
+        local path=$1
+        shift
+        # The key goes on stdin, since other users can read a process's arguments.
+        curl -fsS "${api_tls[@]}" "$@" -K - "$api_url$path" <<<"header = \"X-API-Key: $api_key\""
+        return
+    fi
     # shellcheck disable=SC2016 # expanded by the container's shell
     docker exec -u "$owner" "$name" sh -c \
         'path=$1; shift
@@ -126,8 +148,43 @@ current_target() {
         "$name" 2>/dev/null
 }
 
+host_has_folder() {
+    command -v syncthing >/dev/null && syncthing cli config folders list 2>/dev/null | grep -qxF "$folder_id"
+}
+
+# Points the helpers at the Syncthing running as this user on this host.
+use_host() {
+    mode=host where="on this host"
+    command -v syncthing >/dev/null || die "Syncthing is not installed on this host"
+    command -v curl >/dev/null || die "curl is required"
+    local address
+    { address=$(st config gui raw-address get) && api_key=$(st config gui apikey get); } 2>/dev/null ||
+        die "cannot reach the Syncthing on this host; is it running as $(id -un)?"
+    api_url=http://$address
+    if [[ $(st config gui raw-use-tls get) == true ]]; then
+        # Its certificate is self-signed.
+        api_url=https://$address api_tls=(-k)
+    fi
+}
+
+# Container mode when claude-sync's container exists, else the Syncthing on this host when
+# it has the folder.
+detect_mode() {
+    if command -v docker >/dev/null && docker container inspect "$name" >/dev/null 2>&1; then
+        { running && ours_container "$name"; } || die "Syncthing is not running in container $name; run setup first"
+        local env
+        env=$(docker container inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$name")
+        owner=$(sed -n 's/^PUID=//p' <<<"$env"):$(sed -n 's/^PGID=//p' <<<"$env")
+    elif host_has_folder; then
+        use_host
+        folder_path=$(st config folders "$folder_id" path get)
+    else
+        die "claude-sync is not set up on this device, or the Syncthing it uses is not running; run setup first"
+    fi
+}
+
 setup() {
-    local kind="" target="" network=""
+    local kind="" target="" network="" host=""
     while (($#)); do
         case $1 in
             --volume | --path)
@@ -141,6 +198,10 @@ setup() {
                 network=${1#--}
                 shift
                 ;;
+            --use-host-syncthing)
+                host=1
+                shift
+                ;;
             *) die "unknown argument: $1" ;;
         esac
     done
@@ -149,6 +210,13 @@ setup() {
         exit 2
     fi
     check_name
+    if [[ -n $host ]]; then
+        [[ $kind == path ]] || die "--use-host-syncthing works only with --path: a Syncthing on the host cannot reach a Docker volume"
+        # Unlike claude-sync's own Syncthing, the host's also syncs other folders.
+        [[ -z $network ]] || die "--$network changes how all of a Syncthing's folders connect; with --use-host-syncthing, set them in that Syncthing"
+        setup_host "$target"
+        return
+    fi
     command -v docker >/dev/null || die "Docker is required"
 
     local mount
@@ -204,7 +272,7 @@ setup() {
                 -c 'nc -z 127.0.0.1 "$1"; echo "nc=$?"' sh "$port" 2>&1 </dev/null) || true
             case ${probe##*$'\n'} in
                 nc=1) ;;
-                nc=0) refusal="port $port is in use; is another Syncthing running on this host?" ;;
+                nc=0) refusal="port $port is in use; is another Syncthing running on this host? With --path, --use-host-syncthing uses it instead" ;;
                 *) refusal="cannot check port $port: $probe" ;;
             esac
             [[ -z $refusal ]] || break
@@ -236,6 +304,39 @@ setup() {
         "$name" "$(docker exec -u "$owner" "$name" syncthing device-id)"
 }
 
+setup_host() {
+    local target=$1
+    [[ -d $target ]] || die "no directory $target"
+    # Absolute and plain, so a rerun naming it another way still matches the folder.
+    target=$(cd -- "$target" && pwd)
+    if command -v docker >/dev/null && docker container inspect "$name" >/dev/null 2>&1; then
+        die "already set up in container $name; run uninstall first"
+    fi
+    use_host
+    local version
+    version=$(st show version | field version)
+    if ! [[ $version =~ ^v([0-9]+)\. ]] || ((BASH_REMATCH[1] < 2)); then
+        die "this host runs Syncthing $version; claude-sync needs Syncthing 2 or newer"
+    fi
+    local id path
+    while IFS= read -r id; do
+        path=$(st config folders "$id" path get)
+        if [[ $id == "$folder_id" ]]; then
+            [[ $path == "$target" ]] || die "already set up for $path; run uninstall first"
+        elif [[ $path == "$target" ]]; then
+            die "this host's Syncthing folder $id already syncs $target; remove it there first"
+        fi
+    done < <(st config folders list)
+    folder_path=$target
+
+    # Written before Syncthing first scans the folder, so ignored files are never indexed.
+    cp "$here/stignore" "$target/.stignore"
+    st config folders list | grep -qxF "$folder_id" || add_folder sendreceive
+    wait_folder_started
+
+    printf 'The Syncthing on this host syncs %s.\nThis device ID: %s\n' "$target" "$(syncthing_run device-id)"
+}
+
 pair() {
     local id="" keep="" address=dynamic
     while (($#)); do
@@ -259,18 +360,14 @@ pair() {
         exit 2
     fi
     check_name
-    command -v docker >/dev/null || die "Docker is required"
-    { running && ours_container "$name"; } || die "Syncthing is not running in container $name; run setup first"
-    local env
-    env=$(docker container inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$name")
-    owner=$(sed -n 's/^PUID=//p' <<<"$env"):$(sed -n 's/^PGID=//p' <<<"$env")
+    detect_mode
 
     # Syncthing also accepts other spellings of an ID, but its CLI and the checks below
     # match only this one, as setup prints it.
     local id_re='^[A-Z2-7]{7}(-[A-Z2-7]{7}){7}$'
     [[ $id =~ $id_re ]] || die "not a device ID: $id; copy it as setup printed it"
     local self
-    self=$(docker exec -u "$owner" "$name" syncthing device-id)
+    self=$(syncthing_run device-id)
     [[ $id != "$self" ]] || die "that is this device's own ID; give the other device's"
     [[ $address != dynamic || $(st config options global-ann-enabled get) == true ]] ||
         die "this device is private: give the other device's --address, such as tcp://HOST:22000"
@@ -319,8 +416,13 @@ pair() {
     fi
 
     # Every device introduces the devices it syncs with to the others, so a device can
-    # join through any of them.
-    st config devices "$id" introducer set true
+    # join through any of them. An introducer's devices join every folder shared with it,
+    # so on the host's Syncthing a device sharing other folders is not made one.
+    if [[ $mode == host ]] && shares_other_folder "$id"; then
+        printf '%s also syncs other folders with this Syncthing, so it does not introduce devices here: pair this device with each of the others too.\n' "$id"
+    else
+        st config devices "$id" introducer set true
+    fi
     st config folders "$folder_id" devices list | grep -qxF -- "$id" ||
         st config folders "$folder_id" devices add --device-id "$id"
     if [[ -z $join ]]; then
@@ -347,12 +449,21 @@ pair() {
     for ((rounds = 1; ; rounds++)); do
         undo_changes
         join_wait "$id" "$self" "$there"
-        status=$(folder_status) || die "cannot reach Syncthing in container $name; rerun to finish the join"
+        status=$(folder_status) || die "cannot reach Syncthing $where; rerun to finish the join"
         [[ $(field receiveOnlyTotalItems <<<"$status") != 0 ]] || break
         ((rounds < 5)) || die "files here keep changing during the join; stop Claude Code on this device and rerun"
     done
     st config folders "$folder_id" type set sendreceive
     printf 'Joined through %s; this device now syncs both ways.\n' "$id"
+}
+
+shares_other_folder() {
+    local f
+    while IFS= read -r f; do
+        [[ $f != "$folder_id" ]] || continue
+        st config folders "$f" devices list | grep -qxF -- "$1" && return 0
+    done < <(st config folders list)
+    return 1
 }
 
 # Until this device has the folder as the device joined through has it.
@@ -361,7 +472,7 @@ join_wait() {
     while :; do
         if ! status=$(folder_status) ||
             ! remote=$(rest "/rest/db/completion?folder=$folder_id&device=$id" | field remoteState); then
-            ((++failures < 15)) || die "cannot reach Syncthing in container $name; rerun to finish the join"
+            ((++failures < 15)) || die "cannot reach Syncthing $where; rerun to finish the join"
             sleep 2
             continue
         fi
@@ -387,11 +498,11 @@ join_wait() {
 undo_changes() {
     local status i
     for ((i = 0; ; i++)); do
-        status=$(folder_status) || die "cannot reach Syncthing in container $name; rerun to finish the join"
+        status=$(folder_status) || die "cannot reach Syncthing $where; rerun to finish the join"
         [[ $(field receiveOnlyTotalItems <<<"$status") != 0 ]] || return 0
         ((i < 60)) || die "this device's changes are still not undone after two minutes; rerun to finish the join"
         rest "/rest/db/revert?folder=$folder_id" -X POST >/dev/null ||
-            die "cannot reach Syncthing in container $name; rerun to finish the join"
+            die "cannot reach Syncthing $where; rerun to finish the join"
         sleep 2
     done
 }
@@ -399,22 +510,28 @@ undo_changes() {
 # The device joined through has no files, while this device has changes to undo.
 nothing_to_join() {
     local status
-    status=$(folder_status) || die "cannot reach Syncthing in container $name; rerun to finish the join"
+    status=$(folder_status) || die "cannot reach Syncthing $where; rerun to finish the join"
     [[ $(field globalTotalItems <<<"$status") == 0 && $(field receiveOnlyTotalItems <<<"$status") != 0 ]]
 }
 
 uninstall() {
     (($# == 0)) || die "uninstall takes no arguments"
     check_name
-    command -v docker >/dev/null || die "Docker is required"
     local container="" volume=""
-    if docker container inspect "$name" >/dev/null 2>&1; then
-        ours_container "$name" || die "container $name was not created by claude-sync; not removing it"
-        container=1
+    if command -v docker >/dev/null; then
+        if docker container inspect "$name" >/dev/null 2>&1; then
+            ours_container "$name" || die "container $name was not created by claude-sync; not removing it"
+            container=1
+        fi
+        if docker volume inspect "$name-config" >/dev/null 2>&1; then
+            ours_volume "$name-config" || die "volume $name-config was not created by claude-sync; not removing it"
+            volume=1
+        fi
     fi
-    if docker volume inspect "$name-config" >/dev/null 2>&1; then
-        ours_volume "$name-config" || die "volume $name-config was not created by claude-sync; not removing it"
-        volume=1
+    if [[ -z $container$volume ]] && host_has_folder; then
+        use_host
+        st config folders "$folder_id" delete
+        echo "Removed the $folder_id folder from the Syncthing on this host; its devices and other folders stay."
     fi
     if [[ -n $container ]]; then
         docker rm --force "$name" >/dev/null
