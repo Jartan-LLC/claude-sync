@@ -166,7 +166,6 @@ trash_can_14_days() {
         jq -e '.type == "trashcan" and .params.cleanoutDays == "14"'
 }
 
-# Global discovery, relays and NAT traversal, in that order.
 network_options() {
     st "$1" "$2" config options dump-json | jq -c '[.globalAnnounceEnabled, .relaysEnabled, .natEnabled]'
 }

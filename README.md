@@ -54,14 +54,15 @@ device introduces it to all the others, and them to it, so every device syncs wi
 other directly.
 
 A device that syncs with no other yet joins: it sends nothing until it has the others'
-files, then moves its own changes to the trash can, such as a fresh `settings.json` from
-Claude Code, and syncs both ways. Without this, those newer files would replace yours on
+files, then moves its own changes, such as a fresh `settings.json` from Claude Code, to
+the trash can and syncs both ways. Without this, those newer files would replace yours on
 every device. `pair` waits until the join is done, and is safe to interrupt and re-run.
 Stop Claude Code on the new device until it finishes: a change made just as the join ends
 can still reach the others.
 
 `--keep` keeps this device's files instead, including on a re-run that finishes an
-interrupted join; files that the join already undid stay in the trash can. Paired with
+interrupted join; files the join already moved aside stay in the trash can (see
+[Recover a file](#recover-a-file)). Paired with
 devices that already have files, its files merge with theirs: for each file the newer copy
 wins and the other stays as a conflict copy.
 
@@ -73,8 +74,7 @@ discarding anything.
 
 By default devices find each other anywhere, through Syncthing's global discovery and
 relays, with traffic encrypted end to end. `setup --private` turns off global discovery,
-relays and NAT traversal; give each device the other's address when pairing, on both
-sides:
+relays and NAT traversal, so each device needs the other's address when pairing:
 
 ```bash
 ./claude-sync pair OTHER-ID --address tcp://other-host:22000
@@ -109,16 +109,17 @@ Everything in `~/.claude` except what is meaningless or harmful on another machi
 
 ## Recover a file
 
-Each device keeps the previous copy of anything another device deleted or overwrote for
-14 days, in Syncthing's trash can: `.stversions` in the synced folder, at the file's own
-path. Copy it back as the folder's owner:
+Each device keeps the previous copy of anything another device deleted or overwrote, and
+of anything a join moved aside, for 14 days, in Syncthing's trash can: `.stversions` in
+the synced folder, at the file's own path. Copy it back as the folder's owner:
 
 ```bash
 cp ~/.claude/.stversions/settings.json ~/.claude/settings.json
 ```
 
 For a Docker volume, run the copy in a container that mounts it, as the volume's owner
-(1000:1000 here; `ls -n` inside the volume shows yours):
+(1000:1000 here; `docker run --rm -v claude-data:/claude busybox stat -c %u:%g /claude`
+prints yours):
 
 ```bash
 docker run --rm --user 1000:1000 -v claude-data:/claude busybox \

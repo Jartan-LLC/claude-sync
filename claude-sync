@@ -22,17 +22,18 @@ Usage:
   claude-sync setup --volume NAME   Sync the Docker volume NAME that holds ~/.claude
   claude-sync setup --path DIR      Sync the directory DIR on this host
       --private                     No global discovery, relays or NAT traversal: other
-                                    devices are found on the LAN or at the address pair
-                                    is given
+                                    devices are found on the LAN or at the address given
+                                    to pair
       --public                      Back to Syncthing's defaults
   claude-sync pair DEVICE-ID        Sync with the device DEVICE-ID; run on both devices.
-                                    A device that syncs with no other yet joins: its
-                                    folder takes the copies of DEVICE-ID and the devices
-                                    it syncs with, and its own files go to the trash can
-      --keep                        Skip the join and keep this device's files, for the
-                                    first device of a new set. On a device joining an
-                                    existing set, its files merge with theirs: the newer
-                                    copy wins and the other is kept as a conflict copy
+                                    A device that syncs with no other yet joins: it waits
+                                    for the files of DEVICE-ID and the devices it syncs
+                                    with, then moves its own changes to the trash can
+      --keep                        Keep this device's files instead of joining, as the
+                                    first device of a new set does. Paired with devices
+                                    that already have files, its files merge with theirs:
+                                    the newer copy wins and the other is kept as a
+                                    conflict copy
       --address tcp://HOST:22000    Where to reach DEVICE-ID; required on a private device.
                                     Pairing again with it replaces the address
   claude-sync uninstall             Remove claude-sync's container and Syncthing state;
@@ -280,8 +281,8 @@ pair() {
         at=" --address $address" there=" --address tcp://THIS-HOST:22000"
     fi
 
-    # Before the folder changes below, so a bad ID changes nothing. Added but not yet
-    # shared with, the device gets no data. A no-op for a device already added.
+    # Before the folder changes below, so a bad ID changes nothing. A device added here but
+    # not yet shared with gets no data.
     local devices known="" err
     devices=$(st config devices list)
     if grep -qxF -- "$id" <<<"$devices"; then
@@ -289,7 +290,8 @@ pair() {
     fi
     err=$(st config devices add --device-id "$id" --addresses "$address" 2>&1) ||
         die "cannot add device $id: $err"
-    # Adding a known device changes nothing, so a corrected address is set here.
+    # Adding a known device changes nothing (Syncthing 2.1.6), so a corrected address is
+    # set here.
     if [[ -n $known && $address != dynamic ]]; then
         rest "/rest/config/devices/$id" -X PATCH -H 'Content-Type: application/json' \
             -d "{\"addresses\": [\"$address\"]}" >/dev/null || die "cannot set the address of $id"
@@ -308,7 +310,8 @@ pair() {
         join=1
     elif ((shared == 0)) && [[ -z $keep ]]; then
         join=1
-        # Files indexed while send-receive would still be sent as this device's changes.
+        # In Syncthing 2.1.6, files indexed while send-receive are still sent as this
+        # device's changes after a switch to receive-only.
         # Re-added receive-only, the folder indexes them as local changes, which are never
         # sent and are undone once caught up.
         st config folders "$folder_id" delete
@@ -337,8 +340,8 @@ pair() {
         die "$id has no files to join, so joining would only discard this device's; undone, nothing was discarded. If this device's files are the ones to start from, rerun: claude-sync pair $id$at --keep"
     fi
     # Undo what changed here, then wait for the undone files to be pulled again: switching
-    # to send-receive before they arrive would send this device's copies. Repeated while a
-    # running Claude Code keeps changing files meanwhile.
+    # to send-receive before they arrive would send this device's copies. Repeated while
+    # something here, such as a running Claude Code, keeps changing files.
     set_trash_can
     local status rounds
     for ((rounds = 1; ; rounds++)); do
