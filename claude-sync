@@ -1,0 +1,202 @@
+#!/usr/bin/env bash
+# Keep ~/.claude in sync across devices with Syncthing. See README.md.
+set -euo pipefail
+
+here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+readonly here
+export CLAUDE_SYNC_NAME=${CLAUDE_SYNC_NAME:-claude-sync}
+readonly name=$CLAUDE_SYNC_NAME
+readonly folder_id=claude-sync
+readonly folder_path=/var/syncthing/claude
+readonly trash_days=14
+# TCP ports another Syncthing would hold (21027/udp is not probed). `up --wait` cannot
+# catch a clash on 8384: its health check would reach the other Syncthing's GUI.
+readonly ports=(8384 22000)
+readonly label=claude-sync=config
+owner=""
+compose_files=()
+
+usage() {
+    cat <<'EOF'
+Usage:
+  claude-sync setup --volume NAME   Sync the Docker volume NAME that holds ~/.claude
+  claude-sync setup --path DIR      Sync the directory DIR on this host
+  claude-sync uninstall             Remove claude-sync's container and Syncthing state;
+                                    the synced folder is left untouched
+  claude-sync help
+EOF
+}
+
+die() {
+    printf 'claude-sync: %s\n' "$*" >&2
+    exit 1
+}
+
+check_name() {
+    # Compose's project-name rule, plus Docker's two-character minimum for container names,
+    # since the name is both.
+    [[ $name =~ ^[a-z0-9][a-z0-9_-]+$ ]] ||
+        die "CLAUDE_SYNC_NAME must be two or more lowercase letters, digits, '-' or '_', starting with a letter or digit: $name"
+}
+
+st() {
+    docker exec -u "$owner" "$name" syncthing cli "$@"
+}
+
+compose() {
+    docker compose -p "$name" "${compose_files[@]}" "$@"
+}
+
+ours_volume() {
+    [[ $(docker volume inspect --format "{{index .Labels \"${label%=*}\"}}" "$1") == "${label#*=}" ]]
+}
+
+ours_container() {
+    [[ $(docker container inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' "$1") == "$name" ]]
+}
+
+# The volume name or host path the existing container syncs, if any.
+current_target() {
+    docker container inspect --format "{{range .Mounts}}{{if eq .Destination \"$folder_path\"}}{{if eq .Type \"volume\"}}{{.Name}}{{else}}{{.Source}}{{end}}{{end}}{{end}}" \
+        "$name" 2>/dev/null
+}
+
+setup() {
+    local kind="" target=""
+    while (($#)); do
+        case $1 in
+            --volume | --path)
+                [[ -z $kind ]] || die "give only one of --volume or --path"
+                (($# >= 2)) || die "$1 needs a value"
+                kind=${1#--} target=$2
+                shift 2
+                ;;
+            *) die "unknown argument: $1" ;;
+        esac
+    done
+    if [[ -z $kind ]]; then
+        usage >&2
+        exit 2
+    fi
+    check_name
+    command -v docker >/dev/null || die "Docker is required"
+
+    local mount
+    if [[ $kind == volume ]]; then
+        # `docker run --mount` would silently create a missing volume.
+        docker volume inspect "$target" >/dev/null 2>&1 || die "no Docker volume named $target"
+        mount="type=volume,src=$target,dst=/target"
+    else
+        # Not checked with -d: Docker resolves the path on its host, which is not this
+        # filesystem when claude-sync runs inside a container sharing the host's daemon.
+        # --mount takes comma-separated fields, with no quoting for a comma in a value.
+        [[ $target != *,* ]] || die "paths containing a comma are not supported: $target"
+        [[ $target == /* ]] || target=$PWD/$target
+        mount="type=bind,src=$target,dst=/target"
+    fi
+
+    local current
+    current=$(current_target) || current=""
+    [[ -z $current || $current == "$target" ]] || die "already set up for $current; run uninstall first"
+
+    local image
+    image=$(sed -n 's/^ *image: *//p' "$here/compose.yaml")
+    [[ -n $image ]] || die "no image in $here/compose.yaml"
+    owner=$(docker run --rm --entrypoint stat --mount "$mount" "$image" -c %u:%g /target) ||
+        die "cannot read $target"
+    # Syncthing would run as root and write files Claude Code cannot change.
+    [[ ${owner%:*} != 0 ]] || die "$target is owned by root; chown it to the user who runs Claude Code"
+
+    local created_config=""
+    if docker volume inspect "$name-config" >/dev/null 2>&1; then
+        ours_volume "$name-config" || die "volume $name-config exists but was not created by claude-sync"
+    else
+        docker volume create --label "$label" "$name-config" >/dev/null
+        created_config=1
+    fi
+    # A new volume's root belongs to root and the image chowns only its home directory,
+    # so without this Syncthing cannot write its config as the target's owner.
+    docker run --rm --entrypoint chown --mount "type=volume,src=$name-config,dst=/config" \
+        "$image" -R "$owner" /config
+
+    export CLAUDE_SYNC_UID=${owner%:*} CLAUDE_SYNC_GID=${owner#*:} CLAUDE_SYNC_TARGET=$target
+    compose_files=(-f "$here/compose.yaml" -f "$here/compose.$kind.yaml")
+    [[ -z ${CLAUDE_SYNC_COMPOSE_OVERRIDE:-} ]] || compose_files+=(-f "$CLAUDE_SYNC_COMPOSE_OVERRIDE")
+
+    # Probed from a throwaway container on the service's own network, which is the host's
+    # even when claude-sync itself runs in a container.
+    # nc's own status is echoed so a failing `compose run` cannot pass for a free port.
+    if [[ $(docker container inspect --format '{{.State.Running}}' "$name" 2>/dev/null) != true ]]; then
+        local port probe refusal=""
+        for port in "${ports[@]}"; do
+            # shellcheck disable=SC2016 # expanded by the container's shell
+            probe=$(compose run --rm --no-deps --entrypoint sh syncthing \
+                -c 'nc -z 127.0.0.1 "$1"; echo "nc=$?"' sh "$port" 2>&1 </dev/null) || true
+            case ${probe##*$'\n'} in
+                nc=1) ;;
+                nc=0) refusal="port $port is in use; is another Syncthing running on this host?" ;;
+                *) refusal="cannot check port $port: $probe" ;;
+            esac
+            [[ -z $refusal ]] || break
+        done
+        if [[ -n $refusal ]]; then
+            [[ -z $created_config ]] || docker volume rm "$name-config" >/dev/null
+            die "$refusal"
+        fi
+    fi
+
+    # Written before Syncthing first scans the folder, so ignored files are never indexed.
+    docker run --rm -i --user "$owner" --entrypoint sh --mount "$mount" "$image" \
+        -c 'cat >/target/.stignore' <"$here/stignore"
+
+    compose up --detach --wait --wait-timeout 120 --quiet-pull
+
+    if ! st config folders list | grep -qx "$folder_id"; then
+        st config folders add --id "$folder_id" --label claude --path "$folder_path"
+    fi
+    st config folders "$folder_id" versioning type set trashcan
+    st config folders "$folder_id" versioning params set cleanoutDays "$trash_days"
+
+    printf 'Syncthing is running in container %s.\nThis device ID: %s\n' \
+        "$name" "$(docker exec -u "$owner" "$name" syncthing device-id)"
+}
+
+uninstall() {
+    (($# == 0)) || die "uninstall takes no arguments"
+    check_name
+    command -v docker >/dev/null || die "Docker is required"
+    local container="" volume=""
+    if docker container inspect "$name" >/dev/null 2>&1; then
+        ours_container "$name" || die "container $name was not created by claude-sync; not removing it"
+        container=1
+    fi
+    if docker volume inspect "$name-config" >/dev/null 2>&1; then
+        ours_volume "$name-config" || die "volume $name-config was not created by claude-sync; not removing it"
+        volume=1
+    fi
+    if [[ -n $container ]]; then
+        docker rm --force "$name" >/dev/null
+        echo "Removed container $name."
+    fi
+    if [[ -n $volume ]]; then
+        docker volume rm "$name-config" >/dev/null
+        echo "Removed volume $name-config (this device's Syncthing identity)."
+    fi
+    echo "The synced folder is untouched."
+}
+
+case ${1:-help} in
+    setup)
+        shift
+        setup "$@"
+        ;;
+    uninstall)
+        shift
+        uninstall "$@"
+        ;;
+    help | -h | --help) usage ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac

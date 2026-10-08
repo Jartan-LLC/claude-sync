@@ -1,5 +1,5 @@
 # Task runner for the local dev loop. Run `make` or `make help` to list targets.
-.PHONY: help install lint check all
+.PHONY: help install lint test check all
 
 # Every target uses one Python environment, chosen here: this
 # checkout's .venv, else the active one, else, in the main checkout only, the system
@@ -50,7 +50,11 @@ install:  ## Install every tracked Python and Node manifest, then wire the pre-c
 lint:  ## Lint all files via pre-commit (codespell, shellcheck, markdownlint, lychee, actionlint, zizmor, hygiene)
 	pre-commit run --all-files
 
-check:  ## Run CI's lint checks
+test:  ## Run the integration tests against real Syncthing containers (needs Docker)
+	tests/integration.sh
+
+check:  ## Run CI's lint and integration checks
 	$(MAKE) lint
+	$(MAKE) test
 
 all: check  ## Alias for `check`

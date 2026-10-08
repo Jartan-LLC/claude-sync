@@ -19,7 +19,15 @@ Docker (actionlint, lychee) and Node (markdownlint) — the devcontainer has bot
 make check
 ```
 
-Runs CI's lint checks; all must pass before merge.
+Runs the lint and integration checks CI runs (CI also builds the dev container); all must
+pass before merge.
+
+`make test` (`tests/integration.sh`) runs claude-sync against real Syncthing containers and
+needs Docker. Every container, volume and network it keeps is named `claude-sync-test-*` and
+removed afterwards, and it removes nothing else, which matters when the dev container shares
+the host's Docker daemon.
+It points claude-sync at its own objects with `CLAUDE_SYNC_NAME`, and swaps host networking
+for a bridge with `CLAUDE_SYNC_COMPOSE_OVERRIDE=tests/compose.test.yaml`.
 
 ## Conventions
 
