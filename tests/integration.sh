@@ -363,6 +363,12 @@ check "A trusts B as introducer" trusts "$a" "$owner_a" "$id_b"
 check "B's folder is send-receive after joining" [ "$(folder_type "$b" "$owner_b")" = sendreceive ]
 check "pairing B again changes nothing" pair_bounded "$b" "$id_a" --address "tcp://$a:22000"
 check "  and leaves it send-receive" [ "$(folder_type "$b" "$owner_b")" = sendreceive ]
+check "an invalid address is refused" fails_with "not an address" \
+    pair_bounded "$a" "$id_b" --address 'tcp://b"x'
+pair_bounded "$a" "$id_b" --address "tcp://elsewhere:22000" >/dev/null
+check "pairing again with --address replaces the address" [ "$(st "$a" "$owner_a" config devices "$id_b" \
+    dump-json | jq -r '.addresses | join(" ")')" = "tcp://elsewhere:22000" ]
+pair_bounded "$a" "$id_b" --address "tcp://$b:22000" >/dev/null
 
 echo "# ignore list, across two devices"
 if wait_for synced_to_b; then
@@ -412,6 +418,7 @@ check "  and C keeps its files" [ "$(in_target "$mount_c" 'cat /t/claude.json')"
 check "  all of them" in_target "$mount_c" '[ -e /t/c-only.md ]'
 check "  and is unpaired" [ "$(st "$c" "$owner_c" config devices list)" = "$id_c" ]
 check "  and send-receive again" [ "$(folder_type "$c" "$owner_c")" = sendreceive ]
+kill "$d_pairing" 2>/dev/null || true
 docker rm --force "$d" >/dev/null
 wait "$d_pairing" || true
 
@@ -429,10 +436,12 @@ check "C gets A's claude.json" [ "$(in_target "$mount_c" 'cat /t/claude.json')" 
 check "C's own file is discarded" in_target "$mount_c" '[ ! -e /t/c-only.md ]'
 check "  into C's trash can" in_target "$mount_c" '[ -e /t/.stversions/c-only.md ]'
 check "C's folder is send-receive after joining" [ "$(folder_type "$c" "$owner_c")" = sendreceive ]
-check "A gets no conflict files" no_conflict_files "$mount_a"
-check "B gets no conflict files" no_conflict_files "$mount_b"
 in_target "$mount_c" "echo c >/t/from-c.md && chown $owner_c /t/from-c.md"
 check "C's edits reach A" wait_for in_target "$mount_a" '[ -e /t/from-c.md ]'
+check "  and B" wait_for in_target "$mount_b" '[ -e /t/from-c.md ]'
+# Checked once C's edits have spread, so anything C sent on joining would have too.
+check "A gets no conflict files" no_conflict_files "$mount_a"
+check "B gets no conflict files" no_conflict_files "$mount_b"
 
 echo "# every device introduces the others"
 check "B learns of C" wait_for knows_device "$b" "$owner_b" "$id_c"
@@ -445,6 +454,7 @@ claude_sync "$d" setup --volume "$vol_d" --private >/dev/null
 id_d=$(docker exec -u "$owner_d" "$d" syncthing device-id)
 check "a join cut off while waiting" fails env CLAUDE_SYNC_NAME="$d" timeout 10 \
     "$root/claude-sync" pair "$id_b" --address "tcp://$b:22000"
+check "  leaves D's folder receive-only" [ "$(folder_type "$d" "$owner_d")" = receiveonly ]
 pair_bounded "$b" "$id_d" --address "tcp://$d:22000" >/dev/null
 check "--keep ends it" pair_bounded "$d" "$id_b" --address "tcp://$b:22000" --keep
 check "  leaving D's folder send-receive" [ "$(folder_type "$d" "$owner_d")" = sendreceive ]
