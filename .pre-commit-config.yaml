@@ -1,6 +1,6 @@
 # The single source of truth for file-level linting — run by `make lint` and CI
 # (`pre-commit run --all-files`) as well as on commit (after `pre-commit install`).
-# Its revs are the only versions of these linters.
+# Its revs set the linters' versions; external-link-check.yml's lychee action pins its own.
 #
 # Revs are pinned to commit SHAs (# frozen: vX.Y.Z); Dependabot's pre-commit entry bumps
 # them. Bump all by hand with: pre-commit autoupdate --freeze

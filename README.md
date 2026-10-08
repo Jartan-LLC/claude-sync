@@ -25,14 +25,14 @@ Everything in `~/.claude` except what is meaningless or harmful on another machi
 |---|---|
 | `.credentials.json` | Your login: one per device |
 | `sessions/*.json`, `sessions/*.key`, `plugins/cache/**/.in_use` | Keyed by a process ID on one machine |
-| `*.lock` | Lock files |
+| `*.lock` | Held by a process on one machine |
 | `*.tmp*` | Half-written files mid-save |
 
 Each device keeps deleted or overwritten files for 14 days in Syncthing's trash can.
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md); `make check` runs the CI gate.
+See [CONTRIBUTING.md](CONTRIBUTING.md); `make check` runs CI's lint checks.
 [docs/scaffold.md](docs/scaffold.md) covers the dev container, CI and Liza.
 
 ## License

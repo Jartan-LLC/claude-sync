@@ -3,12 +3,13 @@
 ## Setup
 
 ```bash
+uv venv        # skip in the devcontainer or with an environment already active
 make install
 ```
 
 `make install` installs the pinned gate tools (`ci/requirements.txt`) and wires the
-pre-commit hook. The devcontainer has everything; on a bare host it needs Python 3.12+,
-[uv](https://docs.astral.sh/uv/getting-started/installation/) and an environment (`uv venv`).
+pre-commit hook. The devcontainer has everything; on a bare host it needs Python 3.12+ and
+[uv](https://docs.astral.sh/uv/getting-started/installation/).
 `make lint` runs the [pre-commit](https://pre-commit.com/) hooks; some need
 Docker (actionlint, lychee) and Node (markdownlint) — the devcontainer has both.
 
@@ -18,7 +19,7 @@ Docker (actionlint, lychee) and Node (markdownlint) — the devcontainer has bot
 make check
 ```
 
-Runs the same checks CI does; all must pass before merge.
+Runs CI's lint checks; all must pass before merge.
 
 ## Conventions
 

@@ -1,7 +1,7 @@
 # claude-sync
 
 Continuous sync of `~/.claude` across devices through a Syncthing sidecar container
-(Bash, Docker Compose, systemd), installed per host by `install.sh`.
+(Bash, Docker Compose, systemd), to be installed per host by `install.sh` (not built yet).
 
 ## Rules
 
@@ -22,7 +22,7 @@ loads them into every session:
 
 ## Verify
 
-Run `make check` before declaring work done — it runs every CI check (lint):
+Run `make check` before declaring work done — it runs CI's lint checks:
 
 ```bash
 make check

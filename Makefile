@@ -50,7 +50,7 @@ install:  ## Install every tracked Python and Node manifest, then wire the pre-c
 lint:  ## Lint all files via pre-commit (codespell, shellcheck, markdownlint, lychee, actionlint, zizmor, hygiene)
 	pre-commit run --all-files
 
-check:  ## Run every CI check (lint)
+check:  ## Run CI's lint checks
 	$(MAKE) lint
 
 all: check  ## Alias for `check`
