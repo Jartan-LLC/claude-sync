@@ -548,7 +548,9 @@ uninstall() {
         fi
     fi
     if [[ -n $container ]]; then
-        docker rm --force "$name" >/dev/null
+        # -v: the image declares a volume, left behind otherwise. Volumes mounted by name,
+        # such as the synced one, are kept.
+        docker rm --force -v "$name" >/dev/null
         echo "Removed container $name."
     fi
     if [[ -n $volume ]]; then

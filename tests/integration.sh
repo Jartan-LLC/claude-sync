@@ -649,8 +649,11 @@ check "  and survives" docker volume inspect "$foreign-config"
 
 echo "# uninstall"
 before=$(snapshot "$mount_a")
+anonymous=$(docker container inspect \
+    --format '{{range .Mounts}}{{if eq .Destination "/var/syncthing"}}{{.Name}}{{end}}{{end}}' "$a")
 claude_sync "$a" uninstall >/dev/null
 check "removes the container" fails docker container inspect "$a"
+check "  and the image's anonymous volume" fails docker volume inspect "${anonymous:?}"
 check "removes Syncthing's state volume" fails docker volume inspect "$a-config"
 check "keeps the synced volume" docker volume inspect "$vol_a"
 check "leaves the synced data byte-identical" [ "$(snapshot "$mount_a")" = "$before" ]
