@@ -13,5 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `~/.claude` as its owner, skipping per-machine files and keeping a 14-day trash can.
 - `claude-sync uninstall`: removes the container and Syncthing state, leaving the synced
   folder untouched.
+- `claude-sync pair DEVICE-ID [--keep] [--address ADDR]`: pairs devices from the command
+  line. A new device joins without its files replacing the others', and every device
+  introduces new devices to the rest.
+- `claude-sync setup --private | --public`: turns global discovery, relays and NAT
+  traversal off or back on.
+- `setup` fails with Syncthing's message when Syncthing cannot sync the folder.
 
 [Unreleased]: https://github.com/Jartan-LLC/claude-sync/commits/main

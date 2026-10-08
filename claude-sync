@@ -21,6 +21,18 @@ usage() {
 Usage:
   claude-sync setup --volume NAME   Sync the Docker volume NAME that holds ~/.claude
   claude-sync setup --path DIR      Sync the directory DIR on this host
+      --private                     Reach other devices only at the addresses pair is
+                                    given: no global discovery, relays or NAT traversal
+      --public                      Back to Syncthing's defaults
+  claude-sync pair DEVICE-ID        Sync with the device DEVICE-ID; run on both devices.
+                                    A device that syncs with no other yet joins: its
+                                    folder takes the copies of DEVICE-ID and the devices
+                                    it syncs with, and its own files go to the trash can
+      --keep                        Skip the join and keep this device's files, for the
+                                    first device of a new set. On a device joining an
+                                    existing set, its files merge with theirs: the newer
+                                    copy wins and the other is kept as a conflict copy
+      --address tcp://HOST:22000    Where to reach DEVICE-ID; required on a private device
   claude-sync uninstall             Remove claude-sync's container and Syncthing state;
                                     the synced folder is left untouched
   claude-sync help
@@ -47,6 +59,52 @@ compose() {
     docker compose -p "$name" "${compose_files[@]}" "$@"
 }
 
+# The running instance's REST API at PATH, then extra curl options, for what
+# `syncthing cli` does not cover.
+rest() {
+    # shellcheck disable=SC2016 # expanded by the container's shell
+    docker exec -u "$owner" "$name" sh -c \
+        'path=$1; shift
+        curl -fsS "$@" -H "X-API-Key: $(syncthing cli config gui apikey get)" "http://127.0.0.1:8384$path"' \
+        sh "$@"
+}
+
+# A top-level KEY of the REST API's JSON. The API prints one key per line, so sed reads it
+# and users need no jq.
+field() {
+    sed -n "s/^  \"$1\": \(.*\)\$/\1/p" | sed 's/,$//; s/^"\(.*\)"$/\1/'
+}
+
+folder_status() {
+    rest "/rest/db/status?folder=$folder_id"
+}
+
+# Dies with Syncthing's own message when it cannot run the folder, such as an ignore
+# pattern it rejects; the scan that loads the ignore list ends in idle or error.
+wait_folder_started() {
+    local i status state
+    for ((i = 0; i < 120; i++)); do
+        status=$(folder_status) || status=""
+        state=$(field state <<<"$status")
+        case $state in
+            idle) return 0 ;;
+            error) die "Syncthing cannot sync the folder: $(field error <<<"$status")" ;;
+        esac
+        sleep 1
+    done
+    echo "Syncthing is still scanning the folder; its web UI shows when it is done."
+}
+
+add_folder() {
+    st config folders add --id "$folder_id" --label claude --path "$folder_path" --type "$1"
+    st config folders "$folder_id" versioning type set trashcan
+    st config folders "$folder_id" versioning params set cleanoutDays "$trash_days"
+}
+
+running() {
+    [[ $(docker container inspect --format '{{.State.Running}}' "$name" 2>/dev/null) == true ]]
+}
+
 ours_volume() {
     [[ $(docker volume inspect --format "{{index .Labels \"${label%=*}\"}}" "$1") == "${label#*=}" ]]
 }
@@ -62,7 +120,7 @@ current_target() {
 }
 
 setup() {
-    local kind="" target=""
+    local kind="" target="" network=""
     while (($#)); do
         case $1 in
             --volume | --path)
@@ -70,6 +128,11 @@ setup() {
                 (($# >= 2)) || die "$1 needs a value"
                 kind=${1#--} target=$2
                 shift 2
+                ;;
+            --private | --public)
+                [[ -z $network || $network == "${1#--}" ]] || die "give only one of --private or --public"
+                network=${1#--}
+                shift
                 ;;
             *) die "unknown argument: $1" ;;
         esac
@@ -126,7 +189,7 @@ setup() {
     # Probed from a throwaway container on the service's own network, which is the host's
     # even when claude-sync itself runs in a container.
     # nc's own status is echoed so a failing `compose run` cannot pass for a free port.
-    if [[ $(docker container inspect --format '{{.State.Running}}' "$name" 2>/dev/null) != true ]]; then
+    if ! running; then
         local port probe refusal=""
         for port in "${ports[@]}"; do
             # shellcheck disable=SC2016 # expanded by the container's shell
@@ -151,14 +214,128 @@ setup() {
 
     compose up --detach --wait --wait-timeout 120 --quiet-pull
 
-    if ! st config folders list | grep -qx "$folder_id"; then
-        st config folders add --id "$folder_id" --label claude --path "$folder_path"
+    st config folders list | grep -qx "$folder_id" || add_folder sendreceive
+    # Left as it is when neither is given, so re-running setup never makes a device public.
+    if [[ -n $network ]]; then
+        local option on=true
+        [[ $network == public ]] || on=false
+        for option in global-ann-enabled relays-enabled natenabled; do
+            st config options "$option" set "$on"
+        done
     fi
-    st config folders "$folder_id" versioning type set trashcan
-    st config folders "$folder_id" versioning params set cleanoutDays "$trash_days"
+    wait_folder_started
 
     printf 'Syncthing is running in container %s.\nThis device ID: %s\n' \
         "$name" "$(docker exec -u "$owner" "$name" syncthing device-id)"
+}
+
+pair() {
+    local id="" keep="" address=dynamic
+    while (($#)); do
+        case $1 in
+            --keep) keep=1 ;;
+            --address)
+                (($# >= 2)) || die "$1 needs a value"
+                address=$2
+                shift
+                ;;
+            -*) die "unknown argument: $1" ;;
+            *)
+                [[ -z $id ]] || die "unknown argument: $1"
+                id=$1
+                ;;
+        esac
+        shift
+    done
+    if [[ -z $id ]]; then
+        usage >&2
+        exit 2
+    fi
+    check_name
+    command -v docker >/dev/null || die "Docker is required"
+    { running && ours_container "$name"; } || die "Syncthing is not running in container $name; run setup first"
+    local env
+    env=$(docker container inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$name")
+    owner=$(sed -n 's/^PUID=//p' <<<"$env"):$(sed -n 's/^PGID=//p' <<<"$env")
+
+    local self
+    self=$(docker exec -u "$owner" "$name" syncthing device-id)
+    [[ $id != "$self" ]] || die "that is this device's own ID; give the other device's"
+    [[ $address != dynamic || $(st config options global-ann-enabled get) == true ]] ||
+        die "this device is private: give the other device's --address, such as tcp://HOST:22000"
+
+    # Before the folder changes below, so a bad ID changes nothing. Added but not yet
+    # shared with, the device gets no data. A no-op for a device already added.
+    local err
+    err=$(st config devices add --device-id "$id" --addresses "$address" 2>&1) ||
+        die "cannot add device $id: $err"
+
+    # A device syncing with no other yet is the one being added, so it joins; receive-only
+    # means a join was interrupted.
+    local type shared join=""
+    type=$(st config folders "$folder_id" type get 2>/dev/null) || die "no $folder_id folder; run setup first"
+    shared=$(st config folders "$folder_id" devices list | grep -cvxF -- "$self") || true
+    if [[ $type == receiveonly ]]; then
+        join=1
+    elif ((shared == 0)) && [[ -z $keep ]]; then
+        join=1
+        # Files indexed while send-receive would still be sent as this device's changes.
+        # Re-added receive-only, the folder indexes them as local changes, which are never
+        # sent and are undone once caught up.
+        st config folders "$folder_id" delete
+        add_folder receiveonly
+    fi
+
+    # Every device introduces the devices it syncs with to the others, so a device can
+    # join through any of them.
+    st config devices "$id" introducer set true
+    st config folders "$folder_id" devices list | grep -qxF -- "$id" ||
+        st config folders "$folder_id" devices add --device-id "$id"
+    if [[ -z $join ]]; then
+        printf 'Paired with %s. If not done yet, run there: claude-sync pair %s\n' "$id" "$self"
+        return
+    fi
+
+    join_wait "$id" "$self"
+    local status
+    status=$(folder_status)
+    # Joining devices with no files would only discard this device's: likely the first
+    # pairing of a new set, missing --keep. Nothing here was sent while receive-only, so
+    # undoing the pairing restores the device as it was.
+    if [[ $(field globalTotalItems <<<"$status") == 0 && $(field receiveOnlyTotalItems <<<"$status") != 0 ]]; then
+        st config folders "$folder_id" devices "$id" delete
+        st config devices "$id" delete
+        st config folders "$folder_id" type set sendreceive
+        die "$id has no files to join, so joining would only discard this device's; undone, nothing was discarded. If this device's files are the ones to start from, rerun: claude-sync pair $id --keep"
+    fi
+    # Undo what changed here while receive-only, until nothing is left: once send-receive,
+    # any change still left would be sent to every device. Repeated for changes a running
+    # Claude Code makes meanwhile. Not the CLI's folder-override, which leaves a
+    # receive-only folder's changes in place (2.1.6).
+    until status=$(folder_status) && [[ $(field receiveOnlyTotalItems <<<"$status") == 0 ]]; do
+        rest "/rest/db/revert?folder=$folder_id" -X POST >/dev/null || true
+        sleep 2
+    done
+    st config folders "$folder_id" type set sendreceive
+    printf 'Joined through %s; this device now syncs both ways.\n' "$id"
+}
+
+# Until this device has the folder as the device joined through has it.
+join_wait() {
+    local id=$1 self=$2 told="" remote status
+    while :; do
+        remote=$(rest "/rest/db/completion?folder=$folder_id&device=$id" | field remoteState) || remote=""
+        status=$(folder_status) || status=""
+        [[ $(field state <<<"$status") != error ]] ||
+            die "Syncthing cannot sync the folder: $(field error <<<"$status")"
+        if [[ $remote == valid ]]; then
+            [[ $(field state <<<"$status") != idle || $(field needTotalItems <<<"$status") != 0 ]] || return 0
+        elif [[ -z $told ]]; then
+            printf 'Waiting for %s; if not done yet, run there: claude-sync pair %s\n' "$id" "$self"
+            told=1
+        fi
+        sleep 2
+    done
 }
 
 uninstall() {
@@ -189,6 +366,10 @@ case ${1:-help} in
     setup)
         shift
         setup "$@"
+        ;;
+    pair)
+        shift
+        pair "$@"
         ;;
     uninstall)
         shift
