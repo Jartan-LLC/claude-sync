@@ -6,20 +6,52 @@
 Continuous sync of `~/.claude` across devices: change a setting or write a memory on one
 machine, and it is there on the others.
 
-> **Status:** planned, not yet built.
+> **Status:** early. `setup` and `uninstall` work; pairing devices from the command line
+> is next. Until then, pair devices in Syncthing's web UI.
 
 ## How it works
 
-- A [Syncthing](https://syncthing.net/) container on each host mounts the `claude-data`
-  Docker volume that holds `~/.claude` and keeps it in sync with the other devices.
-- It runs on the host, not in a dev container, so it survives reboots and needs no change
-  to any `devcontainer.json`.
-- `install.sh` sets up a device: the Syncthing service, its ignore list and a weekly volume
-  backup.
+- `claude-sync` runs [Syncthing](https://syncthing.net/) in a container that syncs your
+  `~/.claude`, whether it is a directory or a Docker volume mounted into dev containers.
+- The container restarts with Docker, so sync survives reboots.
+- Syncthing runs as the owner of your `~/.claude`, and its web UI listens only on
+  `127.0.0.1:8384`.
+
+## Requirements
+
+- Linux with Docker and its Compose plugin. macOS is untested.
+- Ports 8384, 22000 and 21027 free: claude-sync's Syncthing cannot share a host with
+  another Syncthing.
+- Run claude-sync on the host itself, not inside a dev container: Docker resolves `--path`
+  on the host.
+
+## Setup
+
+```bash
+git clone https://github.com/Jartan-LLC/claude-sync.git
+cd claude-sync
+./claude-sync setup --path ~/.claude        # a directory
+./claude-sync setup --volume claude-data    # or a Docker volume
+```
+
+`setup` is safe to re-run and prints this device's ID. Pair a new device while its
+`~/.claude` is empty and Claude Code is not running there; otherwise its fresh files can
+replace yours on every device.
+
+## Uninstall
+
+```bash
+./claude-sync uninstall
+```
+
+Removes the container and this device's Syncthing state, including its device ID. Your
+`~/.claude` is untouched; Syncthing's `.stignore`, `.stfolder` and `.stversions` stay in it
+and can be deleted.
 
 ## What syncs
 
-Everything in `~/.claude` except what is meaningless or harmful on another machine:
+Everything in `~/.claude` except what is meaningless or harmful on another machine
+([`stignore`](stignore)):
 
 | Not synced | Why |
 |---|---|
@@ -28,11 +60,12 @@ Everything in `~/.claude` except what is meaningless or harmful on another machi
 | `*.lock` | Held by a process on one machine |
 | `*.tmp*` | Half-written files mid-save |
 
-Each device keeps deleted or overwritten files for 14 days in Syncthing's trash can.
+Each device keeps the previous copy of anything another device deleted or overwrote for
+14 days, in Syncthing's trash can (`.stversions` in the synced folder).
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md); `make check` runs CI's lint checks.
+See [CONTRIBUTING.md](CONTRIBUTING.md); `make check` runs CI's checks.
 [docs/scaffold.md](docs/scaffold.md) covers the dev container, CI and Liza.
 
 ## License

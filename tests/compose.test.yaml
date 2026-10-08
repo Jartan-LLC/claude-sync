@@ -1,0 +1,5 @@
+# Test overlay: two nodes cannot share the host network on one machine, so each joins a
+# shared bridge instead, where peers reach each other by container name.
+services:
+  syncthing:
+    network_mode: claude-sync-test-net

@@ -1,0 +1,29 @@
+# The Syncthing service. claude-sync adds compose.volume.yaml or compose.path.yaml to
+# mount the target folder, and supplies the CLAUDE_SYNC_* variables.
+services:
+  syncthing:
+    image: syncthing/syncthing:2.1.6@sha256:4d0281bdcb4ed9baf503d251d0544ddd856f49fce3f114056257ae172b7fb670
+    container_name: ${CLAUDE_SYNC_NAME:?}
+    # Syncthing's image docs recommend host networking: in a bridge network it sees only
+    # its container address, which breaks LAN discovery.
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      PUID: ${CLAUDE_SYNC_UID:?}
+      PGID: ${CLAUDE_SYNC_GID:?}
+      # Empty falls back to the config file's GUI address, 127.0.0.1 by default; the
+      # image's own default listens on every interface.
+      STGUIADDRESS: ""
+      STNODEFAULTFOLDER: "1"
+    volumes:
+      - config:/var/syncthing/config
+    # The image checks health every minute, which would stall `up --wait` that long.
+    healthcheck:
+      start_period: 1m
+      start_interval: 1s
+
+volumes:
+  # Created by claude-sync, which must chown it before Syncthing starts.
+  config:
+    external: true
+    name: ${CLAUDE_SYNC_NAME:?}-config

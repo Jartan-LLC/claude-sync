@@ -1,0 +1,17 @@
+// Managed by claude-sync: `claude-sync setup` overwrites this file.
+// Everything in ~/.claude syncs except what is meaningless or harmful on another machine.
+
+// Login token: one per device.
+/.credentials.json
+
+// Named after a process ID on one machine.
+/sessions/*.json
+/sessions/*.key
+
+// Held by a process on one machine.
+/ide/*.lock
+/plugins/cache/**/.in_use
+*.lock
+
+// Half-written files mid-save.
+*.tmp*

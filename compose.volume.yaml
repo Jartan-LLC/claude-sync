@@ -1,0 +1,9 @@
+services:
+  syncthing:
+    volumes:
+      - target:/var/syncthing/claude
+
+volumes:
+  target:
+    external: true
+    name: ${CLAUDE_SYNC_TARGET:?}
