@@ -36,9 +36,6 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
-# Docs build output (Sphinx)
-docs/_build/
-
 # Docker
 /data/
 

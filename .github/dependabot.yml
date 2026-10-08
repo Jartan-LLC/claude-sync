@@ -19,25 +19,6 @@ updates:
       default-days: 7
 
   - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    commit-message:
-      prefix: "chore(deps)"
-    groups:
-      minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
-    cooldown:
-      default-days: 7
-      semver-major-days: 7
-
-  # The gate's own tools (ci/requirements.txt), exact-pinned. Separate from the
-  # "/" entry above so a CI-tool bump lands as its own reviewable PR rather than
-  # riding along with a project dependency.
-  - package-ecosystem: "pip"
     directory: "/ci"
     schedule:
       interval: "weekly"
@@ -53,46 +34,6 @@ updates:
       default-days: 7
       semver-major-days: 7
 
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    commit-message:
-      prefix: "chore(deps)"
-    groups:
-      minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
-    cooldown:
-      default-days: 7
-      semver-major-days: 7
-
-  - package-ecosystem: "docker"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    commit-message:
-      prefix: "chore(deps)"
-    groups:
-      minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
-        exclude-patterns:
-          - "python"
-    ignore:
-      - dependency-name: "python"
-        update-types:
-          - "version-update:semver-major"
-          - "version-update:semver-minor"
-    cooldown:
-      default-days: 7
-
-  # Its own entry, so a devcontainer base-image bump that breaks the container build never
-  # holds up the root Dockerfile's updates.
   - package-ecosystem: "docker"
     directory: "/.devcontainer"
     schedule:

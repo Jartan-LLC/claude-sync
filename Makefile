@@ -1,5 +1,5 @@
 # Task runner for the local dev loop. Run `make` or `make help` to list targets.
-.PHONY: help install lint fix typecheck test test-integration docs check all
+.PHONY: help install lint check all
 
 # Every target uses one Python environment, chosen here: this
 # checkout's .venv, else the active one, else, in the main checkout only, the system
@@ -47,32 +47,10 @@ install:  ## Install every tracked Python and Node manifest, then wire the pre-c
 	elif [ -n "$$(git config core.hooksPath)" ]; then echo "core.hooksPath is set; skipping pre-commit install"; \
 	else pre-commit install; fi
 
-lint:  ## Lint all files via pre-commit (ruff, codespell, shellcheck, markdownlint, lychee, actionlint, zizmor, hygiene)
+lint:  ## Lint all files via pre-commit (codespell, shellcheck, markdownlint, lychee, actionlint, zizmor, hygiene)
 	pre-commit run --all-files
 
-# A hook run that rewrites files exits 1; the rerun passes unless a finding or error remains.
-fix:  ## Apply ruff's safe fixes and formatting via its pre-commit hooks (git-tracked files: `git add` new ones first)
-	pre-commit run ruff-check --all-files || pre-commit run ruff-check --all-files
-	pre-commit run ruff-format --all-files || pre-commit run ruff-format --all-files
-
-typecheck:  ## Static type check (pyright, strict)
-	pyright
-
-test:  ## Run the unit suite (matches CI: excludes integration-marked tests)
-	pytest -m "not integration"
-
-test-integration:  ## Run only integration-marked tests
-	pytest -m integration
-
-docs:  ## Build the docs site, warnings-as-errors
-	sphinx-build -W -b html docs docs/_build/html
-
-check:  ## Run every CI check (lint, typecheck, test, build, audit, docs)
-	$(MAKE) lint typecheck test
-	uv build
-	python -m twine check dist/*
-# Advisory, as in CI: known vulnerabilities are reported without failing the gate.
-	-pip-audit
-	$(MAKE) docs
+check:  ## Run CI's lint checks
+	$(MAKE) lint
 
 all: check  ## Alias for `check`

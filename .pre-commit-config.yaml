@@ -1,22 +1,14 @@
 # The single source of truth for file-level linting — run by `make lint` and CI
 # (`pre-commit run --all-files`) as well as on commit (after `pre-commit install`).
-# Its revs are the only ruff and codespell versions; `make fix` runs the ruff hooks.
-# Env operations (pyright, uv build, twine, pip-audit, sphinx) live in the Makefile.
+# Its revs set the linters' versions; external-link-check.yml's lychee action pins its own.
 #
 # Revs are pinned to commit SHAs (# frozen: vX.Y.Z); Dependabot's pre-commit entry bumps
 # them. Bump all by hand with: pre-commit autoupdate --freeze
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: a56c0b927e6465d37cae3e97d35d4d18ab2b96cd # frozen: v0.16.9
-    hooks:
-      - id: ruff-check
-        args: [--fix]
-      - id: ruff-format
   - repo: https://github.com/codespell-project/codespell
     rev: 57b21406f092110c18776e39b0bda50d37c945c8 # frozen: v2.4.3
     hooks:
       - id: codespell
-        additional_dependencies: [tomli] # read [tool.codespell] from pyproject
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: 745eface02aef23e168a8afb6b5737818efbea95 # frozen: v0.11.0.1
     hooks:

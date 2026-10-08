@@ -1,6 +1,7 @@
-# Project Name
+# claude-sync
 
-<!-- ONE LINE: what this project is, primary language/framework, deployment target -->
+Continuous sync of `~/.claude` across devices through a Syncthing sidecar container
+(Bash, Docker Compose, systemd), to be installed per host by `install.sh` (not built yet).
 
 ## Rules
 
@@ -21,14 +22,10 @@ loads them into every session:
 
 ## Verify
 
-Run `make check` before declaring work done — it runs every CI check (lint,
-typecheck, test, build, audit, docs):
+Run `make check` before declaring work done — it runs CI's lint checks:
 
 ```bash
 make check
 ```
 
-Individual targets (`make lint`, `make test`, `make docs`, …) speed up the inner
-loop; `make help` lists them.
-
-<!-- Not a Python project? Point the Makefile targets at your stack's lint/format/typecheck/test equivalents. -->
+`make help` lists the targets.
