@@ -22,8 +22,8 @@ loads them into every session:
 
 ## Verify
 
-Run `make check` before declaring work done — it runs CI's checks, lint then the
-integration tests (which need Docker):
+Run `make check` before declaring work done — it runs CI's lint and integration checks
+(the integration tests need Docker):
 
 ```bash
 make check

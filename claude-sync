@@ -12,6 +12,7 @@ readonly trash_days=14
 # The GUI clash matters most: `up --wait` cannot see it, because the health check would
 # reach the other Syncthing's GUI.
 readonly ports=(8384 22000)
+readonly label=claude-sync=config
 owner=""
 compose_files=()
 
@@ -33,7 +34,7 @@ die() {
 
 check_name() {
     # Compose's project-name rule, since the name is also the project.
-    [[ $name =~ ^[a-z0-9][a-z0-9_-]*$ ]] ||
+    [[ $name =~ ^[a-z0-9][a-z0-9_-]+$ ]] ||
         die "CLAUDE_SYNC_NAME may hold only lowercase letters, digits, '-' and '_': $name"
 }
 
@@ -43,6 +44,14 @@ st() {
 
 compose() {
     docker compose -p "$name" "${compose_files[@]}" "$@"
+}
+
+ours_volume() {
+    [[ $(docker volume inspect --format "{{index .Labels \"${label%=*}\"}}" "$1") == "${label#*=}" ]]
+}
+
+ours_container() {
+    [[ $(docker container inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' "$1") == "$name" ]]
 }
 
 # The volume name or host path the existing container syncs, if any.
@@ -97,9 +106,15 @@ setup() {
     # Syncthing would run as root and write files Claude Code cannot change.
     [[ ${owner%:*} != 0 ]] || die "$target is owned by root; chown it to the user who runs Claude Code"
 
+    local created_config=""
+    if docker volume inspect "$name-config" >/dev/null 2>&1; then
+        ours_volume "$name-config" || die "volume $name-config exists but was not created by claude-sync"
+    else
+        docker volume create --label "$label" "$name-config" >/dev/null
+        created_config=1
+    fi
     # A new volume's root belongs to root and the image chowns only its home directory,
     # so without this Syncthing cannot write its config as the target's owner.
-    docker volume create "$name-config" >/dev/null
     docker run --rm --entrypoint chown --mount "type=volume,src=$name-config,dst=/config" \
         "$image" -R "$owner" /config
 
@@ -109,13 +124,24 @@ setup() {
 
     # Probed from a throwaway container on the service's own network, which is the host's
     # even when claude-sync itself runs in a container.
+    # nc's own status is echoed so a failing `compose run` cannot pass for a free port.
     if [[ $(docker container inspect --format '{{.State.Running}}' "$name" 2>/dev/null) != true ]]; then
-        local port
+        local port probe refusal=""
         for port in "${ports[@]}"; do
-            if compose run --rm --no-deps --entrypoint nc syncthing -z 127.0.0.1 "$port" 2>/dev/null; then
-                die "port $port is in use; is another Syncthing running on this host?"
-            fi
+            # shellcheck disable=SC2016 # expanded by the container's shell
+            probe=$(compose run --rm --no-deps --entrypoint sh syncthing \
+                -c 'nc -z 127.0.0.1 "$1"; echo "nc=$?"' sh "$port" 2>&1) || true
+            case ${probe##*$'\n'} in
+                nc=1) ;;
+                nc=0) refusal="port $port is in use; is another Syncthing running on this host?" ;;
+                *) refusal="cannot check port $port: $probe" ;;
+            esac
+            [[ -z $refusal ]] || break
         done
+        if [[ -n $refusal ]]; then
+            [[ -z $created_config ]] || docker volume rm "$name-config" >/dev/null
+            die "$refusal"
+        fi
     fi
 
     # Written before Syncthing first scans the folder, so ignored files are never indexed.
@@ -138,11 +164,20 @@ uninstall() {
     (($# == 0)) || die "uninstall takes no arguments"
     check_name
     command -v docker >/dev/null || die "Docker is required"
+    local container="" volume=""
     if docker container inspect "$name" >/dev/null 2>&1; then
+        ours_container "$name" || die "container $name was not created by claude-sync; not removing it"
+        container=1
+    fi
+    if docker volume inspect "$name-config" >/dev/null 2>&1; then
+        ours_volume "$name-config" || die "volume $name-config was not created by claude-sync; not removing it"
+        volume=1
+    fi
+    if [[ -n $container ]]; then
         docker rm --force "$name" >/dev/null
         echo "Removed container $name."
     fi
-    if docker volume inspect "$name-config" >/dev/null 2>&1; then
+    if [[ -n $volume ]]; then
         docker volume rm "$name-config" >/dev/null
         echo "Removed volume $name-config (this device's Syncthing identity)."
     fi

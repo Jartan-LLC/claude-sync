@@ -53,7 +53,7 @@ lint:  ## Lint all files via pre-commit (codespell, shellcheck, markdownlint, ly
 test:  ## Run the integration tests against real Syncthing containers (needs Docker)
 	tests/integration.sh
 
-check:  ## Run CI's checks: lint, then integration tests
+check:  ## Run CI's lint and integration checks
 	$(MAKE) lint
 	$(MAKE) test
 

@@ -9,13 +9,18 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 readonly root
 readonly prefix=claude-sync-test-
 readonly net=${prefix}net a=${prefix}a b=${prefix}b c=${prefix}c
+readonly listener=${prefix}listener foreign=${prefix}foreign
 readonly vol_a=${prefix}a-data vol_b=${prefix}b-data vol_missing=${prefix}missing
-readonly vol_root=${prefix}root-data
+readonly vol_root=${prefix}root-data vol_c=${prefix}c-data
 # Not Syncthing's default 1000, so a match proves the owner was read from the target.
 readonly owner_a=1234:1234 owner_b=2345:2345
 readonly mount_a=type=volume,src=$vol_a mount_b=type=volume,src=$vol_b
 image=$(sed -n 's/^ *image: *//p' "$root/compose.yaml")
 readonly image
+[[ -n $image ]] || {
+    echo "no image in compose.yaml" >&2
+    exit 1
+}
 readonly bad_name=${prefix}BAD
 export CLAUDE_SYNC_COMPOSE_OVERRIDE=$root/tests/compose.test.yaml
 
@@ -37,6 +42,9 @@ readonly synced=(
     skills/demo/SKILL.md
     skills/demo/bun.lock
     skills/demo/template.tmpl
+    skills/demo/plan.tmp.md
+    skills/demo/daemon/notes.md
+    skills/demo/ide/4242.lock
     sessions/0b6c1f9e-demo-session.tmp
     "$task/.highwatermark"
 )
@@ -175,11 +183,12 @@ snapshot() {
 
 cleanup() {
     local x
-    for x in "$a" "$b" "$c" "$bad_name"; do
+    for x in "$a" "$b" "$c" "$bad_name" "$listener" "$foreign"; do
         guard "$x"
         docker rm --force "$x" >/dev/null 2>&1 || true
     done
-    for x in "$a-config" "$b-config" "$c-config" "$bad_name-config" "$vol_a" "$vol_b" "$vol_missing" "$vol_root"; do
+    for x in "$a-config" "$b-config" "$c-config" "$bad_name-config" "$foreign-config" \
+        "$vol_a" "$vol_b" "$vol_c" "$vol_missing" "$vol_root"; do
         guard "$x"
         docker volume rm "$x" >/dev/null 2>&1 || true
     done
@@ -198,12 +207,15 @@ on_exit() {
 }
 
 cleanup
+trap 'echo "aborted at tests/integration.sh:$LINENO" >&2' ERR
 trap on_exit EXIT
 
 docker network create "$net" >/dev/null
 docker volume create "$vol_a" >/dev/null
 docker volume create "$vol_b" >/dev/null
 docker volume create "$vol_root" >/dev/null
+docker volume create "$vol_c" >/dev/null
+in_target "type=volume,src=$vol_c" "chown $owner_a /t"
 fixture="cd /t"
 for f in "${synced[@]}" "${ignored[@]}"; do
     fixture+=" && mkdir -p \"\$(dirname '$f')\" && echo 'fixture $f' >'$f'"
@@ -220,6 +232,17 @@ check "  and nothing is written to it" in_target "type=volume,src=$vol_root" '[ 
 check "an invalid CLAUDE_SYNC_NAME is rejected" fails_with CLAUDE_SYNC_NAME \
     claude_sync "$bad_name" setup --volume "$vol_a"
 check "  and creates no volume" fails docker volume inspect "$bad_name-config"
+# A missing volume, so a broken name check still stops before creating anything unprefixed.
+check "a one-character CLAUDE_SYNC_NAME is rejected" fails_with CLAUDE_SYNC_NAME \
+    claude_sync x setup --volume "$vol_missing"
+docker run -d --name "$listener" --entrypoint sh "$image" \
+    -c 'while true; do nc -l -p 8384 >/dev/null; done' >/dev/null
+check "a busy port is refused" fails_with "port 8384 is in use" \
+    env CLAUDE_SYNC_COMPOSE_OVERRIDE="$root/tests/compose.busy.yaml" \
+    CLAUDE_SYNC_NAME="$c" "$root/claude-sync" setup --volume "$vol_c"
+check "  and leaves no Syncthing state" fails docker volume inspect "$c-config"
+check "  nor writes to the target" in_target "type=volume,src=$vol_c" '[ ! -e /t/.stignore ]'
+docker rm --force "$listener" >/dev/null
 check "no container or state is left behind" fails docker container inspect "$a"
 check "  nor Syncthing state" fails docker volume inspect "$a-config"
 
@@ -279,6 +302,7 @@ else
     check "B catches up with A" false
 fi
 # 000: no connection at all. An HTTP error would mean the port is open.
+check "A's sync port is reachable from another host" docker exec "$b" nc -z "$a" 22000
 check "A's web UI is unreachable from another host" [ "$(docker exec "$b" \
     curl -s -o /dev/null -w '%{http_code}' -m 3 "http://$a:8384/rest/noauth/health")" = 000 ]
 
@@ -287,6 +311,16 @@ in_target "$mount_b" "echo b >'/t/$task/.lock' && chown $owner_b '/t/$task/.lock
 in_target "$mount_a" "rm -r '/t/$task'"
 check "a task folder deleted on A goes on B despite B's own .lock" \
     wait_for in_target "$mount_b" "[ ! -e '/t/$task' ]"
+
+echo "# uninstall refuses what claude-sync did not create"
+docker run -d --name "$foreign" --entrypoint sleep "$image" 600 >/dev/null
+docker volume create "$foreign-config" >/dev/null
+check "a foreign container is refused" fails_with "not created by claude-sync" claude_sync "$foreign" uninstall
+check "  and survives" docker container inspect "$foreign"
+check "  as does its volume" docker volume inspect "$foreign-config"
+docker rm --force "$foreign" >/dev/null
+check "a foreign volume is refused" fails_with "not created by claude-sync" claude_sync "$foreign" uninstall
+check "  and survives" docker volume inspect "$foreign-config"
 
 echo "# uninstall"
 before=$(snapshot "$mount_a")

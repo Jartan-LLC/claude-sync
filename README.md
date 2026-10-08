@@ -23,8 +23,8 @@ machine, and it is there on the others.
 - Linux with Docker Engine 25 or newer and its Compose plugin. macOS is untested.
 - Ports 8384, 22000 and 21027 free: claude-sync's Syncthing cannot share a host with
   another Syncthing.
-- Run claude-sync on the host itself, not inside a dev container: Docker resolves `--path`
-  on the host.
+- With `--path`, run claude-sync on the host itself, not inside a dev container: Docker
+  resolves the path on the host.
 
 ## Setup
 
@@ -62,15 +62,15 @@ Everything in `~/.claude` except what is meaningless or harmful on another machi
 | `.update.lock`, `ide/*.lock`, `tasks/*/.lock`, `plugins/cache/**/.in_use` | Held by a process on one machine |
 | `plugins/marketplaces/` | Git clones each machine pulls on its own |
 | `daemon/`, `session-env/`, `shell-snapshots/`, `telemetry/` | This machine's daemon, session environments, shell snapshots and unsent telemetry |
-| `*.tmp.*` | Half-written files mid-save |
+| `*.tmp.<digits>*` | Half-written files mid-save |
 
 Each device keeps the previous copy of anything another device deleted or overwrote for
 14 days, in Syncthing's trash can (`.stversions` in the synced folder).
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md); `make check` runs CI's checks.
-[docs/scaffold.md](docs/scaffold.md) covers the dev container, CI and Liza.
+See [CONTRIBUTING.md](CONTRIBUTING.md); `make check` runs the lint and integration checks
+CI runs. [docs/scaffold.md](docs/scaffold.md) covers the dev container, CI and Liza.
 
 ## License
 

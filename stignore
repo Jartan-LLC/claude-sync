@@ -25,4 +25,4 @@
 /telemetry
 
 // Half-written files mid-save, such as settings.json.tmp.<pid>.<time>.
-*.tmp.*
+*.tmp.[0-9]*
