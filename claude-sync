@@ -15,6 +15,7 @@ readonly default_gui_port=8384 default_sync_port=22000
 readonly label=claude-sync=config
 owner=""
 compose_files=()
+probe_error=""
 # Set by use_host for the Syncthing on this host.
 mode=container where="in container $name" api_url="" api_key="" api_tls=()
 
@@ -154,7 +155,7 @@ gui_port() {
 # The port of the first TCP listen address, the first TCP address in the options;
 # Syncthing's "default" means 22000.
 sync_port() {
-    local options line re='"tcp://[^"]*:([0-9]+)"'
+    local options line re='"tcp[46]?://[^"]*:([0-9]+)"'
     options=$(st config options dump-json)
     while IFS= read -r line; do
         if [[ $line =~ $re ]]; then
@@ -166,7 +167,7 @@ sync_port() {
 }
 
 # Whether PORT is free on the service's network, which is the host's even when
-# claude-sync itself runs in a container. Dies when it cannot tell.
+# claude-sync itself runs in a container: 0 free, 1 in use, 2 unknown (see probe_error).
 port_free() {
     local probe
     # nc's own status is echoed so a failing `compose run` cannot pass for a free port.
@@ -176,7 +177,10 @@ port_free() {
     case ${probe##*$'\n'} in
         nc=1) return 0 ;;
         nc=0) return 1 ;;
-        *) die "cannot check port $1: $probe" ;;
+        *)
+            probe_error=$probe
+            return 2
+            ;;
     esac
 }
 
@@ -257,7 +261,7 @@ setup() {
                 ;;
             --gui-port | --sync-port)
                 (($# >= 2)) || die "$1 needs a value"
-                if ! [[ $2 =~ ^[0-9]{4,5}$ ]] || (($2 < 1024 || $2 > 65535)); then
+                if ! [[ $2 =~ ^[1-9][0-9]{3,4}$ ]] || (($2 < 1024 || $2 > 65535)); then
                     die "not a port: $2; give one from 1024 to 65535"
                 fi
                 if [[ $1 == --gui-port ]]; then want_gui=$2; else want_sync=$2; fi
@@ -270,6 +274,7 @@ setup() {
         usage >&2
         exit 2
     fi
+    [[ -z $want_gui || $want_gui != "$want_sync" ]] || die "--gui-port and --sync-port need different ports"
     check_name
     if [[ -n $host ]]; then
         [[ $kind == path ]] || die "--use-host-syncthing works only with --path: a Syncthing on the host cannot reach a Docker volume"
@@ -326,13 +331,16 @@ setup() {
     [[ -z ${CLAUDE_SYNC_COMPOSE_OVERRIDE:-} ]] || compose_files+=(-f "$CLAUDE_SYNC_COMPOSE_OVERRIDE")
 
     # A port asked for must be free, unless this instance already has it.
-    local port
+    local port status
     for port in $want_gui $want_sync; do
         if running && [[ $port == "$(gui_port)" || $port == "$(sync_port)" ]]; then
             continue
         fi
-        if ! port_free "$port"; then
+        status=0
+        port_free "$port" || status=$?
+        if ((status != 0)); then
             [[ -z $created_config ]] || docker volume rm "$name-config" >/dev/null
+            ((status == 1)) || die "cannot check port $port: $probe_error"
             die "port $port is in use; choose another"
         fi
     done
@@ -343,15 +351,22 @@ setup() {
 
     compose up --detach --wait --wait-timeout 120 --quiet-pull
 
+    # A web UI on the sync port would leave nothing to reach Syncthing through, so the two
+    # are checked as they will end up, and the sync port moves first.
+    local gui sync
+    gui=${want_gui:-$(gui_port)} sync=${want_sync:-$(sync_port)}
+    [[ $gui != "$sync" ]] || die "port $gui is this instance's sync port; give --sync-port too"
+    if [[ -n $want_sync && $want_sync != "$(sync_port)" ]]; then
+        # Replaces all listen addresses; the relay one is Syncthing's default, and
+        # --private keeps relays off through its own option.
+        rest /rest/config/options -X PATCH -H 'Content-Type: application/json' \
+            -d "{\"listenAddresses\": [\"tcp://:$want_sync\", \"quic://:$want_sync\", \"dynamic+https://relays.syncthing.net/endpoint\"]}" \
+            >/dev/null || die "cannot set the sync port"
+    fi
     if [[ -n $want_gui && $want_gui != "$(gui_port)" ]]; then
         # The web UI moves at once, so this call may not get its answer.
         st config gui raw-address set "127.0.0.1:$want_gui" 2>/dev/null || true
         wait_reachable || die "Syncthing's web UI did not come up on port $want_gui"
-    fi
-    if [[ -n $want_sync && $want_sync != "$(sync_port)" ]]; then
-        rest /rest/config/options -X PATCH -H 'Content-Type: application/json' \
-            -d "{\"listenAddresses\": [\"tcp://:$want_sync\", \"quic://:$want_sync\", \"dynamic+https://relays.syncthing.net/endpoint\"]}" \
-            >/dev/null || die "cannot set the sync port"
     fi
 
     st config folders list | grep -qx "$folder_id" || add_folder sendreceive
@@ -365,14 +380,17 @@ setup() {
     fi
     wait_folder_started
 
-    local gui sync
     gui=$(gui_port) sync=$(sync_port)
     printf 'Syncthing is running in container %s, web UI on 127.0.0.1:%s, sync port %s.\n' \
         "$name" "$gui" "$sync"
-    # Syncthing takes free ports on its first start when the defaults are in use.
+    # A new config volume is Syncthing's first start, when it takes free ports in place of
+    # busy defaults.
     if [[ -n $created_config ]] && { [[ -z $want_gui && $gui != "$default_gui_port" ]] ||
         [[ -z $want_sync && $sync != "$default_sync_port" ]]; }; then
-        echo "Another program holds Syncthing's default ports, so this instance uses others. If it is a Syncthing and you set up --path, --use-host-syncthing uses it instead."
+        echo "Another program holds Syncthing's default ports, so this instance uses others."
+        if [[ $kind == path && $name == "$default_name" ]]; then
+            echo "If it is a Syncthing, --use-host-syncthing uses it instead."
+        fi
     fi
     printf 'This device ID: %s\n' "$(docker exec -u "$owner" "$name" syncthing device-id)"
 }

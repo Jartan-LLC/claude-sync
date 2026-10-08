@@ -360,6 +360,8 @@ check "a one-character CLAUDE_SYNC_NAME is rejected" fails_with CLAUDE_SYNC_NAME
 check "a port that is not a number is refused" fails_with "not a port" \
     claude_sync "$c" setup --volume "$vol_c" --gui-port http
 check "  and one below 1024" fails_with "not a port" claude_sync "$c" setup --volume "$vol_c" --sync-port 80
+check "  and the same port for both" fails_with "need different ports" \
+    claude_sync "$c" setup --volume "$vol_c" --gui-port 8500 --sync-port 8500
 check "  and creates no Syncthing state" fails docker volume inspect "$c-config"
 check "no container or state is left behind" fails docker container inspect "$a"
 check "  nor Syncthing state" fails docker volume inspect "$a-config"
@@ -615,15 +617,16 @@ check "the folder is the directory, made absolute" \
 check ".stignore is the repo's stignore" on_host cmp -s claude/.stignore /opt/claude-sync/stignore
 check "trash can versioning, 14 days" host_trash_can_14_days
 check "setup again, naming the directory another way" host_sync setup --path ./claude/ --use-host-syncthing
-check "another CLAUDE_SYNC_NAME is refused" fails_with "leave CLAUDE_SYNC_NAME unset" \
-    on_host env CLAUDE_SYNC_NAME=work /opt/claude-sync/claude-sync setup --path claude --use-host-syncthing
-check "  and leaves the folder to the default name" \
-    on_host env CLAUDE_SYNC_NAME=work /opt/claude-sync/claude-sync uninstall
-check "  which still has it" host_has_folder
-check "--gui-port is refused" fails_with "set them in that Syncthing" \
-    host_sync setup --path claude --use-host-syncthing --gui-port 8484
 check "  and refuses a different directory" fails_with "already set up for /home/user/claude" \
     host_sync setup --path other --use-host-syncthing
+check "another CLAUDE_SYNC_NAME is refused" fails_with "leave CLAUDE_SYNC_NAME unset" \
+    on_host env CLAUDE_SYNC_NAME=work /opt/claude-sync/claude-sync setup --path claude --use-host-syncthing
+check "  and pair under it does not use this Syncthing" fails_with "run setup first" \
+    on_host env CLAUDE_SYNC_NAME=work /opt/claude-sync/claude-sync pair "$id_b"
+check "  nor does uninstall" on_host env CLAUDE_SYNC_NAME=work /opt/claude-sync/claude-sync uninstall
+check "  which leaves the folder" host_has_folder
+check "--gui-port is refused" fails_with "set them in that Syncthing" \
+    host_sync setup --path claude --use-host-syncthing --gui-port 8484
 # Another Syncthing home whose web UI nothing listens on: this user's Syncthing, stopped.
 on_host sh -c 'mkdir stopped && cp .local/state/syncthing/*.pem .local/state/syncthing/config.xml stopped/ &&
     sed -i "s|:8384</address>|:1</address>|" stopped/config.xml'
@@ -678,13 +681,16 @@ docker run -d --name "$listener" --network "$net" --entrypoint sh "$image" \
         while true; do nc -l -p 8384 >/dev/null; done' >/dev/null
 wait_for listens "$listener" 8384
 wait_for listens "$listener" 22000
+check "a busy port asked for is refused" fails_with "port 8384 is in use" \
+    beside "$e" setup --volume "$vol_e" --gui-port 8384
+check "  leaving no Syncthing state" fails docker volume inspect "$e-config"
 out=$(beside "$e" setup --volume "$vol_e" --private)
 check "setup starts beside the busy default ports" grep -qF "This device ID" <<<"$out"
 check "  as a healthy container" [ "$(docker inspect -f '{{.State.Health.Status}}' "$e")" = healthy ]
 port_e=$(sync_port "$e" "$owner_e")
 check "  on another sync port" [ "${port_e:-22000}" != 22000 ]
 check "  and says which ports it uses" grep -qF "sync port $port_e" <<<"$out"
-check "  and why" grep -qF -- "--use-host-syncthing" <<<"$out"
+check "  and why" grep -qF "Another program holds Syncthing's default ports" <<<"$out"
 out=$(beside "$g" setup --volume "$vol_g" --private --gui-port 8484 --sync-port 22100)
 check "--gui-port fixes the web UI port" listens "$g" 8484
 check "--sync-port fixes the sync port" [ "$(sync_port "$g" "$owner_g")" = 22100 ]
@@ -695,9 +701,12 @@ check "  the web UI port" listens "$g" 8484
 check "  and the sync port" [ "$(sync_port "$g" "$owner_g")" = 22100 ]
 check "  and asking for them again is no clash" \
     beside "$g" setup --volume "$vol_g" --gui-port 8484 --sync-port 22100
-check "a busy port asked for is refused" fails_with "port 8384 is in use" \
+check "a busy port asked for again is refused" fails_with "port 8384 is in use" \
     beside "$g" setup --volume "$vol_g" --gui-port 8384
 check "  and the instance keeps its own" listens "$g" 8484
+check "the web UI on the sync port is refused" fails_with "is this instance's sync port" \
+    beside "$g" setup --volume "$vol_g" --gui-port 22100
+check "  and the web UI stays put" listens "$g" 8484
 id_e=$(docker exec -u "$owner_e" "$e" syncthing device-id)
 # Started before A accepts, so the join prints what to run there, with E's own sync port.
 CLAUDE_SYNC_COMPOSE_OVERRIDE=$root/tests/compose.busy.yaml CLAUDE_SYNC_NAME=$e timeout 300 \
