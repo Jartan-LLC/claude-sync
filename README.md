@@ -21,7 +21,8 @@ machine, and it is there on the others.
 
 ## Requirements
 
-- Linux with Docker Engine 25 or newer and its Compose plugin. macOS is untested.
+- Linux with Docker Engine 25 or newer and its Compose plugin, unless you [use your own
+  Syncthing](#use-your-own-syncthing). macOS is untested.
 - Ports 8384, 22000 and 21027 free: claude-sync's Syncthing cannot share a host with
   another Syncthing, though it can use that one instead.
 - With `--path`, run claude-sync on the host itself, not inside a dev container: Docker
@@ -73,7 +74,8 @@ so that one gets `--keep`:
 
 To add a device later, pair it with any device that already syncs, on both sides. That
 device introduces it to all the others, and them to it, so every device syncs with every
-other directly.
+other directly. With your own Syncthing, a device it already syncs other folders with is
+the exception (see [Use your own Syncthing](#use-your-own-syncthing)).
 
 A device that syncs with no other yet joins: it sends nothing until it has the others'
 files, then moves its own changes, such as a fresh `settings.json` from Claude Code, to

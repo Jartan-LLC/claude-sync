@@ -545,12 +545,15 @@ wait_for on_host syncthing cli show version
 id_h=$(on_host syncthing device-id)
 # The user's own Syncthing: folders of their own, one shared with B, private options, and
 # a web UI address with no host.
-on_host mkdir claude photos photos/sub notes other
+on_host mkdir claude photos photos/sub notes other tilde
+on_host ln -s photos/sub into-photos
 on_host sh -c 'echo h >claude/h-only.md'
 on_host syncthing cli config devices add --device-id "$id_b" --addresses "tcp://$b:22000"
 on_host syncthing cli config folders add --id photos --label photos --path /home/user/photos
 on_host syncthing cli config folders photos devices add --device-id "$id_b"
 on_host syncthing cli config folders add --id notes --label notes --path /home/user/notes
+# shellcheck disable=SC2088 # Syncthing stores the ~ as given
+on_host syncthing cli config folders add --id tilde --label tilde --path '~/tilde/'
 for option in global-ann-enabled relays-enabled natenabled; do
     on_host syncthing cli config options "$option" set false
 done
@@ -560,12 +563,18 @@ check "--volume is refused" fails_with "only with --path" \
     host_sync setup --volume "$vol_a" --use-host-syncthing
 check "--private is refused" fails_with "set them in that Syncthing" \
     host_sync setup --path claude --use-host-syncthing --private
+check "--public is refused" fails_with "set them in that Syncthing" \
+    host_sync setup --path claude --use-host-syncthing --public
 check "a directory another folder syncs is refused" fails_with "folder notes already syncs" \
     host_sync setup --path notes --use-host-syncthing
 check "  and one inside another folder" fails_with "folder photos already syncs" \
     host_sync setup --path photos/sub --use-host-syncthing
 check "  and one around another folder" fails_with "already syncs" \
     host_sync setup --path /home/user --use-host-syncthing
+check "  and one stored as ~/ with a trailing slash" fails_with "folder tilde already syncs" \
+    host_sync setup --path tilde --use-host-syncthing
+check "  and a symlink into another folder" fails_with "folder photos already syncs" \
+    host_sync setup --path into-photos --use-host-syncthing
 docker exec -i -u user "$h" sh -c 'mkdir -p /home/user/old && cat >/home/user/old/syncthing &&
     chmod +x /home/user/old/syncthing' <<'EOF'
 #!/bin/sh
@@ -627,9 +636,10 @@ host_before=$(host_config)
 echo "# uninstall, on the host's Syncthing"
 wait_for host_idle
 before=$(host_snapshot)
+devices=$(on_host syncthing cli config devices list | sort)
 host_sync uninstall >/dev/null
 check "removes claude-sync's folder" fails host_has_folder
-check "keeps the devices it paired" on_host sh -c "syncthing cli config devices list | grep -qx $id_a"
+check "keeps the devices it paired" [ "$(on_host syncthing cli config devices list | sort)" = "$devices" ]
 check "keeps the user's other folders and options" [ "$(host_config)" = "$host_before" ]
 check "leaves the synced data byte-identical" [ "$(host_snapshot)" = "$before" ]
 check "Syncthing keeps running" on_host syncthing cli show version
