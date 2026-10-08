@@ -16,11 +16,15 @@ machine, and it is there on the others.
 - Syncthing runs as the owner of your `~/.claude`. Its web UI has no password and
   listens only on `127.0.0.1:8384` of the host running Docker; reach it from another
   machine through an SSH tunnel (`ssh -L 8384:127.0.0.1:8384 HOST`).
+- If you already run Syncthing on the host, claude-sync can add its folder to that
+  Syncthing instead (see [Use your own Syncthing](#use-your-own-syncthing)).
 
 ## Requirements
 
-- Linux with Docker Engine 25 or newer and its Compose plugin. macOS is untested.
-- Ports 8384, 22000 and 21027 free: claude-sync's Syncthing cannot share a host with
+- Linux with Docker Engine 25 or newer and its Compose plugin, unless you [use your own
+  Syncthing](#use-your-own-syncthing). macOS is untested.
+- Ports 8384, 22000 and 21027 free, unless you [use your own
+  Syncthing](#use-your-own-syncthing): claude-sync's Syncthing cannot share a host with
   another Syncthing.
 - With `--path`, run claude-sync on the host itself, not inside a dev container: Docker
   resolves the path on the host.
@@ -38,6 +42,29 @@ cd claude-sync
 safe to re-run, rewrites `.stignore` from this repo each time, and prints this device's
 ID. It fails, with Syncthing's message, if Syncthing cannot sync the folder.
 
+### Use your own Syncthing
+
+If Syncthing 2 or newer already runs on the host as you, the user who runs Claude Code
+and claude-sync, `--use-host-syncthing` adds claude-sync's folder to it instead of
+starting a container:
+
+```bash
+./claude-sync setup --path ~/.claude --use-host-syncthing
+```
+
+This needs curl but not Docker, and works only with `--path`. claude-sync changes nothing
+in that Syncthing beyond its own folder and the devices you pair, and `pair` and
+`uninstall` find it on their own. `setup` refuses a directory one of that Syncthing's
+folders syncs, or one inside or around it, following symlinks, since its files would
+sync twice.
+`--private` and `--public` are refused, since they would change how your other folders
+connect; set those options in Syncthing itself. If global discovery is off there, `pair`
+needs `--address`, as on a [private network](#private-networks).
+
+When you pair (see below), a device that already syncs other folders with your Syncthing
+is not made an introducer, since the devices it introduces would join those folders too.
+`pair` then says so, and this device needs pairing with each of the others directly.
+
 ## Pair devices
 
 Run `setup` on every device first; it prints the device's ID. Pair two devices by running
@@ -51,7 +78,8 @@ so that one gets `--keep`:
 
 To add a device later, pair it with any device that already syncs, on both sides. That
 device introduces it to all the others, and them to it, so every device syncs with every
-other directly.
+other directly. With your own Syncthing, a device it already syncs other folders with is
+the exception (see [Use your own Syncthing](#use-your-own-syncthing)).
 
 A device that syncs with no other yet joins: it sends nothing until it has the others'
 files, then moves its own changes, such as a fresh `settings.json` from Claude Code, to
@@ -92,6 +120,10 @@ To correct an address, pair again with the new `--address`. A device stays priva
 Removes the container and this device's Syncthing state, including its device ID. Your
 `~/.claude` is untouched; Syncthing's `.stignore`, `.stfolder` and `.stversions` stay in it
 and can be deleted, though deleting `.stversions` empties the trash can.
+
+If you set up with `--use-host-syncthing`, `uninstall` removes only claude-sync's folder
+from your Syncthing, and the devices you paired stay. Syncthing deletes the folder's
+`.stfolder` itself.
 
 ## What syncs
 

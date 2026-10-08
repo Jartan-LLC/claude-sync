@@ -19,5 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `claude-sync setup --private | --public`: turns global discovery, relays and NAT
   traversal off or back on.
 - `setup` fails with Syncthing's message when Syncthing cannot sync the folder.
+- `claude-sync setup --path DIR --use-host-syncthing`: adds claude-sync's folder to a
+  Syncthing already running on the host instead of starting a container. `pair` and
+  `uninstall` find it on their own. A device that syncs other folders with that Syncthing
+  is not made an introducer.
 
 [Unreleased]: https://github.com/Jartan-LLC/claude-sync/commits/main
