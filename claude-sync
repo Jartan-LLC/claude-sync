@@ -35,8 +35,9 @@ Usage:
       --gui-port PORT               Web UI port. Without it, a new device takes 8384,
                                     or a free port when 8384 is taken, and keeps it.
                                     Can't be combined with --use-host-syncthing
-      --sync-port PORT              Sync port, chosen the same way from 22000. Can't be
-                                    combined with --use-host-syncthing
+      --sync-port PORT              Sync port. Without it, a new device takes 22000, or
+                                    a free port when 22000 is taken, and keeps it.
+                                    Can't be combined with --use-host-syncthing
   claude-sync pair DEVICE-ID        Sync with the device DEVICE-ID; run on both devices.
                                     A device that syncs with no other yet joins: it waits
                                     for the files of DEVICE-ID and the devices it syncs
