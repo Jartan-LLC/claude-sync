@@ -41,8 +41,8 @@ Usage:
                                     that already have files, its files merge with theirs:
                                     the newer copy wins and the other is kept as a
                                     conflict copy
-      --address tcp://HOST:22000    Where to reach DEVICE-ID; required on a private device.
-                                    Pairing again with it replaces the address
+      --address tcp://HOST:22000    Where to reach DEVICE-ID; required on a private
+                                    device. Pairing again with it replaces the address
   claude-sync uninstall             Remove claude-sync's container and Syncthing state,
                                     or its folder from the Syncthing on this host; the
                                     synced files are left untouched
