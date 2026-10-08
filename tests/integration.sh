@@ -8,12 +8,14 @@ set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 readonly root
 readonly prefix=claude-sync-test-
-readonly net=${prefix}net a=${prefix}a b=${prefix}b c=${prefix}c d=${prefix}d
+readonly net=${prefix}net a=${prefix}a b=${prefix}b c=${prefix}c d=${prefix}d e=${prefix}e g=${prefix}g
 readonly listener=${prefix}listener foreign=${prefix}foreign h=${prefix}h host_image=${prefix}host
 readonly vol_a=${prefix}a-data vol_b=${prefix}b-data vol_missing=${prefix}missing
 readonly vol_root=${prefix}root-data vol_c=${prefix}c-data vol_d=${prefix}d-data
+readonly vol_e=${prefix}e-data vol_g=${prefix}g-data
 # Not Syncthing's default 1000, so a match proves the owner was read from the target.
 readonly owner_a=1234:1234 owner_b=2345:2345 owner_c=3456:3456 owner_d=4567:4567
+readonly owner_e=6789:6789 owner_g=7890:7890
 readonly mount_a=type=volume,src=$vol_a mount_b=type=volume,src=$vol_b mount_c=type=volume,src=$vol_c
 image=$(sed -n 's/^ *image: *//p' "$root/compose.yaml")
 readonly image
@@ -237,6 +239,25 @@ host_snapshot() {
         find . -path ./.stfolder -prune -o -type f -exec sha256sum {} + | sort'
 }
 
+# claude-sync for an instance in the listener's network namespace, where another program
+# holds Syncthing's default ports.
+beside() {
+    local node=$1
+    shift
+    CLAUDE_SYNC_COMPOSE_OVERRIDE=$root/tests/compose.busy.yaml CLAUDE_SYNC_NAME=$node \
+        timeout 300 "$root/claude-sync" "$@"
+}
+
+# A node's sync port, from its listen addresses.
+sync_port() {
+    st "$1" "$2" config options dump-json |
+        jq -r '.listenAddresses[] | select(startswith("tcp://")) | sub(".*:"; "")'
+}
+
+listens() {
+    docker exec "$1" nc -z 127.0.0.1 "$2"
+}
+
 # A joining device's pair blocks until caught up; a bound turns a hang into a failure.
 # Not for a background pair: killing a backgrounded function leaves timeout and pair
 # running, so background `timeout ... claude-sync pair` itself.
@@ -266,14 +287,15 @@ snapshot() {
 
 cleanup() {
     local x
-    for x in "$a" "$b" "$c" "$d" "$h" "$bad_name" "$listener" "$foreign"; do
+    for x in "$a" "$b" "$c" "$d" "$e" "$g" "$h" "$bad_name" "$listener" "$foreign"; do
         guard "$x"
         docker rm --force -v "$x" >/dev/null 2>&1 || true
     done
     guard "$host_image"
     docker image rm "$host_image" >/dev/null 2>&1 || true
-    for x in "$a-config" "$b-config" "$c-config" "$d-config" "$bad_name-config" "$foreign-config" \
-        "$vol_a" "$vol_b" "$vol_c" "$vol_d" "$vol_missing" "$vol_root"; do
+    for x in "$a-config" "$b-config" "$c-config" "$d-config" "$e-config" "$g-config" \
+        "$bad_name-config" "$foreign-config" "$vol_a" "$vol_b" "$vol_c" "$vol_d" "$vol_e" "$vol_g" \
+        "$vol_missing" "$vol_root"; do
         guard "$x"
         docker volume rm "$x" >/dev/null 2>&1 || true
     done
@@ -310,6 +332,10 @@ docker volume create "$vol_b" >/dev/null
 docker volume create "$vol_root" >/dev/null
 docker volume create "$vol_c" >/dev/null
 docker volume create "$vol_d" >/dev/null
+docker volume create "$vol_e" >/dev/null
+docker volume create "$vol_g" >/dev/null
+in_target "type=volume,src=$vol_e" "echo e >/t/e-only.md && chown -R $owner_e /t"
+in_target "type=volume,src=$vol_g" "chown $owner_g /t"
 in_target "$mount_c" "chown $owner_c /t"
 fixture="cd /t"
 for f in "${synced[@]}" "${ignored[@]}"; do
@@ -331,18 +357,10 @@ check "  and creates no volume" fails docker volume inspect "$bad_name-config"
 # A missing volume, so a broken name check still stops before creating anything unprefixed.
 check "a one-character CLAUDE_SYNC_NAME is rejected" fails_with CLAUDE_SYNC_NAME \
     claude_sync x setup --volume "$vol_missing"
-docker run -d --name "$listener" --entrypoint sh "$image" \
-    -c 'while true; do nc -l -p 8384 >/dev/null; done' >/dev/null
-wait_for docker exec "$listener" nc -z 127.0.0.1 8384
-check "a busy port is refused" fails_with "port 8384 is in use" \
-    env CLAUDE_SYNC_COMPOSE_OVERRIDE="$root/tests/compose.busy.yaml" \
-    CLAUDE_SYNC_NAME="$c" "$root/claude-sync" setup --volume "$vol_c"
-check "  suggesting the Syncthing already there" fails_with "--use-host-syncthing" \
-    env CLAUDE_SYNC_COMPOSE_OVERRIDE="$root/tests/compose.busy.yaml" \
-    CLAUDE_SYNC_NAME="$c" "$root/claude-sync" setup --volume "$vol_c"
-check "  and leaves no Syncthing state" fails docker volume inspect "$c-config"
-check "  nor writes to the target" in_target "$mount_c" '[ ! -e /t/.stignore ]'
-docker rm --force -v "$listener" >/dev/null
+check "a port that is not a number is refused" fails_with "not a port" \
+    claude_sync "$c" setup --volume "$vol_c" --gui-port http
+check "  and one below 1024" fails_with "not a port" claude_sync "$c" setup --volume "$vol_c" --sync-port 80
+check "  and creates no Syncthing state" fails docker volume inspect "$c-config"
 check "no container or state is left behind" fails docker container inspect "$a"
 check "  nor Syncthing state" fails docker volume inspect "$a-config"
 
@@ -597,6 +615,13 @@ check "the folder is the directory, made absolute" \
 check ".stignore is the repo's stignore" on_host cmp -s claude/.stignore /opt/claude-sync/stignore
 check "trash can versioning, 14 days" host_trash_can_14_days
 check "setup again, naming the directory another way" host_sync setup --path ./claude/ --use-host-syncthing
+check "another CLAUDE_SYNC_NAME is refused" fails_with "leave CLAUDE_SYNC_NAME unset" \
+    on_host env CLAUDE_SYNC_NAME=work /opt/claude-sync/claude-sync setup --path claude --use-host-syncthing
+check "  and leaves the folder to the default name" \
+    on_host env CLAUDE_SYNC_NAME=work /opt/claude-sync/claude-sync uninstall
+check "  which still has it" host_has_folder
+check "--gui-port is refused" fails_with "set them in that Syncthing" \
+    host_sync setup --path claude --use-host-syncthing --gui-port 8484
 check "  and refuses a different directory" fails_with "already set up for /home/user/claude" \
     host_sync setup --path other --use-host-syncthing
 # Another Syncthing home whose web UI nothing listens on: this user's Syncthing, stopped.
@@ -644,6 +669,52 @@ check "keeps the user's other folders and options" [ "$(host_config)" = "$host_b
 check "leaves the synced data byte-identical" [ "$(host_snapshot)" = "$before" ]
 check "Syncthing keeps running" on_host syncthing cli show version
 check "pair afterwards is refused" fails_with "run setup first" host_sync pair "$id_a"
+
+echo "# several instances on one host"
+# E and G share a listener's network namespace, as two instances on one host where another
+# program holds Syncthing's default ports.
+docker run -d --name "$listener" --network "$net" --entrypoint sh "$image" \
+    -c '(while true; do nc -l -p 22000 >/dev/null; done) &
+        while true; do nc -l -p 8384 >/dev/null; done' >/dev/null
+wait_for listens "$listener" 8384
+wait_for listens "$listener" 22000
+out=$(beside "$e" setup --volume "$vol_e" --private)
+check "setup starts beside the busy default ports" grep -qF "This device ID" <<<"$out"
+check "  as a healthy container" [ "$(docker inspect -f '{{.State.Health.Status}}' "$e")" = healthy ]
+port_e=$(sync_port "$e" "$owner_e")
+check "  on another sync port" [ "${port_e:-22000}" != 22000 ]
+check "  and says which ports it uses" grep -qF "sync port $port_e" <<<"$out"
+check "  and why" grep -qF -- "--use-host-syncthing" <<<"$out"
+out=$(beside "$g" setup --volume "$vol_g" --private --gui-port 8484 --sync-port 22100)
+check "--gui-port fixes the web UI port" listens "$g" 8484
+check "--sync-port fixes the sync port" [ "$(sync_port "$g" "$owner_g")" = 22100 ]
+check "  and Syncthing listens on it" wait_for listens "$g" 22100
+check "  and setup says so" grep -qF "127.0.0.1:8484" <<<"$out"
+check "setup again keeps the ports" beside "$g" setup --volume "$vol_g"
+check "  the web UI port" listens "$g" 8484
+check "  and the sync port" [ "$(sync_port "$g" "$owner_g")" = 22100 ]
+check "  and asking for them again is no clash" \
+    beside "$g" setup --volume "$vol_g" --gui-port 8484 --sync-port 22100
+check "a busy port asked for is refused" fails_with "port 8384 is in use" \
+    beside "$g" setup --volume "$vol_g" --gui-port 8384
+check "  and the instance keeps its own" listens "$g" 8484
+id_e=$(docker exec -u "$owner_e" "$e" syncthing device-id)
+# Started before A accepts, so the join prints what to run there, with E's own sync port.
+CLAUDE_SYNC_COMPOSE_OVERRIDE=$root/tests/compose.busy.yaml CLAUDE_SYNC_NAME=$e timeout 300 \
+    "$root/claude-sync" pair "$id_a" --address "tcp://$a:22000" >"$scratch/join.out" 2>&1 &
+joining=$!
+check "pair names this instance's sync port" \
+    wait_for grep -qF "tcp://THIS-HOST:$port_e" "$scratch/join.out"
+pair_bounded "$a" "$id_e" --address "tcp://$listener:$port_e" >/dev/null
+check "E joins through A" wait "$joining"
+check "  and gets A's claude.json" [ "$(in_target "type=volume,src=$vol_e" 'cat /t/claude.json')" = "fixture claude.json" ]
+check "  moving its own file to the trash can" in_target "type=volume,src=$vol_e" '[ -e /t/.stversions/e-only.md ]'
+beside "$e" uninstall >/dev/null
+check "uninstalling E removes E" fails docker container inspect "$e"
+check "  and leaves G running" [ "$(docker inspect -f '{{.State.Running}}' "$g")" = true ]
+check "  with its folder" [ "$(st "$g" "$owner_g" config folders list)" = claude-sync ]
+beside "$g" uninstall >/dev/null
+docker rm --force -v "$listener" >/dev/null
 
 echo "# uninstall refuses what claude-sync did not create"
 # One foreign object at a time, so each refusal can only come from its own check.

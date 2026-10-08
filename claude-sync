@@ -4,15 +4,14 @@ set -euo pipefail
 
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 readonly here
-export CLAUDE_SYNC_NAME=${CLAUDE_SYNC_NAME:-claude-sync}
+readonly default_name=claude-sync
+export CLAUDE_SYNC_NAME=${CLAUDE_SYNC_NAME:-$default_name}
 readonly name=$CLAUDE_SYNC_NAME
 readonly folder_id=claude-sync
 # The synced folder as Syncthing sees it; with --use-host-syncthing, the directory itself.
 folder_path=/var/syncthing/claude
 readonly trash_days=14
-# TCP ports another Syncthing would hold (21027/udp is not probed). `up --wait` cannot
-# catch a clash on 8384: its health check would reach the other Syncthing's GUI.
-readonly ports=(8384 22000)
+readonly default_gui_port=8384 default_sync_port=22000
 readonly label=claude-sync=config
 owner=""
 compose_files=()
@@ -32,6 +31,11 @@ Usage:
                                     to pair. Can't be combined with --use-host-syncthing
       --public                      Back to Syncthing's defaults. Can't be combined
                                     with --use-host-syncthing
+      --gui-port PORT               Web UI port. Without it, a new device takes 8384,
+                                    or a free port when 8384 is taken, and keeps it.
+                                    Can't be combined with --use-host-syncthing
+      --sync-port PORT              Sync port, chosen the same way from 22000. Can't be
+                                    combined with --use-host-syncthing
   claude-sync pair DEVICE-ID        Sync with the device DEVICE-ID; run on both devices.
                                     A device that syncs with no other yet joins: it waits
                                     for the files of DEVICE-ID and the devices it syncs
@@ -47,6 +51,11 @@ Usage:
                                     or its folder from the Syncthing on this host; the
                                     synced files are left untouched
   claude-sync help
+
+Environment:
+  CLAUDE_SYNC_NAME                  This instance's name, default claude-sync; one host
+                                    can run several instances under different names.
+                                    Leave it unset with --use-host-syncthing
 EOF
 }
 
@@ -91,7 +100,8 @@ rest() {
     # shellcheck disable=SC2016 # expanded by the container's shell
     docker exec -u "$owner" "$name" sh -c \
         'path=$1; shift
-        curl -fsS "$@" -H "X-API-Key: $(syncthing cli config gui apikey get)" "http://127.0.0.1:8384$path"' \
+        curl -fsS "$@" -H "X-API-Key: $(syncthing cli config gui apikey get)" \
+            "http://$(syncthing cli config gui raw-address get)$path"' \
         sh "$@"
 }
 
@@ -133,6 +143,41 @@ set_trash_can() {
 
 running() {
     [[ $(docker container inspect --format '{{.State.Running}}' "$name" 2>/dev/null) == true ]]
+}
+
+gui_port() {
+    local address
+    address=$(st config gui raw-address get)
+    echo "${address##*:}"
+}
+
+# The port of the first TCP listen address, the first TCP address in the options;
+# Syncthing's "default" means 22000.
+sync_port() {
+    local options line re='"tcp://[^"]*:([0-9]+)"'
+    options=$(st config options dump-json)
+    while IFS= read -r line; do
+        if [[ $line =~ $re ]]; then
+            echo "${BASH_REMATCH[1]}"
+            return
+        fi
+    done <<<"$options"
+    echo "$default_sync_port"
+}
+
+# Whether PORT is free on the service's network, which is the host's even when
+# claude-sync itself runs in a container. Dies when it cannot tell.
+port_free() {
+    local probe
+    # nc's own status is echoed so a failing `compose run` cannot pass for a free port.
+    # shellcheck disable=SC2016 # expanded by the container's shell
+    probe=$(compose run --rm --no-deps --entrypoint sh syncthing \
+        -c 'nc -z 127.0.0.1 "$1"; echo "nc=$?"' sh "$1" 2>&1 </dev/null) || true
+    case ${probe##*$'\n'} in
+        nc=1) return 0 ;;
+        nc=0) return 1 ;;
+        *) die "cannot check port $1: $probe" ;;
+    esac
 }
 
 ours_volume() {
@@ -182,7 +227,7 @@ detect_mode() {
         local env
         env=$(docker container inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$name")
         owner=$(sed -n 's/^PUID=//p' <<<"$env"):$(sed -n 's/^PGID=//p' <<<"$env")
-    elif host_syncthing_configured; then
+    elif [[ $name == "$default_name" ]] && host_syncthing_configured; then
         use_host
         folder_path=$(st config folders "$folder_id" path get 2>/dev/null) ||
             die "claude-sync is not set up on this device; run setup first"
@@ -192,7 +237,7 @@ detect_mode() {
 }
 
 setup() {
-    local kind="" target="" network="" host=""
+    local kind="" target="" network="" host="" want_gui="" want_sync=""
     while (($#)); do
         case $1 in
             --volume | --path)
@@ -210,6 +255,14 @@ setup() {
                 host=1
                 shift
                 ;;
+            --gui-port | --sync-port)
+                (($# >= 2)) || die "$1 needs a value"
+                if ! [[ $2 =~ ^[0-9]{4,5}$ ]] || (($2 < 1024 || $2 > 65535)); then
+                    die "not a port: $2; give one from 1024 to 65535"
+                fi
+                if [[ $1 == --gui-port ]]; then want_gui=$2; else want_sync=$2; fi
+                shift 2
+                ;;
             *) die "unknown argument: $1" ;;
         esac
     done
@@ -221,6 +274,10 @@ setup() {
     if [[ -n $host ]]; then
         [[ $kind == path ]] || die "--use-host-syncthing works only with --path: a Syncthing on the host cannot reach a Docker volume"
         [[ -z $network ]] || die "--$network changes how all of a Syncthing's folders connect; with --use-host-syncthing, set them in that Syncthing"
+        [[ -z $want_gui$want_sync ]] || die "--gui-port and --sync-port change that Syncthing's own ports; with --use-host-syncthing, set them in that Syncthing"
+        # One Syncthing holds one claude-sync folder, so names would not keep instances apart.
+        [[ $name == "$default_name" ]] ||
+            die "CLAUDE_SYNC_NAME names claude-sync's own containers; with --use-host-syncthing, leave CLAUDE_SYNC_NAME unset"
         setup_host "$target"
         return
     fi
@@ -268,33 +325,34 @@ setup() {
     compose_files=(-f "$here/compose.yaml" -f "$here/compose.$kind.yaml")
     [[ -z ${CLAUDE_SYNC_COMPOSE_OVERRIDE:-} ]] || compose_files+=(-f "$CLAUDE_SYNC_COMPOSE_OVERRIDE")
 
-    # Probed from a throwaway container on the service's own network, which is the host's
-    # even when claude-sync itself runs in a container.
-    # nc's own status is echoed so a failing `compose run` cannot pass for a free port.
-    if ! running; then
-        local port probe refusal=""
-        for port in "${ports[@]}"; do
-            # shellcheck disable=SC2016 # expanded by the container's shell
-            probe=$(compose run --rm --no-deps --entrypoint sh syncthing \
-                -c 'nc -z 127.0.0.1 "$1"; echo "nc=$?"' sh "$port" 2>&1 </dev/null) || true
-            case ${probe##*$'\n'} in
-                nc=1) ;;
-                nc=0) refusal="port $port is in use; is another Syncthing running on this host? With --path, --use-host-syncthing uses it instead" ;;
-                *) refusal="cannot check port $port: $probe" ;;
-            esac
-            [[ -z $refusal ]] || break
-        done
-        if [[ -n $refusal ]]; then
-            [[ -z $created_config ]] || docker volume rm "$name-config" >/dev/null
-            die "$refusal"
+    # A port asked for must be free, unless this instance already has it.
+    local port
+    for port in $want_gui $want_sync; do
+        if running && [[ $port == "$(gui_port)" || $port == "$(sync_port)" ]]; then
+            continue
         fi
-    fi
+        if ! port_free "$port"; then
+            [[ -z $created_config ]] || docker volume rm "$name-config" >/dev/null
+            die "port $port is in use; choose another"
+        fi
+    done
 
     # Written before Syncthing first scans the folder, so ignored files are never indexed.
     docker run --rm -i --user "$owner" --entrypoint sh --mount "$mount" "$image" \
         -c 'cat >/target/.stignore' <"$here/stignore"
 
     compose up --detach --wait --wait-timeout 120 --quiet-pull
+
+    if [[ -n $want_gui && $want_gui != "$(gui_port)" ]]; then
+        # The web UI moves at once, so this call may not get its answer.
+        st config gui raw-address set "127.0.0.1:$want_gui" 2>/dev/null || true
+        wait_reachable || die "Syncthing's web UI did not come up on port $want_gui"
+    fi
+    if [[ -n $want_sync && $want_sync != "$(sync_port)" ]]; then
+        rest /rest/config/options -X PATCH -H 'Content-Type: application/json' \
+            -d "{\"listenAddresses\": [\"tcp://:$want_sync\", \"quic://:$want_sync\", \"dynamic+https://relays.syncthing.net/endpoint\"]}" \
+            >/dev/null || die "cannot set the sync port"
+    fi
 
     st config folders list | grep -qx "$folder_id" || add_folder sendreceive
     # Left as it is when neither is given, so re-running setup never makes a device public.
@@ -307,8 +365,25 @@ setup() {
     fi
     wait_folder_started
 
-    printf 'Syncthing is running in container %s.\nThis device ID: %s\n' \
-        "$name" "$(docker exec -u "$owner" "$name" syncthing device-id)"
+    local gui sync
+    gui=$(gui_port) sync=$(sync_port)
+    printf 'Syncthing is running in container %s, web UI on 127.0.0.1:%s, sync port %s.\n' \
+        "$name" "$gui" "$sync"
+    # Syncthing takes free ports on its first start when the defaults are in use.
+    if [[ -n $created_config ]] && { [[ -z $want_gui && $gui != "$default_gui_port" ]] ||
+        [[ -z $want_sync && $sync != "$default_sync_port" ]]; }; then
+        echo "Another program holds Syncthing's default ports, so this instance uses others. If it is a Syncthing and you set up --path, --use-host-syncthing uses it instead."
+    fi
+    printf 'This device ID: %s\n' "$(docker exec -u "$owner" "$name" syncthing device-id)"
+}
+
+wait_reachable() {
+    local i
+    for ((i = 0; i < 30; i++)); do
+        st show version >/dev/null 2>&1 && return 0
+        sleep 1
+    done
+    return 1
 }
 
 setup_host() {
@@ -388,7 +463,7 @@ pair() {
     local address_re='^[a-z0-9]+://[^"\\[:space:][:cntrl:]]+$' at="" there=""
     if [[ $address != dynamic ]]; then
         [[ $address =~ $address_re ]] || die "not an address: $address; give one such as tcp://HOST:22000"
-        at=" --address $address" there=" --address tcp://THIS-HOST:22000"
+        at=" --address $address" there=" --address tcp://THIS-HOST:$(sync_port)"
     fi
 
     # Before the folder changes below, so a bad ID changes nothing. A device added here but
@@ -551,7 +626,7 @@ uninstall() {
         docker volume rm "$name-config" >/dev/null
         echo "Removed volume $name-config (this device's Syncthing identity)."
     fi
-    if [[ -z $container ]] && host_syncthing_configured; then
+    if [[ -z $container && $name == "$default_name" ]] && host_syncthing_configured; then
         use_host
         if st config folders list | grep -qxF "$folder_id"; then
             st config folders "$folder_id" delete
