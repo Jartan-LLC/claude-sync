@@ -14,8 +14,9 @@ machine, and it is there on the others.
   `~/.claude`, whether it is a directory or a Docker volume mounted into dev containers.
 - The container restarts with Docker, so sync survives reboots.
 - Syncthing runs as the owner of your `~/.claude`. Its web UI has no password and
-  listens only on `127.0.0.1:8384` of the host running Docker; reach it from another
-  machine through an SSH tunnel (`ssh -L 8384:127.0.0.1:8384 HOST`).
+  listens only on `127.0.0.1` of the host running Docker, on the port `setup` prints;
+  reach it from another machine through an SSH tunnel (`ssh -L 8384:127.0.0.1:8384 HOST`
+  for the usual port 8384).
 - If you already run Syncthing on the host, claude-sync can add its folder to that
   Syncthing instead (see [Use your own Syncthing](#use-your-own-syncthing)).
 
@@ -23,9 +24,6 @@ machine, and it is there on the others.
 
 - Linux with Docker Engine 25 or newer and its Compose plugin, unless you [use your own
   Syncthing](#use-your-own-syncthing). macOS is untested.
-- Ports 8384, 22000 and 21027 free, unless you [use your own
-  Syncthing](#use-your-own-syncthing): claude-sync's Syncthing cannot share a host with
-  another Syncthing.
 - With `--path`, run claude-sync on the host itself, not inside a dev container: Docker
   resolves the path on the host.
 
@@ -41,6 +39,12 @@ cd claude-sync
 `setup` refuses a root-owned target: `chown` it to the user who runs Claude Code. It is
 safe to re-run, rewrites `.stignore` from this repo each time, and prints this device's
 ID. It fails, with Syncthing's message, if Syncthing cannot sync the folder.
+
+In its own container, `setup` also prints the web UI port and the sync port: Syncthing's
+usual 8384 and 22000, or free ports Syncthing picks on the first run when another
+program, such as another Syncthing, holds those. `--gui-port` and `--sync-port` choose
+them instead, and later runs keep them. If another program later takes the web UI port,
+Syncthing cannot start its web UI and `setup` cannot move it: free that port again.
 
 ### Use your own Syncthing
 
@@ -64,6 +68,28 @@ needs `--address`, as on a [private network](#private-networks).
 When you pair (see below), a device that already syncs other folders with your Syncthing
 is not made an introducer, since the devices it introduces would join those folders too.
 `pair` then says so, and this device needs pairing with each of the others directly.
+
+Once your Syncthing syncs claude-sync's folder, `setup` without `--use-host-syncthing`
+refuses to start a container beside it, since `pair` and `uninstall` would then act on
+the container instead.
+
+### Several instances on one host
+
+`CLAUDE_SYNC_NAME` names an instance: its container and the volume that holds its
+Syncthing state. Under different names, one host can sync several `~/.claude` volumes or
+directories, each as a device of its own. Give the same name to every command for that
+instance:
+
+```bash
+CLAUDE_SYNC_NAME=claude-work ./claude-sync setup --volume work-claude
+CLAUDE_SYNC_NAME=claude-work ./claude-sync pair OTHER-ID
+```
+
+Each instance gets ports of its own, which `setup` prints, as long as the other instances
+are running when it first starts: Syncthing takes free ports only then. A name other than
+the default, `claude-sync`, can't be combined with `--use-host-syncthing`, since your own
+Syncthing holds one claude-sync folder; neither can `--gui-port` or `--sync-port`, since
+you set that Syncthing's ports in Syncthing itself.
 
 ## Pair devices
 
@@ -107,6 +133,9 @@ relays and NAT traversal, so each device needs the other's address when pairing:
 ```bash
 ./claude-sync pair OTHER-ID --address tcp://other-host:22000
 ```
+
+Use the sync port the other device's `setup` printed, 22000 unless it said otherwise; for a
+device using its own Syncthing, the port that Syncthing listens on.
 
 To correct an address, pair again with the new `--address`. A device stays private when
 `setup` is re-run; `setup --public` returns it to the defaults.

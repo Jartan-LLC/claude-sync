@@ -1,5 +1,5 @@
-# Test overlay: share a listener container's network namespace, so the port probe finds
-# a port in use without binding anything on the host.
+# Test overlay: share a listener container's network namespace, so an instance finds ports
+# another program holds, as on a busy host, without binding anything on the host.
 services:
   syncthing:
     network_mode: container:claude-sync-test-listener

@@ -23,5 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Syncthing already running on the host instead of starting a container. `pair` and
   `uninstall` find it on their own. A device that syncs other folders with that Syncthing
   is not made an introducer.
+- `CLAUDE_SYNC_NAME` runs several instances on one host. When Syncthing's default ports
+  are taken, a new instance's Syncthing picks free ones, and `setup --gui-port PORT
+  --sync-port PORT` chooses them. `setup` prints the web UI and sync ports, and `pair`'s
+  hints name this instance's sync port.
 
 [Unreleased]: https://github.com/Jartan-LLC/claude-sync/commits/main

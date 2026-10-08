@@ -12,7 +12,8 @@ services:
       PUID: ${CLAUDE_SYNC_UID:?}
       PGID: ${CLAUDE_SYNC_GID:?}
       # Empty falls back to the config file's GUI address, 127.0.0.1 by default; the
-      # image's own default listens on every interface.
+      # image's own default listens on every interface. Set, it would also make
+      # `syncthing cli` require STGUIAPIKEY.
       STGUIADDRESS: ""
       STNODEFAULTFOLDER: "1"
     volumes:
@@ -20,6 +21,9 @@ services:
     # The image checks health every minute, which would stall `up --wait` that long.
     # start_interval needs Docker Engine 25, README's stated minimum.
     healthcheck:
+      # The image's own check asks 127.0.0.1:8384, where this instance's web UI may not be
+      # and another instance's may.
+      test: ["CMD", "syncthing", "cli", "show", "version"]
       start_period: 1m
       start_interval: 1s
 
