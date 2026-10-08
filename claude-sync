@@ -109,7 +109,7 @@ setup() {
     local created_config=""
     if docker volume inspect "$name-config" >/dev/null 2>&1; then
         ours_volume "$name-config" ||
-            die "volume $name-config exists but was not created by claude-sync; if it is state from an earlier claude-sync, remove it with: docker volume rm $name-config"
+            die "volume $name-config exists but was not created by claude-sync; if it is state from an earlier claude-sync, remove it with: docker rm --force $name; docker volume rm $name-config"
     else
         docker volume create --label "$label" "$name-config" >/dev/null
         created_config=1
@@ -172,7 +172,7 @@ uninstall() {
     fi
     if docker volume inspect "$name-config" >/dev/null 2>&1; then
         ours_volume "$name-config" ||
-            die "volume $name-config was not created by claude-sync; not removing it (if it is state from an earlier claude-sync, remove it with: docker volume rm $name-config)"
+            die "volume $name-config was not created by claude-sync; not removing it (if it is state from an earlier claude-sync, remove it with: docker rm --force $name; docker volume rm $name-config)"
         volume=1
     fi
     if [[ -n $container ]]; then

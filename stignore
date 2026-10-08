@@ -25,7 +25,7 @@
 /telemetry
 
 // Half-written files mid-save: Claude Code names them <file>.tmp.<8 hex> or
-// <file>.tmp.<pid>.<12 hex>. Each ? stands for a hex digit, since Syncthing's glob takes
-// only one range per [] class and rejects the whole file otherwise.
-*.tmp.????????
-*.tmp.[0-9]*.????????????
+// <file>.tmp.<pid>.<12 hex>. Hex digits are listed out because Syncthing's glob takes only
+// one range per [] class, and rejects the whole file on [0-9a-f].
+*.tmp.[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]
+*.tmp.[0-9]*.[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]

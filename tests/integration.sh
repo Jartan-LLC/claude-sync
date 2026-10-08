@@ -32,7 +32,7 @@ for tool in docker jq cmp; do
 done
 
 # Synthetic ~/.claude: real filename shapes, no real data. The look-alikes in `synced`
-# (a lockfile, a .tmpl, a session note ending .tmp) must not be caught by ignore rules.
+# (lockfiles, .tmp-like names, nested daemon/ and ide/) must not be caught by ignore rules.
 readonly task=tasks/3570ff36-0222-44b7-8023-47d964bf700c
 readonly synced=(
     settings.json
@@ -43,6 +43,7 @@ readonly synced=(
     skills/demo/bun.lock
     skills/demo/template.tmpl
     skills/demo/plan.tmp.md
+    skills/demo/notes.tmp.data.txt
     skills/demo/daemon/notes.md
     skills/demo/ide/4242.lock
     sessions/0b6c1f9e-demo-session.tmp
@@ -211,7 +212,7 @@ cleanup
 # -E carries the trap into functions; the subshell test skips command substitutions in
 # check arguments, which fail on purpose.
 set -E
-trap '((BASH_SUBSHELL == 0)) && echo "aborted at tests/integration.sh:$LINENO" >&2' ERR
+trap '((BASH_SUBSHELL == 0)) && echo "aborted at tests/integration.sh:$LINENO${FUNCNAME:+ in ${FUNCNAME[0]}, called from line ${BASH_LINENO[0]}}" >&2' ERR
 trap on_exit EXIT
 
 docker network create "$net" >/dev/null
