@@ -33,7 +33,8 @@ Usage:
                                     first device of a new set. On a device joining an
                                     existing set, its files merge with theirs: the newer
                                     copy wins and the other is kept as a conflict copy
-      --address tcp://HOST:22000    Where to reach DEVICE-ID; required on a private device
+      --address tcp://HOST:22000    Where to reach DEVICE-ID; required on a private device.
+                                    Pairing again with it replaces the address
   claude-sync uninstall             Remove claude-sync's container and Syncthing state;
                                     the synced folder is left untouched
   claude-sync help
@@ -263,13 +264,17 @@ pair() {
     env=$(docker container inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$name")
     owner=$(sed -n 's/^PUID=//p' <<<"$env"):$(sed -n 's/^PGID=//p' <<<"$env")
 
+    # Syncthing also accepts other spellings of an ID, but its CLI and the checks below
+    # match only this one, as setup prints it.
+    local id_re='^[A-Z2-7]{7}(-[A-Z2-7]{7}){7}$'
+    [[ $id =~ $id_re ]] || die "not a device ID: $id; copy it as setup printed it"
     local self
     self=$(docker exec -u "$owner" "$name" syncthing device-id)
     [[ $id != "$self" ]] || die "that is this device's own ID; give the other device's"
     [[ $address != dynamic || $(st config options global-ann-enabled get) == true ]] ||
         die "this device is private: give the other device's --address, such as tcp://HOST:22000"
     # Also keeps the address safe to put in the JSON below.
-    local address_re='^[a-z0-9]+://[^"\\[:space:]]+$' at="" there=""
+    local address_re='^[a-z0-9]+://[^"\\[:space:][:cntrl:]]+$' at="" there=""
     if [[ $address != dynamic ]]; then
         [[ $address =~ $address_re ]] || die "not an address: $address; give one such as tcp://HOST:22000"
         at=" --address $address" there=" --address tcp://THIS-HOST:22000"
@@ -287,7 +292,7 @@ pair() {
     # Adding a known device changes nothing, so a corrected address is set here.
     if [[ -n $known && $address != dynamic ]]; then
         rest "/rest/config/devices/$id" -X PATCH -H 'Content-Type: application/json' \
-            -d "{\"addresses\": [\"$address\"]}" >/dev/null
+            -d "{\"addresses\": [\"$address\"]}" >/dev/null || die "cannot set the address of $id"
     fi
 
     # A device syncing with no other yet is the one being added, so it joins; receive-only
@@ -331,9 +336,9 @@ pair() {
         st config folders "$folder_id" type set sendreceive
         die "$id has no files to join, so joining would only discard this device's; undone, nothing was discarded. If this device's files are the ones to start from, rerun: claude-sync pair $id$at --keep"
     fi
-    # Undo what changed here, then wait for the undone files to be pulled again: a scan
-    # before they arrive would send this device's copies. Repeated while a running Claude
-    # Code keeps changing files meanwhile.
+    # Undo what changed here, then wait for the undone files to be pulled again: switching
+    # to send-receive before they arrive would send this device's copies. Repeated while a
+    # running Claude Code keeps changing files meanwhile.
     set_trash_can
     local status rounds
     for ((rounds = 1; ; rounds++)); do
@@ -363,9 +368,9 @@ join_wait() {
         need=$(field needTotalItems <<<"$status")
         if [[ $remote == valid ]]; then
             [[ $(field state <<<"$status") != idle || $need != 0 ]] || return 0
-            errors=$(field pullErrors <<<"$status")
-            [[ $errors == 0 ]] && errors="" || errors=", $errors failing (the web UI shows why)"
-            ((++polls % 15)) || echo "Still syncing: $need files and directories to go$errors."
+            errors=$(field errors <<<"$status")
+            [[ ${errors:-0} == 0 ]] && errors="" || errors=", $errors failing (the web UI shows why)"
+            ((++polls % 15)) || [[ $need == 0 ]] || echo "Still syncing: $need files and directories to go$errors."
         elif [[ -z $told ]]; then
             printf 'Waiting for %s; if not done yet, run there: claude-sync pair %s%s\n' "$id" "$self" "$there"
             told=1

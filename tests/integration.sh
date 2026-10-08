@@ -183,6 +183,10 @@ no_conflict_files() {
     [ -z "$(in_target "$1" "find /t -name '*.sync-conflict-*'")" ]
 }
 
+addresses() {
+    st "$1" "$2" config devices "$3" dump-json | jq -r '.addresses | join(" ")'
+}
+
 trusts() {
     [ "$(st "$1" "$2" config devices "$3" introducer get)" = true ]
 }
@@ -339,7 +343,7 @@ check "pair before setup is refused" fails_with "run setup first" \
     pair_bounded "$c" "$id_a" --address "tcp://$a:22000"
 check "this device's own ID is refused" fails_with "this device's own ID" \
     pair_bounded "$a" "$id_a" --address "tcp://$a:22000"
-check "an invalid device ID is refused" fails_with "cannot add device" \
+check "an invalid device ID is refused" fails_with "not a device ID" \
     pair_bounded "$a" not-a-device-id --address "tcp://$b:22000"
 check "  and leaves the folder send-receive" [ "$(folder_type "$a" "$owner_a")" = sendreceive ]
 
@@ -365,10 +369,11 @@ check "pairing B again changes nothing" pair_bounded "$b" "$id_a" --address "tcp
 check "  and leaves it send-receive" [ "$(folder_type "$b" "$owner_b")" = sendreceive ]
 check "an invalid address is refused" fails_with "not an address" \
     pair_bounded "$a" "$id_b" --address 'tcp://b"x'
+check "  and leaves the address as it was" [ "$(addresses "$a" "$owner_a" "$id_b")" = "tcp://$b:22000" ]
 pair_bounded "$a" "$id_b" --address "tcp://elsewhere:22000" >/dev/null
-check "pairing again with --address replaces the address" [ "$(st "$a" "$owner_a" config devices "$id_b" \
-    dump-json | jq -r '.addresses | join(" ")')" = "tcp://elsewhere:22000" ]
-pair_bounded "$a" "$id_b" --address "tcp://$b:22000" >/dev/null
+check "pairing again with --address replaces the address" \
+    [ "$(addresses "$a" "$owner_a" "$id_b")" = "tcp://elsewhere:22000" ]
+check "  back again too" pair_bounded "$a" "$id_b" --address "tcp://$b:22000"
 
 echo "# ignore list, across two devices"
 if wait_for synced_to_b; then
@@ -410,7 +415,8 @@ id_c=$(docker exec -u "$owner_c" "$c" syncthing device-id)
 # only --keep on C would give D anything to join.
 claude_sync "$d" setup --volume "$vol_d" --private >/dev/null
 id_d=$(docker exec -u "$owner_d" "$d" syncthing device-id)
-pair_bounded "$d" "$id_c" --address "tcp://$c:22000" >/dev/null 2>&1 &
+# timeout itself in the background, so killing it stops pair too.
+CLAUDE_SYNC_NAME=$d timeout 300 "$root/claude-sync" pair "$id_c" --address "tcp://$c:22000" >/dev/null 2>&1 &
 d_pairing=$!
 check "joining devices with no files is refused" fails_with "has no files to join" \
     pair_bounded "$c" "$id_d" --address "tcp://$d:22000"
@@ -424,7 +430,8 @@ wait "$d_pairing" || true
 
 echo "# pair, a device with its own files joining"
 # Started before A accepts C, so nothing can let it finish but waiting for A.
-pair_bounded "$c" "$id_a" --address "tcp://$a:22000" >"$scratch/join.out" 2>&1 &
+CLAUDE_SYNC_NAME=$c timeout 300 "$root/claude-sync" pair "$id_a" --address "tcp://$a:22000" \
+    >"$scratch/join.out" 2>&1 &
 joining=$!
 check "a join says what to run on the device it joins through" \
     wait_for grep -qF "claude-sync pair $id_c" "$scratch/join.out"
@@ -452,7 +459,7 @@ claude_sync "$d" uninstall >/dev/null
 in_target "type=volume,src=$vol_d" "echo d >/t/d-only.md && chown $owner_d /t/d-only.md"
 claude_sync "$d" setup --volume "$vol_d" --private >/dev/null
 id_d=$(docker exec -u "$owner_d" "$d" syncthing device-id)
-check "a join cut off while waiting" fails env CLAUDE_SYNC_NAME="$d" timeout 10 \
+check "D's join cut off while waiting" fails env CLAUDE_SYNC_NAME="$d" timeout 10 \
     "$root/claude-sync" pair "$id_b" --address "tcp://$b:22000"
 check "  leaves D's folder receive-only" [ "$(folder_type "$d" "$owner_d")" = receiveonly ]
 pair_bounded "$b" "$id_d" --address "tcp://$d:22000" >/dev/null
