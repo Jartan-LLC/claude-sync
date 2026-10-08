@@ -61,8 +61,9 @@ Stop Claude Code on the new device until it finishes: a change made just as the 
 can still reach the others.
 
 `--keep` keeps this device's files instead, including on a re-run that finishes an
-interrupted join; files that the join already undid stay in the trash can. Paired with devices that already have files, its files merge with
-theirs: for each file the newer copy wins and the other stays as a conflict copy.
+interrupted join; files that the join already undid stay in the trash can. Paired with
+devices that already have files, its files merge with theirs: for each file the newer copy
+wins and the other stays as a conflict copy.
 
 If a device with files of its own would join devices that have none, which happens when
 the first pairing is missing `--keep`, `pair` stops and undoes the pairing without

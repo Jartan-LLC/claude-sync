@@ -192,6 +192,8 @@ trusts() {
 }
 
 # A joining device's pair blocks until caught up; a bound turns a hang into a failure.
+# Not for a background pair: killing a backgrounded function leaves timeout and pair
+# running, so background `timeout ... claude-sync pair` itself.
 pair_bounded() {
     local node=$1
     shift
@@ -345,7 +347,6 @@ check "this device's own ID is refused" fails_with "this device's own ID" \
     pair_bounded "$a" "$id_a" --address "tcp://$a:22000"
 check "an invalid device ID is refused" fails_with "not a device ID" \
     pair_bounded "$a" not-a-device-id --address "tcp://$b:22000"
-check "  and leaves the folder send-receive" [ "$(folder_type "$a" "$owner_a")" = sendreceive ]
 
 echo "# setup --volume, second device"
 claude_sync "$b" setup --volume "$vol_b" --private >/dev/null
@@ -353,6 +354,11 @@ id_b=$(docker exec -u "$owner_b" "$b" syncthing device-id)
 check "Syncthing writes as the volume's owner" wait_for owned_by "$mount_b" .stfolder "$owner_b"
 
 echo "# pair, the first two devices"
+# Canonical in form, so only Syncthing's check character catches it.
+bad_id=$([[ ${id_b:0:1} == A ]] && echo B || echo A)${id_b:1}
+check "a device ID with a wrong check character is refused" fails_with "cannot add device" \
+    pair_bounded "$a" "$bad_id" --address "tcp://$b:22000"
+check "  and leaves the folder send-receive" [ "$(folder_type "$a" "$owner_a")" = sendreceive ]
 check "a private device needs --address" fails_with "--address" pair_bounded "$a" "$id_b" --keep
 check "  and adds no device" [ "$(st "$a" "$owner_a" config devices list)" = "$id_a" ]
 # B starts joining before A pairs with it, and is cut off while it waits.
@@ -415,7 +421,6 @@ id_c=$(docker exec -u "$owner_c" "$c" syncthing device-id)
 # only --keep on C would give D anything to join.
 claude_sync "$d" setup --volume "$vol_d" --private >/dev/null
 id_d=$(docker exec -u "$owner_d" "$d" syncthing device-id)
-# timeout itself in the background, so killing it stops pair too.
 CLAUDE_SYNC_NAME=$d timeout 300 "$root/claude-sync" pair "$id_c" --address "tcp://$c:22000" >/dev/null 2>&1 &
 d_pairing=$!
 check "joining devices with no files is refused" fails_with "has no files to join" \
