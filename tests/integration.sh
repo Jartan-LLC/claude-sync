@@ -684,6 +684,7 @@ wait_for listens "$listener" 22000
 check "a busy port asked for is refused" fails_with "port 8384 is in use" \
     beside "$e" setup --volume "$vol_e" --gui-port 8384
 check "  leaving no Syncthing state" fails docker volume inspect "$e-config"
+check "  nor writing to the target" in_target "type=volume,src=$vol_e" '[ ! -e /t/.stignore ]'
 out=$(beside "$e" setup --volume "$vol_e" --private)
 check "setup starts beside the busy default ports" grep -qF "This device ID" <<<"$out"
 check "  as a healthy container" [ "$(docker inspect -f '{{.State.Health.Status}}' "$e")" = healthy ]
@@ -704,7 +705,7 @@ check "  and asking for them again is no clash" \
 check "a busy port asked for again is refused" fails_with "port 8384 is in use" \
     beside "$g" setup --volume "$vol_g" --gui-port 8384
 check "  and the instance keeps its own" listens "$g" 8484
-check "the web UI on the sync port is refused" fails_with "is this instance's sync port" \
+check "the web UI on the sync port is refused" fails_with "would both be 22100" \
     beside "$g" setup --volume "$vol_g" --gui-port 22100
 check "  and the web UI stays put" listens "$g" 8484
 id_e=$(docker exec -u "$owner_e" "$e" syncthing device-id)

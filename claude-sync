@@ -152,8 +152,7 @@ gui_port() {
     echo "${address##*:}"
 }
 
-# The port of the first TCP listen address, the first TCP address in the options;
-# Syncthing's "default" means 22000.
+# The port of the first TCP listen address; Syncthing's "default" means 22000.
 sync_port() {
     local options line re='"tcp[46]?://[^"]*:([0-9]+)"'
     options=$(st config options dump-json)
@@ -355,7 +354,7 @@ setup() {
     # are checked as they will end up, and the sync port moves first.
     local gui sync
     gui=${want_gui:-$(gui_port)} sync=${want_sync:-$(sync_port)}
-    [[ $gui != "$sync" ]] || die "port $gui is this instance's sync port; give --sync-port too"
+    [[ $gui != "$sync" ]] || die "the web UI and sync ports would both be $gui; choose different ones"
     if [[ -n $want_sync && $want_sync != "$(sync_port)" ]]; then
         # Replaces all listen addresses; the relay one is Syncthing's default, and
         # --private keeps relays off through its own option.
