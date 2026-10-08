@@ -8,7 +8,7 @@ services:
     # its container address, which breaks LAN discovery.
     network_mode: host
     # claude-sync's companion, written by setup, applies the unpaired list beside Syncthing.
-    entrypoint: ["/bin/sh", "-c", "sh /var/syncthing/config/claude-sync-companion /var/syncthing/claude loop & exec /bin/entrypoint.sh /bin/syncthing"]
+    entrypoint: ["/bin/sh", "-c", "su-exec \"$$PUID:$$PGID\" sh /var/syncthing/config/claude-sync-companion /var/syncthing/claude/.claude-sync-unpaired claude-sync loop & exec /bin/entrypoint.sh /bin/syncthing"]
     restart: unless-stopped
     environment:
       PUID: ${CLAUDE_SYNC_UID:?}

@@ -73,9 +73,10 @@ Once your Syncthing syncs claude-sync's folder, `setup` without `--use-host-sync
 refuses to start a container beside it, since `pair` and `uninstall` would then act on
 the container instead.
 
-A device that `unpair` removed elsewhere stays in your Syncthing until claude-sync next
-runs here: with no container, nothing beside your Syncthing applies the list of removed
-devices in between. Any command applies it, such as `pair` with a device already paired.
+A device that `unpair` removed elsewhere stays in your Syncthing until claude-sync's
+`setup`, `pair`, `unpair` or `uninstall` next runs here: with no container, nothing beside
+your Syncthing applies the list of removed devices in between. Until then your Syncthing
+may also introduce the device to the others again, which drop it within seconds.
 
 ### Several instances on one host
 
@@ -134,11 +135,12 @@ discarding anything.
 ./claude-sync unpair OLD-ID    # on any device that syncs
 ```
 
-`unpair` removes the device on every device, wherever you run it. It adds the ID to
-`.claude-sync-unpaired` in the synced folder, and each device removes the devices that
-file lists, again whenever an introduction brings one back. Once every device refuses the
+`unpair` removes the device on every device, wherever you run it. It lists the ID in
+`.claude-sync-unpaired` in the synced folder, and each device removes the devices listed
+there, again whenever an introduction brings one back. Once every device refuses the
 removed one, it stops syncing; run `uninstall` there to remove its state. Pairing the
-device again with `pair` takes it off the list.
+device again with `pair` takes it off the list. A device set up before claude-sync had
+`unpair` applies the list once `setup` has run there again.
 
 ### Private networks
 

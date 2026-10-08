@@ -701,12 +701,16 @@ host_before=$(host_config)
 echo "# unpair"
 check "this device's own ID is refused" fails_with "this device's own ID" claude_sync "$a" unpair "$id_a"
 check "an invalid device ID is refused" fails_with "not a device ID" claude_sync "$a" unpair not-a-device-id
-# Paired directly, so only the list can remove D there: no introducer takes it away. The
-# host device knows D by introduction so far, which pairing alone does not change.
+# The host device pairs with D directly, so no introducer takes D away there, and also
+# shares another folder with it. It knows D by introduction so far, which pairing alone
+# does not change.
+check "the host device knows D" \
+    wait_for on_host sh -c "syncthing cli config devices list | grep -qx $id_d"
 on_host syncthing cli config folders claude-sync devices "$id_d" delete
 on_host syncthing cli config devices "$id_d" delete
 host_sync pair "$id_d" --address "tcp://$d:22000" >/dev/null
 pair_bounded "$d" "$id_h" --address "tcp://$h:22000" >/dev/null
+on_host syncthing cli config folders photos devices add --device-id "$id_d"
 check "the host device knows D directly" [ -z "$(on_host syncthing cli config devices "$id_d" dump-json | jq -r .introducedBy)" ]
 # A knows D only through an introduction, where removing it by hand alone would not stick.
 check "A knows D only by introduction" [ -n "$(introduced_by "$a" "$owner_a" "$id_d")" ]
@@ -714,20 +718,29 @@ claude_sync "$a" unpair "$id_d" >/dev/null
 check "unpair removes D on A" forgets "$a" "$owner_a" "$id_d"
 check "  and on B, which D paired with" wait_for forgets "$b" "$owner_b" "$id_d"
 check "  and on C" wait_for forgets "$c" "$owner_c" "$id_d"
-reconnect "$b" "$owner_b" "$id_a"
-check "D stays gone after B and A reconnect" forgets "$a" "$owner_a" "$id_d"
-check "  on both" forgets "$b" "$owner_b" "$id_d"
 check "the list of unpaired devices reaches the host device" \
-    wait_for on_host grep -qx "$id_d" claude/.claude-sync-unpaired
+    wait_for on_host test -e "claude/.claude-sync-unpaired/$id_d"
 check "  which keeps D until claude-sync runs there" \
-    on_host sh -c "syncthing cli config devices list | grep -qx $id_d"
+    on_host sh -c "syncthing cli config folders claude-sync devices list | grep -qx $id_d"
+since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+reconnect "$a" "$owner_a" "$id_h"
+check "the host device, still sharing with D, introduces it to A again" \
+    sh -c "docker logs --since $since $a 2>&1 | grep 'vouched for by introducer' | grep -q device=${id_d:0:7}"
+check "  and A removes it again" wait_for forgets "$a" "$owner_a" "$id_d"
 host_sync pair "$id_a" --address "tcp://$a:22000" >/dev/null
-check "  and then drops it" \
-    wait_for sh -c "! docker exec -u user $h env -u STHOMEDIR -u STGUIADDRESS HOME=/home/user \
-        syncthing cli config devices list | grep -qx $id_d"
+check "the host device drops D from claude-sync's folder once claude-sync runs there" \
+    sh -c "! docker exec -u user $h env -u STHOMEDIR -u STGUIADDRESS HOME=/home/user \
+        syncthing cli config folders claude-sync devices list | grep -qx $id_d"
+check "  and keeps it for the other folder they share" \
+    on_host sh -c "syncthing cli config devices list | grep -qx $id_d"
+on_host syncthing cli config folders photos devices "$id_d" delete
+on_host syncthing cli config devices "$id_d" delete
 pair_bounded "$b" "$id_d" --address "tcp://$d:22000" >/dev/null
 check "D pairs again" pair_bounded "$d" "$id_b" --address "tcp://$b:22000" --keep
+check "  leaving the list" fails in_target "$mount_b" "[ -e /t/.claude-sync-unpaired/$id_d ]"
 check "  and B keeps it" wait_for knows_device "$b" "$owner_b" "$id_d"
+check "  and A learns of it again" wait_for knows_device "$a" "$owner_a" "$id_d"
+check "  and C" wait_for knows_device "$c" "$owner_c" "$id_d"
 in_target "$mount_b" "echo b >/t/after-unpair.md && chown $owner_b /t/after-unpair.md"
 check "  and D syncs again" wait_for in_target "type=volume,src=$vol_d" '[ -e /t/after-unpair.md ]'
 
