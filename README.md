@@ -138,15 +138,20 @@ discarding anything.
 ./claude-sync unpair OLD-ID    # on any device that syncs
 ```
 
-`unpair`, run on any device that syncs, removes the device from every device. It adds a
-file named after the ID to the `.claude-sync-unpaired` directory in the synced folder, and
-each device removes the devices listed there, again whenever an introduction brings one
-back. Once every device refuses the removed one, it stops syncing; run `uninstall` there
-to remove its state. Pairing the device again with `pair` takes it off the list. `unpair`
-refuses on a device that is still joining; finish the join first. A device set up with an
-earlier claude-sync applies the list once `setup` has run there again, and one using its
-own Syncthing applies it when claude-sync runs there (see [Use your own
-Syncthing](#use-your-own-syncthing)).
+`unpair` removes the device from every device, whichever one you run it on. It puts an
+empty file named after the ID in `.claude-sync-unpaired`, a directory in the synced
+folder. Each device removes the devices listed there, and removes them again if an
+introduction brings one back. Once all of them refuse it, the removed device stops
+syncing; run `uninstall` on it to clear its state.
+
+To pair the device again later, use `pair` as usual, which takes it off the list.
+`unpair` refuses to run on a device that is still joining; finish the join first.
+
+Two kinds of device apply the list late:
+
+- one set up with an earlier claude-sync, once `setup` has run there again;
+- one using its own Syncthing, whenever claude-sync runs there (see [Use your own
+  Syncthing](#use-your-own-syncthing)).
 
 ### Private networks
 
