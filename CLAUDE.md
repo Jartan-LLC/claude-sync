@@ -23,7 +23,7 @@ loads them into every session:
 ## Verify
 
 Run `make check` before declaring work done — it runs CI's checks, lint then the
-integration tests:
+integration tests (which need Docker):
 
 ```bash
 make check

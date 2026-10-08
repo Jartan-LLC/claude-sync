@@ -8,30 +8,52 @@ set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 readonly root
 readonly prefix=claude-sync-test-
-readonly net=${prefix}net a=${prefix}a b=${prefix}b
+readonly net=${prefix}net a=${prefix}a b=${prefix}b c=${prefix}c
 readonly vol_a=${prefix}a-data vol_b=${prefix}b-data vol_missing=${prefix}missing
+readonly vol_root=${prefix}root-data
 # Not Syncthing's default 1000, so a match proves the owner was read from the target.
 readonly owner_a=1234:1234 owner_b=2345:2345
 readonly mount_a=type=volume,src=$vol_a mount_b=type=volume,src=$vol_b
 image=$(sed -n 's/^ *image: *//p' "$root/compose.yaml")
 readonly image
+readonly bad_name=${prefix}BAD
 export CLAUDE_SYNC_COMPOSE_OVERRIDE=$root/tests/compose.test.yaml
 
-# Synthetic ~/.claude: real filename shapes, no real data.
+for tool in docker jq cmp; do
+    command -v "$tool" >/dev/null || {
+        echo "tests/integration.sh needs $tool" >&2
+        exit 1
+    }
+done
+
+# Synthetic ~/.claude: real filename shapes, no real data. The look-alikes in `synced`
+# (a lockfile, a .tmpl, a session note ending .tmp) must not be caught by ignore rules.
+readonly task=tasks/3570ff36-0222-44b7-8023-47d964bf700c
 readonly synced=(
     settings.json
     claude.json
     projects/-work-demo/memory/note.md
     projects/-work-demo/0b6c1f9e-4d2a-4c8e-9f3b-2a7d5e8c1b40.jsonl
     skills/demo/SKILL.md
+    skills/demo/bun.lock
+    skills/demo/template.tmpl
+    sessions/0b6c1f9e-demo-session.tmp
+    "$task/.highwatermark"
 )
 readonly ignored=(
     .credentials.json
+    .update.lock
     sessions/4242.json
     sessions/4242.key
     ide/4242.lock
+    "$task/.lock"
     plugins/cache/market/demo/1.0.0/.in_use
-    todos.lock
+    plugins/marketplaces/demo/.git/HEAD
+    plugins/marketplaces/demo/bun.lock
+    daemon/control.key
+    session-env/0b6c1f9e-4d2a-4c8e-9f3b-2a7d5e8c1b40/sessionstart-hook-1.sh
+    shell-snapshots/snapshot-bash-1700000000000-abc123.sh
+    telemetry/1p_failed_events.0b6c1f9e.json
     settings.json.tmp.4242.1700000000
 )
 
@@ -50,6 +72,13 @@ check() {
 
 fails() {
     ! "$@" >/dev/null 2>&1
+}
+
+fails_with() {
+    local message=$1 out
+    shift
+    out=$("$@" 2>&1) && return 1
+    grep -qF -- "$message" <<<"$out"
 }
 
 wait_for() {
@@ -85,10 +114,23 @@ st() {
     docker exec -u "$owner" "$node" syncthing cli "$@"
 }
 
+# A node's Syncthing REST API: node, owner, path, then extra curl options.
+rest() {
+    local node=$1 owner=$2
+    shift 2
+    docker exec -u "$owner" "$node" sh -c \
+        'path=$1; shift
+        curl "$@" -H "X-API-Key: $(syncthing cli config gui apikey get)" "http://127.0.0.1:8384$path"' \
+        sh "$@"
+}
+
 folder_status() {
-    docker exec -u "$2" "$1" sh -c \
-        'curl -fsS -H "X-API-Key: $(syncthing cli config gui apikey get)" \
-            "http://127.0.0.1:8384/rest/db/status?folder=claude-sync"'
+    rest "$1" "$2" "/rest/db/status?folder=claude-sync" -fsS
+}
+
+# HTTP status of A's index entry for a file: 200 when indexed, 404 when not.
+index_status() {
+    rest "$a" "$owner_a" "/rest/db/file?folder=claude-sync&file=$1" -s -o /dev/null -w '%{http_code}'
 }
 
 owned_by() {
@@ -115,7 +157,7 @@ trash_can_14_days() {
 
 relative_path_resolved() {
     local err
-    err=$(cd "$root" && CLAUDE_SYNC_NAME=$a ./claude-sync setup --path "${prefix}missing" 2>&1 >/dev/null) &&
+    err=$(cd "$root" && CLAUDE_SYNC_NAME=$c ./claude-sync setup --path "${prefix}missing" 2>&1 >/dev/null) &&
         return 1
     grep -qxF "claude-sync: cannot read $root/${prefix}missing" <<<"$err"
 }
@@ -133,11 +175,11 @@ snapshot() {
 
 cleanup() {
     local x
-    for x in "$a" "$b"; do
+    for x in "$a" "$b" "$c" "$bad_name"; do
         guard "$x"
         docker rm --force "$x" >/dev/null 2>&1 || true
     done
-    for x in "$a-config" "$b-config" "$vol_a" "$vol_b" "$vol_missing"; do
+    for x in "$a-config" "$b-config" "$c-config" "$bad_name-config" "$vol_a" "$vol_b" "$vol_missing" "$vol_root"; do
         guard "$x"
         docker volume rm "$x" >/dev/null 2>&1 || true
     done
@@ -145,12 +187,23 @@ cleanup() {
     docker network rm "$net" >/dev/null 2>&1 || true
 }
 
+on_exit() {
+    local status=$? node
+    if ((status != 0)); then
+        for node in "$a" "$b"; do
+            docker logs --tail 30 "$node" 2>&1 | sed "s/^/[$node] /" || true
+        done
+    fi
+    cleanup
+}
+
 cleanup
-trap cleanup EXIT
+trap on_exit EXIT
 
 docker network create "$net" >/dev/null
 docker volume create "$vol_a" >/dev/null
 docker volume create "$vol_b" >/dev/null
+docker volume create "$vol_root" >/dev/null
 fixture="cd /t"
 for f in "${synced[@]}" "${ignored[@]}"; do
     fixture+=" && mkdir -p \"\$(dirname '$f')\" && echo 'fixture $f' >'$f'"
@@ -158,10 +211,17 @@ done
 in_target "$mount_a" "$fixture && chown -R $owner_a /t"
 in_target "$mount_b" "chown $owner_b /t"
 
-echo "# setup rejects missing targets"
-check "a missing volume is rejected" fails claude_sync "$a" setup --volume "$vol_missing"
+echo "# setup rejects bad input"
+check "a missing volume is rejected" fails_with "no Docker volume named $vol_missing" \
+    claude_sync "$a" setup --volume "$vol_missing"
 check "  and is not created" fails docker volume inspect "$vol_missing"
-check "no container is left behind" fails docker container inspect "$a"
+check "a root-owned target is rejected" fails_with "owned by root" claude_sync "$a" setup --volume "$vol_root"
+check "  and nothing is written to it" in_target "type=volume,src=$vol_root" '[ ! -e /t/.stignore ]'
+check "an invalid CLAUDE_SYNC_NAME is rejected" fails_with CLAUDE_SYNC_NAME \
+    claude_sync "$bad_name" setup --volume "$vol_a"
+check "  and creates no volume" fails docker volume inspect "$bad_name-config"
+check "no container or state is left behind" fails docker container inspect "$a"
+check "  nor Syncthing state" fails docker volume inspect "$a-config"
 
 echo "# setup --volume"
 out=$(claude_sync "$a" setup --volume "$vol_a")
@@ -176,12 +236,17 @@ out=$(claude_sync "$a" setup --volume "$vol_a")
 check "keeps the device ID" grep -qF "This device ID: $id_a" <<<"$out"
 check "keeps exactly one folder" [ "$(st "$a" "$owner_a" config folders list)" = claude-sync ]
 check "keeps trash can versioning" trash_can_14_days "$a" "$owner_a"
+check "refuses a different target" fails_with "already set up for $vol_a" \
+    claude_sync "$a" setup --volume "$vol_b"
+check "  and writes nothing to it" in_target "$mount_b" '[ ! -e /t/.stignore ]'
 
 # A real --path run would need a directory on the Docker host, which is not this filesystem
 # when the daemon is shared from outside a dev container. Path mode differs from volume
 # mode only in its compose overlay and path handling, which these check without a mount.
 echo "# setup --path"
-check "a missing directory is rejected" fails claude_sync "$a" setup --path "/nonexistent/$prefix$$"
+check "a missing directory is rejected" fails_with "cannot read /nonexistent/$prefix$$" \
+    claude_sync "$c" setup --path "/nonexistent/$prefix$$"
+check "a path with a comma is rejected" fails_with comma claude_sync "$c" setup --path /tmp/a,b
 check "a relative path is made absolute" relative_path_resolved
 check "the overlay bind-mounts the directory" path_overlay_renders
 
@@ -203,9 +268,25 @@ if wait_for synced_to_b; then
     for f in "${ignored[@]}"; do
         check "ignores $f" in_target "$mount_b" "[ ! -e '/t/$f' ]"
     done
+    # B shares the ignore list, so B alone would mask A announcing these.
+    for f in "${synced[@]}"; do
+        check "A indexes $f" [ "$(index_status "$f")" = 200 ]
+    done
+    for f in "${ignored[@]}"; do
+        check "A never indexes $f" [ "$(index_status "$f")" = 404 ]
+    done
 else
     check "B catches up with A" false
 fi
+# 000: no connection at all. An HTTP error would mean the port is open.
+check "A's web UI is unreachable from another host" [ "$(docker exec "$b" \
+    curl -s -o /dev/null -w '%{http_code}' -m 3 "http://$a:8384/rest/noauth/health")" = 000 ]
+
+echo "# deletes reach past ignored leftovers"
+in_target "$mount_b" "echo b >'/t/$task/.lock' && chown $owner_b '/t/$task/.lock'"
+in_target "$mount_a" "rm -r '/t/$task'"
+check "a task folder deleted on A goes on B despite B's own .lock" \
+    wait_for in_target "$mount_b" "[ ! -e '/t/$task' ]"
 
 echo "# uninstall"
 before=$(snapshot "$mount_a")

@@ -9,8 +9,11 @@ readonly name=$CLAUDE_SYNC_NAME
 readonly folder_id=claude-sync
 readonly folder_path=/var/syncthing/claude
 readonly trash_days=14
-readonly gui_port=8384
+# The GUI clash matters most: `up --wait` cannot see it, because the health check would
+# reach the other Syncthing's GUI.
+readonly ports=(8384 22000)
 owner=""
+compose_files=()
 
 usage() {
     cat <<'EOF'
@@ -28,12 +31,24 @@ die() {
     exit 1
 }
 
+check_name() {
+    # Compose's project-name rule, since the name is also the project.
+    [[ $name =~ ^[a-z0-9][a-z0-9_-]*$ ]] ||
+        die "CLAUDE_SYNC_NAME may hold only lowercase letters, digits, '-' and '_': $name"
+}
+
 st() {
     docker exec -u "$owner" "$name" syncthing cli "$@"
 }
 
-port_in_use() {
-    (: <"/dev/tcp/127.0.0.1/$1") 2>/dev/null
+compose() {
+    docker compose -p "$name" "${compose_files[@]}" "$@"
+}
+
+# The volume name or host path the existing container syncs, if any.
+current_target() {
+    docker container inspect --format "{{range .Mounts}}{{if eq .Destination \"$folder_path\"}}{{if eq .Type \"volume\"}}{{.Name}}{{else}}{{.Source}}{{end}}{{end}}{{end}}" \
+        "$name" 2>/dev/null
 }
 
 setup() {
@@ -53,6 +68,7 @@ setup() {
         usage >&2
         exit 2
     fi
+    check_name
     command -v docker >/dev/null || die "Docker is required"
 
     local mount
@@ -63,22 +79,23 @@ setup() {
     else
         # Not checked with -d: Docker resolves the path on its host, which is not this
         # filesystem when claude-sync runs inside a container sharing the host's daemon.
+        # --mount takes comma-separated fields, with no quoting for a comma in a value.
+        [[ $target != *,* ]] || die "paths containing a comma are not supported: $target"
         [[ $target == /* ]] || target=$PWD/$target
         mount="type=bind,src=$target,dst=/target"
     fi
 
+    local current
+    current=$(current_target) || current=""
+    [[ -z $current || $current == "$target" ]] || die "already set up for $current; run uninstall first"
+
     local image
     image=$(sed -n 's/^ *image: *//p' "$here/compose.yaml")
+    [[ -n $image ]] || die "no image in $here/compose.yaml"
     owner=$(docker run --rm --entrypoint stat --mount "$mount" "$image" -c %u:%g /target) ||
         die "cannot read $target"
-
-    if ! docker container inspect "$name" >/dev/null 2>&1 && port_in_use "$gui_port"; then
-        die "port $gui_port is in use; is another Syncthing running on this host?"
-    fi
-
-    # Written before Syncthing first scans the folder, so ignored files are never indexed.
-    docker run --rm -i --user "$owner" --entrypoint sh --mount "$mount" "$image" \
-        -c 'cat >/target/.stignore' <"$here/stignore"
+    # Syncthing would run as root and write files Claude Code cannot change.
+    [[ ${owner%:*} != 0 ]] || die "$target is owned by root; chown it to the user who runs Claude Code"
 
     # A new volume's root belongs to root and the image chowns only its home directory,
     # so without this Syncthing cannot write its config as the target's owner.
@@ -86,10 +103,26 @@ setup() {
     docker run --rm --entrypoint chown --mount "type=volume,src=$name-config,dst=/config" \
         "$image" -R "$owner" /config
 
-    local files=(-f "$here/compose.yaml" -f "$here/compose.$kind.yaml")
-    [[ -z ${CLAUDE_SYNC_COMPOSE_OVERRIDE:-} ]] || files+=(-f "$CLAUDE_SYNC_COMPOSE_OVERRIDE")
-    CLAUDE_SYNC_UID=${owner%:*} CLAUDE_SYNC_GID=${owner#*:} CLAUDE_SYNC_TARGET=$target \
-        docker compose -p "$name" "${files[@]}" up --detach --wait --wait-timeout 120 --quiet-pull
+    export CLAUDE_SYNC_UID=${owner%:*} CLAUDE_SYNC_GID=${owner#*:} CLAUDE_SYNC_TARGET=$target
+    compose_files=(-f "$here/compose.yaml" -f "$here/compose.$kind.yaml")
+    [[ -z ${CLAUDE_SYNC_COMPOSE_OVERRIDE:-} ]] || compose_files+=(-f "$CLAUDE_SYNC_COMPOSE_OVERRIDE")
+
+    # Probed from a throwaway container on the service's own network, which is the host's
+    # even when claude-sync itself runs in a container.
+    if [[ $(docker container inspect --format '{{.State.Running}}' "$name" 2>/dev/null) != true ]]; then
+        local port
+        for port in "${ports[@]}"; do
+            if compose run --rm --no-deps --entrypoint nc syncthing -z 127.0.0.1 "$port" 2>/dev/null; then
+                die "port $port is in use; is another Syncthing running on this host?"
+            fi
+        done
+    fi
+
+    # Written before Syncthing first scans the folder, so ignored files are never indexed.
+    docker run --rm -i --user "$owner" --entrypoint sh --mount "$mount" "$image" \
+        -c 'cat >/target/.stignore' <"$here/stignore"
+
+    compose up --detach --wait --wait-timeout 120 --quiet-pull
 
     if ! st config folders list | grep -qx "$folder_id"; then
         st config folders add --id "$folder_id" --label claude --path "$folder_path"
@@ -103,6 +136,7 @@ setup() {
 
 uninstall() {
     (($# == 0)) || die "uninstall takes no arguments"
+    check_name
     command -v docker >/dev/null || die "Docker is required"
     if docker container inspect "$name" >/dev/null 2>&1; then
         docker rm --force "$name" >/dev/null
