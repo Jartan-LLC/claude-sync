@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Integration tests: claude-sync against real Syncthing containers on throwaway targets.
-# Every container, volume, network and image this keeps is named claude-sync-test-*, and cleanup
-# refuses anything else: a dev container may share the host's live Docker daemon, where a
-# real ~/.claude volume lives.
+# Every container, volume, network and image this keeps is named claude-sync-test-*, and
+# cleanup refuses anything else: a dev container may share the host's live Docker daemon,
+# where a real ~/.claude volume lives.
 set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -23,8 +23,8 @@ readonly image
 }
 readonly bad_name=${prefix}BAD
 export CLAUDE_SYNC_COMPOSE_OVERRIDE=$root/tests/compose.test.yaml
-# claude-sync looks for a Syncthing of the user running it on this host; pointed at an
-# empty home, it never reaches a developer's own.
+# claude-sync looks for a Syncthing of the user running it on this host; pointed at a
+# home that does not exist, it never reaches a developer's own.
 export STHOMEDIR=/nonexistent/${prefix}home
 unset STCONFDIR STDATADIR STGUIADDRESS STGUIAPIKEY
 
@@ -194,8 +194,8 @@ trusts() {
     [ "$(st "$1" "$2" config devices "$3" introducer get)" = true ]
 }
 
-# A command as `user` on the host fixture, where Syncthing runs without a container, with
-# its own defaults rather than the image's.
+# A command as `user` on the host fixture, with Syncthing's defaults rather than the
+# image's settings.
 on_host() {
     docker exec -u user -w /home/user "$h" env -u STHOMEDIR -u STGUIADDRESS HOME=/home/user "$@"
 }
@@ -224,7 +224,6 @@ host_config() {
         jq -S '{folders: [.folders[] | select(.id != "claude-sync")], options, gui, defaults, ldap}'
 }
 
-# Without .stfolder, Syncthing's marker, which it deletes along with the folder.
 host_idle() {
     # shellcheck disable=SC2016 # expanded by the fixture's shell
     on_host sh -c 'curl -kfsS -H "X-API-Key: $(syncthing cli config gui apikey get)" \
@@ -232,6 +231,7 @@ host_idle() {
         jq -e '.state == "idle" and .needTotalItems == 0'
 }
 
+# Without .stfolder, Syncthing's marker, which it deletes along with the folder.
 host_snapshot() {
     on_host sh -c 'cd claude && find . -path ./.stfolder -prune -o -print | sort &&
         find . -path ./.stfolder -prune -o -type f -exec sha256sum {} + | sort'

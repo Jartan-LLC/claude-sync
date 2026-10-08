@@ -24,9 +24,9 @@ usage() {
 Usage:
   claude-sync setup --volume NAME   Sync the Docker volume NAME that holds ~/.claude
   claude-sync setup --path DIR      Sync the directory DIR on this host
-      --use-host-syncthing          Use the Syncthing already running as this user on
-                                    this host instead of a container. Needs Syncthing 2
-                                    or newer and curl, not Docker
+      --use-host-syncthing          With --path only: use the Syncthing already running
+                                    as this user on this host instead of a container.
+                                    Needs Syncthing 2 or newer and curl, not Docker
       --private                     No global discovery, relays or NAT traversal: other
                                     devices are found on the LAN or at the address given
                                     to pair
@@ -45,7 +45,7 @@ Usage:
                                     Pairing again with it replaces the address
   claude-sync uninstall             Remove claude-sync's container and Syncthing state,
                                     or its folder from the Syncthing on this host; the
-                                    synced folder is left untouched
+                                    synced files are left untouched
   claude-sync help
 EOF
 }
@@ -220,7 +220,6 @@ setup() {
     check_name
     if [[ -n $host ]]; then
         [[ $kind == path ]] || die "--use-host-syncthing works only with --path: a Syncthing on the host cannot reach a Docker volume"
-        # Unlike claude-sync's own Syncthing, the host's also syncs other folders.
         [[ -z $network ]] || die "--$network changes how all of a Syncthing's folders connect; with --use-host-syncthing, set them in that Syncthing"
         setup_host "$target"
         return
@@ -433,7 +432,7 @@ pair() {
     # join through any of them. An introducer's devices join every folder shared with it,
     # so on the host's Syncthing a device sharing other folders is not made one.
     if [[ $mode == host ]] && shares_other_folder "$id"; then
-        printf '%s also syncs other folders with this Syncthing, so it does not introduce devices here: pair this device with each of the others too.\n' "$id"
+        printf '%s also syncs other folders with this Syncthing, so claude-sync does not make it an introducer: pair this device with each of the others too.\n' "$id"
     else
         st config devices "$id" introducer set true
     fi
@@ -559,7 +558,7 @@ uninstall() {
             echo "Removed the $folder_id folder from the Syncthing on this host; its devices and other folders stay."
         fi
     fi
-    echo "The synced folder is untouched."
+    echo "The synced files are untouched."
 }
 
 case ${1:-help} in

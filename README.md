@@ -23,8 +23,9 @@ machine, and it is there on the others.
 
 - Linux with Docker Engine 25 or newer and its Compose plugin, unless you [use your own
   Syncthing](#use-your-own-syncthing). macOS is untested.
-- Ports 8384, 22000 and 21027 free: claude-sync's Syncthing cannot share a host with
-  another Syncthing, though it can use that one instead.
+- Ports 8384, 22000 and 21027 free, unless you [use your own
+  Syncthing](#use-your-own-syncthing): claude-sync's Syncthing cannot share a host with
+  another Syncthing.
 - With `--path`, run claude-sync on the host itself, not inside a dev container: Docker
   resolves the path on the host.
 
@@ -43,8 +44,9 @@ ID. It fails, with Syncthing's message, if Syncthing cannot sync the folder.
 
 ### Use your own Syncthing
 
-If Syncthing 2 or newer already runs on the host, as the user who runs Claude Code,
-`--use-host-syncthing` adds claude-sync's folder to it instead of starting a container:
+If Syncthing 2 or newer already runs on the host as you, the user who runs Claude Code
+and claude-sync, `--use-host-syncthing` adds claude-sync's folder to it instead of
+starting a container:
 
 ```bash
 ./claude-sync setup --path ~/.claude --use-host-syncthing
@@ -52,8 +54,9 @@ If Syncthing 2 or newer already runs on the host, as the user who runs Claude Co
 
 This needs curl but not Docker, and works only with `--path`. claude-sync changes nothing
 in that Syncthing beyond its own folder and the devices you pair, and `pair` and
-`uninstall` find it on their own. `setup` refuses a directory inside or around one of
-that Syncthing's folders, following symlinks, since its files would sync twice.
+`uninstall` find it on their own. `setup` refuses a directory one of that Syncthing's
+folders syncs, or one inside or around it, following symlinks, since its files would
+sync twice.
 `--private` and `--public` are refused, since they would change how your other folders
 connect; set those options in Syncthing itself. If global discovery is off there, `pair`
 needs `--address`, as on a [private network](#private-networks).
@@ -118,8 +121,9 @@ Removes the container and this device's Syncthing state, including its device ID
 `~/.claude` is untouched; Syncthing's `.stignore`, `.stfolder` and `.stversions` stay in it
 and can be deleted, though deleting `.stversions` empties the trash can.
 
-With `--use-host-syncthing`, it removes only claude-sync's folder from your Syncthing, and
-the devices you paired stay. Syncthing deletes the folder's `.stfolder` itself.
+If you set up with `--use-host-syncthing`, `uninstall` removes only claude-sync's folder
+from your Syncthing, and the devices you paired stay. Syncthing deletes the folder's
+`.stfolder` itself.
 
 ## What syncs
 
