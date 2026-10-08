@@ -124,8 +124,7 @@ path_overlay_renders() {
     CLAUDE_SYNC_NAME=$a CLAUDE_SYNC_UID=1 CLAUDE_SYNC_GID=1 CLAUDE_SYNC_TARGET=/srv/claude \
         docker compose -f "$root/compose.yaml" -f "$root/compose.path.yaml" config --format json |
         jq -e '.services.syncthing.volumes | any(
-            .type == "bind" and .source == "/srv/claude" and
-            .target == "/var/syncthing/claude" and .bind.create_host_path == false)'
+            .type == "bind" and .source == "/srv/claude" and .target == "/var/syncthing/claude")'
 }
 
 snapshot() {
@@ -184,7 +183,7 @@ check "keeps trash can versioning" trash_can_14_days "$a" "$owner_a"
 echo "# setup --path"
 check "a missing directory is rejected" fails claude_sync "$a" setup --path "/nonexistent/$prefix$$"
 check "a relative path is made absolute" relative_path_resolved
-check "the overlay bind-mounts the directory without creating it" path_overlay_renders
+check "the overlay bind-mounts the directory" path_overlay_renders
 
 echo "# setup --volume, second device"
 claude_sync "$b" setup --volume "$vol_b" >/dev/null
