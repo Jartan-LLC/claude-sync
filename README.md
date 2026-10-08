@@ -128,7 +128,8 @@ relays and NAT traversal, so each device needs the other's address when pairing:
 ./claude-sync pair OTHER-ID --address tcp://other-host:22000
 ```
 
-Use the sync port the other device's `setup` printed, 22000 unless it said otherwise.
+Use the sync port the other device's `setup` printed, 22000 unless it said otherwise; for a
+device using its own Syncthing, the port that Syncthing listens on.
 
 To correct an address, pair again with the new `--address`. A device stays private when
 `setup` is re-run; `setup --public` returns it to the defaults.

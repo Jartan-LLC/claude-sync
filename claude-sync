@@ -290,7 +290,9 @@ setup() {
     # second device on the same files.
     if [[ $name == "$default_name" ]] && host_syncthing_configured &&
         syncthing cli config folders list 2>/dev/null | grep -qxF "$folder_id"; then
-        die "already set up in the Syncthing on this host; add --use-host-syncthing, or run uninstall first"
+        [[ $kind == volume ]] ||
+            die "already set up in the Syncthing on this host; add --use-host-syncthing, or run uninstall first"
+        die "the Syncthing on this host already syncs claude-sync's folder; to sync this volume beside it, set CLAUDE_SYNC_NAME to another name"
     fi
 
     local mount
@@ -385,7 +387,7 @@ setup() {
     fi
     wait_folder_started
 
-    gui=$(gui_port) sync=$(sync_port)
+    { gui=$(gui_port) && sync=$(sync_port); } || die "cannot reach Syncthing in container $name"
     printf 'Syncthing is running in container %s, web UI on 127.0.0.1:%s, sync port %s.\n' \
         "$name" "$gui" "$sync"
     # A new config volume is Syncthing's first start, when it takes free ports in place of
@@ -486,7 +488,9 @@ pair() {
     local address_re='^[a-z0-9]+://[^"\\[:space:][:cntrl:]]+$' at="" there=""
     if [[ $address != dynamic ]]; then
         [[ $address =~ $address_re ]] || die "not an address: $address; give one such as tcp://HOST:22000"
-        at=" --address $address" there=" --address tcp://THIS-HOST:$(sync_port)"
+        local port
+        port=$(sync_port) || die "cannot reach Syncthing $where"
+        at=" --address $address" there=" --address tcp://THIS-HOST:$port"
     fi
 
     # Before the folder changes below, so a bad ID changes nothing. A device added here but

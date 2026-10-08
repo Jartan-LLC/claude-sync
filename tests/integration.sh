@@ -309,7 +309,7 @@ on_exit() {
         kill "$job" 2>/dev/null || true
     done
     if ((status != 0)); then
-        for node in "$a" "$b" "$c" "$d" "$h"; do
+        for node in "$a" "$b" "$c" "$d" "$e" "$g" "$h"; do
             docker logs --tail 30 "$node" 2>&1 | sed "s/^/[$node] /" || true
         done
         [[ ! -s $scratch/join.out ]] || sed 's/^/[join] /' "$scratch/join.out"
@@ -373,14 +373,18 @@ cat >"$scratch/host/syncthing" <<'EOF'
 #!/bin/sh
 case "$*" in
     paths) printf 'Configuration file:\n\t%s/config.xml\n' "${0%/*}" ;;
-    "cli config folders list") echo claude-sync ;;
+    "cli config folders list") echo "${FOLDERS-claude-sync}" ;;
     *) exit 1 ;;
 esac
 EOF
 chmod +x "$scratch/host/syncthing"
-check "setup beside a Syncthing that syncs claude-sync's folder is refused" \
-    fails_with "already set up in the Syncthing on this host" \
+check "a volume beside a Syncthing that syncs claude-sync's folder is refused" \
+    fails_with "set CLAUDE_SYNC_NAME to another name" \
     env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME=claude-sync "$root/claude-sync" setup --volume "$vol_missing"
+check "  and a directory, pointing to --use-host-syncthing" fails_with "add --use-host-syncthing" \
+    env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME=claude-sync "$root/claude-sync" setup --path "/nonexistent/$prefix$$"
+check "  but not beside one without that folder" fails_with "no Docker volume named $vol_missing" \
+    env PATH="$scratch/host:$PATH" FOLDERS=photos CLAUDE_SYNC_NAME=claude-sync "$root/claude-sync" setup --volume "$vol_missing"
 check "no container or state is left behind" fails docker container inspect "$a"
 check "  nor Syncthing state" fails docker volume inspect "$a-config"
 
