@@ -40,11 +40,11 @@ cd claude-sync
 safe to re-run, rewrites `.stignore` from this repo each time, and prints this device's
 ID. It fails, with Syncthing's message, if Syncthing cannot sync the folder.
 
-`setup` also prints the web UI port and the sync port: Syncthing's usual 8384 and 22000,
-or free ports Syncthing picks on the first run when another program, such as another
-Syncthing, holds those. `--gui-port` and `--sync-port` choose them instead, and later
-runs keep them. If another program later takes the web UI port, Syncthing cannot start
-its web UI and `setup` cannot move it: free that port again.
+In its own container, `setup` also prints the web UI port and the sync port: Syncthing's
+usual 8384 and 22000, or free ports Syncthing picks on the first run when another
+program, such as another Syncthing, holds those. `--gui-port` and `--sync-port` choose
+them instead, and later runs keep them. If another program later takes the web UI port,
+Syncthing cannot start its web UI and `setup` cannot move it: free that port again.
 
 ### Use your own Syncthing
 
@@ -69,21 +69,27 @@ When you pair (see below), a device that already syncs other folders with your S
 is not made an introducer, since the devices it introduces would join those folders too.
 `pair` then says so, and this device needs pairing with each of the others directly.
 
+Once your Syncthing syncs claude-sync's folder, `setup` without `--use-host-syncthing`
+refuses to start a container beside it, since `pair` and `uninstall` would then act on
+the container instead.
+
 ### Several instances on one host
 
 `CLAUDE_SYNC_NAME` names an instance: its container and the volume that holds its
-Syncthing state. Under different names, one host can sync several `~/.claude` volumes,
-each as a device of its own. Give the same name to every command for that instance:
+Syncthing state. Under different names, one host can sync several `~/.claude` volumes or
+directories, each as a device of its own. Give the same name to every command for that
+instance:
 
 ```bash
 CLAUDE_SYNC_NAME=claude-work ./claude-sync setup --volume work-claude
 CLAUDE_SYNC_NAME=claude-work ./claude-sync pair OTHER-ID
 ```
 
-Each instance gets ports of its own, which `setup` prints. A name other than the default
-can't be combined with `--use-host-syncthing`, since your own Syncthing holds one
-claude-sync folder; neither can `--gui-port` or `--sync-port`, since its ports are its
-own settings.
+Each instance gets ports of its own, which `setup` prints, as long as the other instances
+are running when it first starts: Syncthing takes free ports only then. A name other than
+the default, `claude-sync`, can't be combined with `--use-host-syncthing`, since your own
+Syncthing holds one claude-sync folder; neither can `--gui-port` or `--sync-port`, since
+you set that Syncthing's ports in Syncthing itself.
 
 ## Pair devices
 

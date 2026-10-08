@@ -21,7 +21,8 @@ services:
     # The image checks health every minute, which would stall `up --wait` that long.
     # start_interval needs Docker Engine 25, README's stated minimum.
     healthcheck:
-      # The image's own check asks 127.0.0.1:8384, which may be another instance's web UI.
+      # The image's own check asks 127.0.0.1:8384, where this instance's web UI may not be
+      # and another instance's may.
       test: ["CMD", "syncthing", "cli", "show", "version"]
       start_period: 1m
       start_interval: 1s

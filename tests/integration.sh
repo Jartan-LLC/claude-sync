@@ -364,9 +364,9 @@ check "  and one below 1024" fails_with "not a port" claude_sync "$c" setup --vo
 check "  and the same port for both" fails_with "need different ports" \
     claude_sync "$c" setup --volume "$vol_c" --gui-port 8500 --sync-port 8500
 check "  and creates no Syncthing state" fails docker volume inspect "$c-config"
-# A stand-in for a Syncthing on this host that syncs claude-sync's folder. The volume does
-# not exist, so even a setup that got past the check would stop before creating anything
-# under the default name.
+# A stand-in for this user's Syncthing on the host, listing claude-sync's folder unless
+# FOLDERS says otherwise. The volume and the directory do not exist, so even a setup that
+# got past the check would stop before creating anything under the default name.
 mkdir "$scratch/host"
 touch "$scratch/host/config.xml"
 cat >"$scratch/host/syncthing" <<'EOF'
@@ -712,7 +712,7 @@ check "  as a healthy container" [ "$(docker inspect -f '{{.State.Health.Status}
 port_e=$(sync_port "$e" "$owner_e")
 check "  on another sync port" [ "${port_e:-22000}" != 22000 ]
 check "  and says which ports it uses" grep -qF "sync port $port_e" <<<"$out"
-check "  and why" grep -qF "Another program holds Syncthing's default ports" <<<"$out"
+check "  and why" grep -qF "Another program holds Syncthing's default" <<<"$out"
 out=$(beside "$g" setup --volume "$vol_g" --private --gui-port 8484 --sync-port 22100)
 check "--gui-port fixes the web UI port" listens "$g" 8484
 check "--sync-port fixes the sync port" [ "$(sync_port "$g" "$owner_g")" = 22100 ]

@@ -286,8 +286,9 @@ setup() {
         return
     fi
     command -v docker >/dev/null || die "Docker is required"
-    # Beside the Syncthing that already syncs claude-sync's folder, a container would be a
-    # second device on the same files.
+    # Under the default name, pair and uninstall would act on a container instead of the
+    # Syncthing that already syncs claude-sync's folder; with --path, the container would
+    # usually also be a second device on the same files.
     if [[ $name == "$default_name" ]] && host_syncthing_configured &&
         syncthing cli config folders list 2>/dev/null | grep -qxF "$folder_id"; then
         [[ $kind == volume ]] ||
@@ -361,7 +362,8 @@ setup() {
     # A web UI on the sync port would leave nothing to reach Syncthing through, so the two
     # are checked as they will end up, and the sync port moves first.
     local gui sync
-    gui=${want_gui:-$(gui_port)} sync=${want_sync:-$(sync_port)}
+    { gui=${want_gui:-$(gui_port)} && sync=${want_sync:-$(sync_port)}; } ||
+        die "cannot reach Syncthing in container $name"
     [[ $gui != "$sync" ]] || die "the web UI and sync ports would both be $gui; choose different ones"
     if [[ -n $want_sync && $want_sync != "$(sync_port)" ]]; then
         # Replaces all listen addresses; the relay one is Syncthing's default, and
@@ -394,9 +396,9 @@ setup() {
     # busy defaults.
     if [[ -n $created_config ]] && { [[ -z $want_gui && $gui != "$default_gui_port" ]] ||
         [[ -z $want_sync && $sync != "$default_sync_port" ]]; }; then
-        echo "Another program holds Syncthing's default ports, so this instance uses others."
+        echo "Another program holds Syncthing's default web UI or sync port, so this instance uses a free one instead."
         if [[ $kind == path && $name == "$default_name" ]]; then
-            echo "If it is a Syncthing, --use-host-syncthing uses it instead."
+            echo "If that program is your own Syncthing, run uninstall, then setup again with --use-host-syncthing to use it."
         fi
     fi
     printf 'This device ID: %s\n' "$(docker exec -u "$owner" "$name" syncthing device-id)"
