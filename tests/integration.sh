@@ -569,7 +569,7 @@ check "a directory another folder syncs is refused" fails_with "folder notes alr
     host_sync setup --path notes --use-host-syncthing
 check "  and one inside another folder" fails_with "folder photos already syncs" \
     host_sync setup --path photos/sub --use-host-syncthing
-check "  and one around another folder" fails_with "already syncs" \
+check "  and one around another folder" fails_with "which overlaps /home/user;" \
     host_sync setup --path /home/user --use-host-syncthing
 check "  and one stored as ~/ with a trailing slash" fails_with "folder tilde already syncs" \
     host_sync setup --path tilde --use-host-syncthing

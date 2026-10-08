@@ -174,8 +174,8 @@ use_host() {
     fi
 }
 
-# Container mode when claude-sync's container exists, else the Syncthing on this host when
-# it has the folder.
+# Container mode when claude-sync's container exists, else the Syncthing this user has
+# configured on this host.
 detect_mode() {
     if command -v docker >/dev/null && docker container inspect "$name" >/dev/null 2>&1; then
         { running && ours_container "$name"; } || die "Syncthing is not running in container $name; run setup first"

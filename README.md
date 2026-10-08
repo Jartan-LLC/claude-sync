@@ -52,10 +52,11 @@ If Syncthing 2 or newer already runs on the host, as the user who runs Claude Co
 
 This needs curl but not Docker, and works only with `--path`. claude-sync changes nothing
 in that Syncthing beyond its own folder and the devices you pair, and `pair` and
-`uninstall` find it on their own. `--private` and `--public` are refused, since they
-would change how your other folders connect; set those options in Syncthing itself. If
-global discovery is off there, `pair` needs `--address`, as on a [private
-network](#private-networks).
+`uninstall` find it on their own. `setup` refuses a directory inside or around one of
+that Syncthing's folders, following symlinks, since its files would sync twice.
+`--private` and `--public` are refused, since they would change how your other folders
+connect; set those options in Syncthing itself. If global discovery is off there, `pair`
+needs `--address`, as on a [private network](#private-networks).
 
 When you pair (see below), a device that already syncs other folders with your Syncthing
 is not made an introducer, since the devices it introduces would join those folders too.
