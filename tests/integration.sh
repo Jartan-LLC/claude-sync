@@ -193,7 +193,8 @@ addresses() {
 }
 
 forgets() {
-    ! knows_device "$@"
+    local devices
+    devices=$(st "$1" "$2" config devices list) && ! grep -qx "$3" <<<"$devices"
 }
 
 introduced_by() {

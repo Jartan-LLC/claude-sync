@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hints name this instance's sync port.
 - `claude-sync unpair DEVICE-ID`: removes a device on every device, run from any of them.
   The ID goes on a list in the synced folder, which a companion beside each container's
-  Syncthing applies.
+  Syncthing applies; a device using its own Syncthing applies it when claude-sync runs
+  there.
 
 [Unreleased]: https://github.com/Jartan-LLC/claude-sync/commits/main
