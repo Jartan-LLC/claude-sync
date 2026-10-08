@@ -40,6 +40,9 @@ safe to re-run, rewrites `.stignore` from this repo each time, and prints this d
 ID. Pair a new device while its `~/.claude` is empty and Claude Code is not running there;
 otherwise its fresh files can replace yours on every device.
 
+To pair, open each device's web UI, add the other device by its ID, and share the `claude`
+folder with it.
+
 ## Uninstall
 
 ```bash
@@ -69,8 +72,8 @@ Each device keeps the previous copy of anything another device deleted or overwr
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md); `make check` runs the lint and integration checks
-CI runs. [docs/scaffold.md](docs/scaffold.md) covers the dev container, CI and Liza.
+See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute; [docs/scaffold.md](docs/scaffold.md)
+covers the dev container, CI and Liza.
 
 ## License
 

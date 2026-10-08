@@ -9,8 +9,8 @@ readonly name=$CLAUDE_SYNC_NAME
 readonly folder_id=claude-sync
 readonly folder_path=/var/syncthing/claude
 readonly trash_days=14
-# The GUI clash matters most: `up --wait` cannot see it, because the health check would
-# reach the other Syncthing's GUI.
+# TCP ports another Syncthing would hold (21027/udp is not probed). `up --wait` cannot
+# catch a clash on 8384: its health check would reach the other Syncthing's GUI.
 readonly ports=(8384 22000)
 readonly label=claude-sync=config
 owner=""
@@ -33,9 +33,10 @@ die() {
 }
 
 check_name() {
-    # Compose's project-name rule, since the name is also the project.
+    # Compose's project-name rule, plus Docker's two-character minimum for container names,
+    # since the name is both.
     [[ $name =~ ^[a-z0-9][a-z0-9_-]+$ ]] ||
-        die "CLAUDE_SYNC_NAME may hold only lowercase letters, digits, '-' and '_': $name"
+        die "CLAUDE_SYNC_NAME must be two or more lowercase letters, digits, '-' or '_', starting with a letter or digit: $name"
 }
 
 st() {
@@ -108,8 +109,7 @@ setup() {
 
     local created_config=""
     if docker volume inspect "$name-config" >/dev/null 2>&1; then
-        ours_volume "$name-config" ||
-            die "volume $name-config exists but was not created by claude-sync; if it is state from an earlier claude-sync, remove it with: docker rm --force $name; docker volume rm $name-config"
+        ours_volume "$name-config" || die "volume $name-config exists but was not created by claude-sync"
     else
         docker volume create --label "$label" "$name-config" >/dev/null
         created_config=1
@@ -171,8 +171,7 @@ uninstall() {
         container=1
     fi
     if docker volume inspect "$name-config" >/dev/null 2>&1; then
-        ours_volume "$name-config" ||
-            die "volume $name-config was not created by claude-sync; not removing it (if it is state from an earlier claude-sync, remove it with: docker rm --force $name; docker volume rm $name-config)"
+        ours_volume "$name-config" || die "volume $name-config was not created by claude-sync; not removing it"
         volume=1
     fi
     if [[ -n $container ]]; then

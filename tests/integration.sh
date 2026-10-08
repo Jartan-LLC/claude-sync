@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Integration tests: claude-sync against real Syncthing containers on throwaway targets.
-# Every Docker object this creates is named claude-sync-test-*, and cleanup refuses
-# anything else: a dev container may share the host's live Docker daemon, where a
+# Every container, volume and network this keeps is named claude-sync-test-*, and cleanup
+# refuses anything else: a dev container may share the host's live Docker daemon, where a
 # real ~/.claude volume lives.
 set -euo pipefail
 
@@ -44,6 +44,7 @@ readonly synced=(
     skills/demo/template.tmpl
     skills/demo/plan.tmp.md
     skills/demo/notes.tmp.data.txt
+    skills/demo/draft.tmp.2.changelog.md
     skills/demo/daemon/notes.md
     skills/demo/ide/4242.lock
     sessions/0b6c1f9e-demo-session.tmp
@@ -270,7 +271,7 @@ check "refuses a different target" fails_with "already set up for $vol_a" \
 check "  and writes nothing to it" in_target "$mount_b" '[ ! -e /t/.stignore ]'
 
 # A real --path run would need a directory on the Docker host, which is not this filesystem
-# when the daemon is shared from outside a dev container. Path mode differs from volume
+# when the tests run in a dev container that shares the host's daemon. Path mode differs from volume
 # mode only in its compose overlay and path handling, which these check without a mount.
 echo "# setup --path"
 check "a missing directory is rejected" fails_with "cannot read /nonexistent/$prefix$$" \

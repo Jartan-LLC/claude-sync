@@ -18,6 +18,7 @@ services:
     volumes:
       - config:/var/syncthing/config
     # The image checks health every minute, which would stall `up --wait` that long.
+    # start_interval needs Docker Engine 25, README's stated minimum.
     healthcheck:
       start_period: 1m
       start_interval: 1s
