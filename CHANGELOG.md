@@ -27,5 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are taken, a new instance's Syncthing picks free ones, and `setup --gui-port PORT
   --sync-port PORT` chooses them. `setup` prints the web UI and sync ports, and `pair`'s
   hints name this instance's sync port.
+- `claude-sync unpair DEVICE-ID`: removes a device on every device, run from any of them.
+  The ID goes on a list in the synced folder, which a companion beside each container's
+  Syncthing applies.
 
 [Unreleased]: https://github.com/Jartan-LLC/claude-sync/commits/main

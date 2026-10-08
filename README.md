@@ -73,6 +73,10 @@ Once your Syncthing syncs claude-sync's folder, `setup` without `--use-host-sync
 refuses to start a container beside it, since `pair` and `uninstall` would then act on
 the container instead.
 
+A device that `unpair` removed elsewhere stays in your Syncthing until claude-sync next
+runs here: with no container, nothing beside your Syncthing applies the list of removed
+devices in between. Any command applies it, such as `pair` with a device already paired.
+
 ### Several instances on one host
 
 `CLAUDE_SYNC_NAME` names an instance: its container and the volume that holds its
@@ -124,6 +128,18 @@ If a device with files of its own would join devices that have none, which happe
 the first pairing is missing `--keep`, `pair` stops and undoes the pairing without
 discarding anything.
 
+### Remove a device
+
+```bash
+./claude-sync unpair OLD-ID    # on any device that syncs
+```
+
+`unpair` removes the device on every device, wherever you run it. It adds the ID to
+`.claude-sync-unpaired` in the synced folder, and each device removes the devices that
+file lists, again whenever an introduction brings one back. Once every device refuses the
+removed one, it stops syncing; run `uninstall` there to remove its state. Pairing the
+device again with `pair` takes it off the list.
+
 ### Private networks
 
 By default devices find each other anywhere, through Syncthing's global discovery and
@@ -147,8 +163,9 @@ To correct an address, pair again with the new `--address`. A device stays priva
 ```
 
 Removes the container and this device's Syncthing state, including its device ID. Your
-`~/.claude` is untouched; Syncthing's `.stignore`, `.stfolder` and `.stversions` stay in it
-and can be deleted, though deleting `.stversions` empties the trash can.
+`~/.claude` is untouched; Syncthing's `.stignore`, `.stfolder` and `.stversions`, and
+claude-sync's `.claude-sync-unpaired`, stay in it and can be deleted, though deleting
+`.stversions` empties the trash can.
 
 If you set up with `--use-host-syncthing`, `uninstall` removes only claude-sync's folder
 from your Syncthing, and the devices you paired stay. Syncthing deletes the folder's
