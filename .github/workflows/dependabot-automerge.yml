@@ -19,8 +19,3 @@ jobs:
           target: minor
           merge-method: squash
           use-github-auto-merge: true
-          # Backstop: a python base-image bump never auto-merges.
-          # Comma form is required: the action splits `exclude` on commas/semicolons
-          # only, so a YAML block scalar collapses to one string that matches nothing,
-          # silently disabling every exclusion.
-          exclude: python

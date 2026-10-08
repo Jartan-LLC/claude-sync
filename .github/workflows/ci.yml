@@ -3,9 +3,9 @@ name: CI
 on:
   pull_request:
     branches: [main]
-  # Dev extras, hook envs and the dev container Features' create-time downloads resolve
-  # at run time, so `main` can go red with no commit touching it; these catch that
-  # before the next PR does.
+  # Hook envs and the dev container Features' create-time downloads resolve at run
+  # time, so `main` can go red with no commit touching it; these catch that before
+  # the next PR does.
   push:
     branches: [main]
   schedule:
