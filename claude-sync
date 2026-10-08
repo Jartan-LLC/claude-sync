@@ -148,14 +148,14 @@ running() {
 
 gui_port() {
     local address
-    address=$(st config gui raw-address get)
+    address=$(st config gui raw-address get) || return
     echo "${address##*:}"
 }
 
 # The port of the first TCP listen address; Syncthing's "default" means 22000.
 sync_port() {
     local options line re='"tcp[46]?://[^"]*:([0-9]+)"'
-    options=$(st config options dump-json)
+    options=$(st config options dump-json) || return
     while IFS= read -r line; do
         if [[ $line =~ $re ]]; then
             echo "${BASH_REMATCH[1]}"
@@ -286,6 +286,12 @@ setup() {
         return
     fi
     command -v docker >/dev/null || die "Docker is required"
+    # Beside the Syncthing that already syncs claude-sync's folder, a container would be a
+    # second device on the same files.
+    if [[ $name == "$default_name" ]] && host_syncthing_configured &&
+        syncthing cli config folders list 2>/dev/null | grep -qxF "$folder_id"; then
+        die "already set up in the Syncthing on this host; add --use-host-syncthing, or run uninstall first"
+    fi
 
     local mount
     if [[ $kind == volume ]]; then

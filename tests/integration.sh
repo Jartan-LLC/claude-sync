@@ -325,6 +325,7 @@ cleanup
 set -E
 trap '((BASH_SUBSHELL == 0)) && echo "aborted at tests/integration.sh:$LINENO${FUNCNAME:+ in ${FUNCNAME[0]}, called from line ${BASH_LINENO[0]}}" >&2' ERR
 trap on_exit EXIT
+scratch=$(mktemp -d -t "${prefix}XXXXXX")
 
 docker network create "$net" >/dev/null
 docker volume create "$vol_a" >/dev/null
@@ -363,6 +364,23 @@ check "  and one below 1024" fails_with "not a port" claude_sync "$c" setup --vo
 check "  and the same port for both" fails_with "need different ports" \
     claude_sync "$c" setup --volume "$vol_c" --gui-port 8500 --sync-port 8500
 check "  and creates no Syncthing state" fails docker volume inspect "$c-config"
+# A stand-in for a Syncthing on this host that syncs claude-sync's folder. The volume does
+# not exist, so even a setup that got past the check would stop before creating anything
+# under the default name.
+mkdir "$scratch/host"
+touch "$scratch/host/config.xml"
+cat >"$scratch/host/syncthing" <<'EOF'
+#!/bin/sh
+case "$*" in
+    paths) printf 'Configuration file:\n\t%s/config.xml\n' "${0%/*}" ;;
+    "cli config folders list") echo claude-sync ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$scratch/host/syncthing"
+check "setup beside a Syncthing that syncs claude-sync's folder is refused" \
+    fails_with "already set up in the Syncthing on this host" \
+    env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME=claude-sync "$root/claude-sync" setup --volume "$vol_missing"
 check "no container or state is left behind" fails docker container inspect "$a"
 check "  nor Syncthing state" fails docker volume inspect "$a-config"
 
@@ -404,7 +422,6 @@ check "the overlay bind-mounts the directory" path_overlay_renders
 
 echo "# setup fails when Syncthing cannot run the folder"
 # A scratch copy of the checkout, so the broken ignore list never touches the repo's.
-scratch=$(mktemp -d -t "${prefix}XXXXXX")
 cp "$root/claude-sync" "$root"/compose*.yaml "$root/stignore" "$scratch"
 echo '*.bad[0-9a-f]' >>"$scratch/stignore"
 check "an ignore list Syncthing rejects fails setup with its error" fails_with "invalid pattern" \

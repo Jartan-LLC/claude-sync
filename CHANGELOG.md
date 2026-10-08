@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is not made an introducer.
 - `CLAUDE_SYNC_NAME` runs several instances on one host. `setup` no longer refuses when
   Syncthing's default ports are taken: Syncthing picks free ones, and `setup` prints the
-  web UI and sync ports. `setup --gui-port PORT --sync-port PORT` chooses them.
+  web UI and sync ports. `setup --gui-port PORT --sync-port PORT` chooses them, and
+  `pair`'s hints name this instance's sync port.
 
 [Unreleased]: https://github.com/Jartan-LLC/claude-sync/commits/main
