@@ -6,8 +6,7 @@
 Continuous sync of `~/.claude` across devices: change a setting or write a memory on one
 machine, and it is there on the others.
 
-> **Status:** early. `setup` and `uninstall` work; pairing devices from the command line
-> is next. Until then, pair devices in Syncthing's web UI.
+> **Status:** early. `setup`, `pair` and `uninstall` work on Linux; expect rough edges.
 
 ## How it works
 
@@ -37,11 +36,52 @@ cd claude-sync
 
 `setup` refuses a root-owned target: `chown` it to the user who runs Claude Code. It is
 safe to re-run, rewrites `.stignore` from this repo each time, and prints this device's
-ID. Pair a new device while its `~/.claude` is empty and Claude Code is not running there;
-otherwise its fresh files can replace yours on every device.
+ID. It fails, with Syncthing's message, if Syncthing cannot sync the folder.
 
-To pair, open each device's web UI, add the other device by its ID, and share the `claude`
-folder with it.
+## Pair devices
+
+Run `setup` on every device first; it prints the device's ID. Pair two devices by running
+`pair` on each with the other's ID. The first pairing starts from the files of one device,
+so that one gets `--keep`:
+
+```bash
+./claude-sync pair OTHER-ID --keep    # on the device whose files to start from
+./claude-sync pair FIRST-ID           # on the other device
+```
+
+To add a device later, pair it with any device that already syncs, on both sides. That
+device introduces it to all the others, and them to it, so every device syncs with every
+other directly.
+
+A device that syncs with no other yet joins: it sends nothing until it has the others'
+files, then moves its own changes, such as a fresh `settings.json` from Claude Code, to
+the trash can and syncs both ways. Without this, those newer files would replace yours on
+every device. `pair` waits until the join is done, and is safe to interrupt and re-run.
+Stop Claude Code on the new device until it finishes: a change made just as the join ends
+can still reach the others.
+
+`--keep` keeps this device's files instead, including on a re-run that finishes an
+interrupted join; files the join already moved aside stay in the trash can (see
+[Recover a file](#recover-a-file)). Paired with
+devices that already have files, its files merge with theirs: for each file the newer copy
+wins and the other stays as a conflict copy.
+
+If a device with files of its own would join devices that have none, which happens when
+the first pairing is missing `--keep`, `pair` stops and undoes the pairing without
+discarding anything.
+
+### Private networks
+
+By default devices find each other anywhere, through Syncthing's global discovery and
+relays, with traffic encrypted end to end. `setup --private` turns off global discovery,
+relays and NAT traversal, so each device needs the other's address when pairing:
+
+```bash
+./claude-sync pair OTHER-ID --address tcp://other-host:22000
+```
+
+To correct an address, pair again with the new `--address`. A device stays private when
+`setup` is re-run; `setup --public` returns it to the defaults.
 
 ## Uninstall
 
@@ -67,8 +107,27 @@ Everything in `~/.claude` except what is meaningless or harmful on another machi
 | `daemon/`, `session-env/`, `shell-snapshots/`, `telemetry/` | This machine's daemon, session environments, shell snapshots and unsent telemetry |
 | `*.tmp.<8 hex>`, `*.tmp.<pid>.<12 hex>` | Half-written files mid-save |
 
-Each device keeps the previous copy of anything another device deleted or overwrote for
-14 days, in Syncthing's trash can (`.stversions` in the synced folder).
+## Recover a file
+
+Each device keeps the previous copy of anything another device deleted or overwrote, and
+of anything a join moved aside, for 14 days, in Syncthing's trash can: `.stversions` in
+the synced folder, at the file's own path. Copy it back as the folder's owner:
+
+```bash
+cp ~/.claude/.stversions/settings.json ~/.claude/settings.json
+```
+
+For a Docker volume, run the copy in a container that mounts it, as the volume's owner
+(1000:1000 here; `docker run --rm -v claude-data:/claude busybox stat -c %u:%g /claude`
+prints yours):
+
+```bash
+docker run --rm --user 1000:1000 -v claude-data:/claude busybox \
+    cp /claude/.stversions/settings.json /claude/settings.json
+```
+
+When two devices change a file before syncing, the newer change wins and the other is
+kept beside it as `NAME.sync-conflict-DATE-TIME-DEVICE.EXT`, on every device.
 
 ## Development
 

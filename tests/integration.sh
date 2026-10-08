@@ -8,13 +8,13 @@ set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 readonly root
 readonly prefix=claude-sync-test-
-readonly net=${prefix}net a=${prefix}a b=${prefix}b c=${prefix}c
+readonly net=${prefix}net a=${prefix}a b=${prefix}b c=${prefix}c d=${prefix}d
 readonly listener=${prefix}listener foreign=${prefix}foreign
 readonly vol_a=${prefix}a-data vol_b=${prefix}b-data vol_missing=${prefix}missing
-readonly vol_root=${prefix}root-data vol_c=${prefix}c-data
+readonly vol_root=${prefix}root-data vol_c=${prefix}c-data vol_d=${prefix}d-data
 # Not Syncthing's default 1000, so a match proves the owner was read from the target.
-readonly owner_a=1234:1234 owner_b=2345:2345
-readonly mount_a=type=volume,src=$vol_a mount_b=type=volume,src=$vol_b
+readonly owner_a=1234:1234 owner_b=2345:2345 owner_c=3456:3456 owner_d=4567:4567
+readonly mount_a=type=volume,src=$vol_a mount_b=type=volume,src=$vol_b mount_c=type=volume,src=$vol_c
 image=$(sed -n 's/^ *image: *//p' "$root/compose.yaml")
 readonly image
 [[ -n $image ]] || {
@@ -166,6 +166,39 @@ trash_can_14_days() {
         jq -e '.type == "trashcan" and .params.cleanoutDays == "14"'
 }
 
+network_options() {
+    st "$1" "$2" config options dump-json | jq -c '[.globalAnnounceEnabled, .relaysEnabled, .natEnabled]'
+}
+
+folder_type() {
+    st "$1" "$2" config folders claude-sync type get
+}
+
+knows_device() {
+    st "$1" "$2" config devices list | grep -qx "$3"
+}
+
+no_conflict_files() {
+    [ -z "$(in_target "$1" "find /t -name '*.sync-conflict-*'")" ]
+}
+
+addresses() {
+    st "$1" "$2" config devices "$3" dump-json | jq -r '.addresses | join(" ")'
+}
+
+trusts() {
+    [ "$(st "$1" "$2" config devices "$3" introducer get)" = true ]
+}
+
+# A joining device's pair blocks until caught up; a bound turns a hang into a failure.
+# Not for a background pair: killing a backgrounded function leaves timeout and pair
+# running, so background `timeout ... claude-sync pair` itself.
+pair_bounded() {
+    local node=$1
+    shift
+    CLAUDE_SYNC_NAME=$node timeout 300 "$root/claude-sync" pair "$@"
+}
+
 relative_path_resolved() {
     local err
     err=$(cd "$root" && CLAUDE_SYNC_NAME=$c ./claude-sync setup --path "${prefix}missing" 2>&1 >/dev/null) &&
@@ -186,12 +219,12 @@ snapshot() {
 
 cleanup() {
     local x
-    for x in "$a" "$b" "$c" "$bad_name" "$listener" "$foreign"; do
+    for x in "$a" "$b" "$c" "$d" "$bad_name" "$listener" "$foreign"; do
         guard "$x"
         docker rm --force "$x" >/dev/null 2>&1 || true
     done
-    for x in "$a-config" "$b-config" "$c-config" "$bad_name-config" "$foreign-config" \
-        "$vol_a" "$vol_b" "$vol_c" "$vol_missing" "$vol_root"; do
+    for x in "$a-config" "$b-config" "$c-config" "$d-config" "$bad_name-config" "$foreign-config" \
+        "$vol_a" "$vol_b" "$vol_c" "$vol_d" "$vol_missing" "$vol_root"; do
         guard "$x"
         docker volume rm "$x" >/dev/null 2>&1 || true
     done
@@ -200,15 +233,21 @@ cleanup() {
 }
 
 on_exit() {
-    local status=$? node
+    local status=$? node job
+    for job in $(jobs -p); do
+        kill "$job" 2>/dev/null || true
+    done
     if ((status != 0)); then
-        for node in "$a" "$b"; do
+        for node in "$a" "$b" "$c" "$d"; do
             docker logs --tail 30 "$node" 2>&1 | sed "s/^/[$node] /" || true
         done
+        [[ ! -s $scratch/join.out ]] || sed 's/^/[join] /' "$scratch/join.out"
     fi
     cleanup
+    [[ -z $scratch ]] || rm -rf -- "$scratch"
 }
 
+scratch=""
 cleanup
 # -E carries the trap into functions; the subshell test skips command substitutions in
 # check arguments, which fail on purpose.
@@ -221,13 +260,15 @@ docker volume create "$vol_a" >/dev/null
 docker volume create "$vol_b" >/dev/null
 docker volume create "$vol_root" >/dev/null
 docker volume create "$vol_c" >/dev/null
-in_target "type=volume,src=$vol_c" "chown $owner_a /t"
+docker volume create "$vol_d" >/dev/null
+in_target "$mount_c" "chown $owner_c /t"
 fixture="cd /t"
 for f in "${synced[@]}" "${ignored[@]}"; do
     fixture+=" && mkdir -p \"\$(dirname '$f')\" && echo 'fixture $f' >'$f'"
 done
 in_target "$mount_a" "$fixture && chown -R $owner_a /t"
 in_target "$mount_b" "chown $owner_b /t"
+in_target "type=volume,src=$vol_d" "chown $owner_d /t"
 
 echo "# setup rejects bad input"
 check "a missing volume is rejected" fails_with "no Docker volume named $vol_missing" \
@@ -248,24 +289,33 @@ check "a busy port is refused" fails_with "port 8384 is in use" \
     env CLAUDE_SYNC_COMPOSE_OVERRIDE="$root/tests/compose.busy.yaml" \
     CLAUDE_SYNC_NAME="$c" "$root/claude-sync" setup --volume "$vol_c"
 check "  and leaves no Syncthing state" fails docker volume inspect "$c-config"
-check "  nor writes to the target" in_target "type=volume,src=$vol_c" '[ ! -e /t/.stignore ]'
+check "  nor writes to the target" in_target "$mount_c" '[ ! -e /t/.stignore ]'
 docker rm --force "$listener" >/dev/null
 check "no container or state is left behind" fails docker container inspect "$a"
 check "  nor Syncthing state" fails docker volume inspect "$a-config"
 
-echo "# setup --volume"
-out=$(claude_sync "$a" setup --volume "$vol_a")
+echo "# setup --volume --private"
+out=$(claude_sync "$a" setup --volume "$vol_a" --private)
 id_a=$(docker exec -u "$owner_a" "$a" syncthing device-id)
 check "prints this device's ID" grep -qF "This device ID: $id_a" <<<"$out"
 check "Syncthing writes as the volume's owner" wait_for owned_by "$mount_a" .stfolder "$owner_a"
 check ".stignore is the repo's stignore" stignore_installed "$mount_a"
 check "trash can versioning, 14 days" trash_can_14_days "$a" "$owner_a"
+check "no global discovery, relays or NAT traversal" \
+    [ "$(network_options "$a" "$owner_a")" = '[false,false,false]' ]
 
 echo "# setup --volume, again"
 out=$(claude_sync "$a" setup --volume "$vol_a")
 check "keeps the device ID" grep -qF "This device ID: $id_a" <<<"$out"
 check "keeps exactly one folder" [ "$(st "$a" "$owner_a" config folders list)" = claude-sync ]
 check "keeps trash can versioning" trash_can_14_days "$a" "$owner_a"
+check "stays private" [ "$(network_options "$a" "$owner_a")" = '[false,false,false]' ]
+check "refuses --private with --public" fails_with "only one of --private or --public" \
+    claude_sync "$a" setup --volume "$vol_a" --private --public
+claude_sync "$a" setup --volume "$vol_a" --public >/dev/null
+check "--public restores Syncthing's defaults" \
+    [ "$(network_options "$a" "$owner_a")" = '[true,true,true]' ]
+claude_sync "$a" setup --volume "$vol_a" --private >/dev/null
 check "refuses a different target" fails_with "already set up for $vol_a" \
     claude_sync "$a" setup --volume "$vol_b"
 check "  and writes nothing to it" in_target "$mount_b" '[ ! -e /t/.stignore ]'
@@ -280,16 +330,57 @@ check "a path with a comma is rejected" fails_with comma claude_sync "$c" setup 
 check "a relative path is made absolute" relative_path_resolved
 check "the overlay bind-mounts the directory" path_overlay_renders
 
+echo "# setup fails when Syncthing cannot run the folder"
+# A scratch copy of the checkout, so the broken ignore list never touches the repo's.
+scratch=$(mktemp -d -t "${prefix}XXXXXX")
+cp "$root/claude-sync" "$root"/compose*.yaml "$root/stignore" "$scratch"
+echo '*.bad[0-9a-f]' >>"$scratch/stignore"
+check "an ignore list Syncthing rejects fails setup with its error" fails_with "invalid pattern" \
+    env CLAUDE_SYNC_NAME="$c" "$scratch/claude-sync" setup --volume "$vol_c" --private
+claude_sync "$c" uninstall >/dev/null
+
+echo "# pair rejects bad input"
+check "pair before setup is refused" fails_with "run setup first" \
+    pair_bounded "$c" "$id_a" --address "tcp://$a:22000"
+check "this device's own ID is refused" fails_with "this device's own ID" \
+    pair_bounded "$a" "$id_a" --address "tcp://$a:22000"
+check "an invalid device ID is refused" fails_with "not a device ID" \
+    pair_bounded "$a" not-a-device-id --address "tcp://$b:22000"
+
 echo "# setup --volume, second device"
-claude_sync "$b" setup --volume "$vol_b" >/dev/null
+claude_sync "$b" setup --volume "$vol_b" --private >/dev/null
 id_b=$(docker exec -u "$owner_b" "$b" syncthing device-id)
 check "Syncthing writes as the volume's owner" wait_for owned_by "$mount_b" .stfolder "$owner_b"
 
+echo "# pair, the first two devices"
+# Canonical in form, so only Syncthing's check character catches it.
+bad_id=$([[ ${id_b:0:1} == A ]] && echo B || echo A)${id_b:1}
+check "a device ID with a wrong check character is refused" fails_with "cannot add device" \
+    pair_bounded "$a" "$bad_id" --address "tcp://$b:22000"
+check "  and leaves the folder send-receive" [ "$(folder_type "$a" "$owner_a")" = sendreceive ]
+check "a private device needs --address" fails_with "--address" pair_bounded "$a" "$id_b" --keep
+check "  and adds no device" [ "$(st "$a" "$owner_a" config devices list)" = "$id_a" ]
+# B starts joining before A pairs with it, and is cut off while it waits.
+check "a join cut off while waiting" fails env CLAUDE_SYNC_NAME="$b" timeout 10 \
+    "$root/claude-sync" pair "$id_a" --address "tcp://$a:22000"
+check "  leaves B's folder receive-only" [ "$(folder_type "$b" "$owner_b")" = receiveonly ]
+check "A pairs with B, keeping its files" pair_bounded "$a" "$id_b" --address "tcp://$b:22000" --keep
+check "pairing again changes nothing" pair_bounded "$a" "$id_b" --address "tcp://$b:22000"
+check "B's join finishes when re-run" pair_bounded "$b" "$id_a" --address "tcp://$a:22000"
+check "B trusts A as introducer" trusts "$b" "$owner_b" "$id_a"
+check "A trusts B as introducer" trusts "$a" "$owner_a" "$id_b"
+check "B's folder is send-receive after joining" [ "$(folder_type "$b" "$owner_b")" = sendreceive ]
+check "pairing B again changes nothing" pair_bounded "$b" "$id_a" --address "tcp://$a:22000"
+check "  and leaves it send-receive" [ "$(folder_type "$b" "$owner_b")" = sendreceive ]
+check "an invalid address is refused" fails_with "not an address" \
+    pair_bounded "$a" "$id_b" --address 'tcp://b"x'
+check "  and leaves the address as it was" [ "$(addresses "$a" "$owner_a" "$id_b")" = "tcp://$b:22000" ]
+pair_bounded "$a" "$id_b" --address "tcp://elsewhere:22000" >/dev/null
+check "pairing again with --address replaces the address" \
+    [ "$(addresses "$a" "$owner_a" "$id_b")" = "tcp://elsewhere:22000" ]
+check "  back again too" pair_bounded "$a" "$id_b" --address "tcp://$b:22000"
+
 echo "# ignore list, across two devices"
-st "$a" "$owner_a" config devices add --device-id "$id_b" --addresses "tcp://$b:22000"
-st "$a" "$owner_a" config folders claude-sync devices add --device-id "$id_b"
-st "$b" "$owner_b" config devices add --device-id "$id_a" --addresses "tcp://$a:22000"
-st "$b" "$owner_b" config folders claude-sync devices add --device-id "$id_a"
 if wait_for synced_to_b; then
     for f in "${synced[@]}"; do
         check "syncs $f" [ "$(in_target "$mount_b" "cat '/t/$f'")" = "fixture $f" ]
@@ -318,6 +409,77 @@ in_target "$mount_b" "echo b >'/t/$task/.lock' && chown $owner_b '/t/$task/.lock
 in_target "$mount_a" "rm -r '/t/$task'"
 check "a task folder deleted on A goes on B despite B's own .lock" \
     wait_for in_target "$mount_b" "[ ! -e '/t/$task' ]"
+
+echo "# pair, the first device of a new set without --keep"
+# C's claude.json is newer than A's, so Syncthing's newest-wins rule alone would pick C's.
+in_target "$mount_c" "echo 'c claude.json' >/t/claude.json && \
+    echo c >/t/c-only.md && chown -R $owner_c /t"
+claude_sync "$c" setup --volume "$vol_c" --private >/dev/null
+id_c=$(docker exec -u "$owner_c" "$c" syncthing device-id)
+# C, with files, and D, with none, both pair with no other device yet: both join, and
+# only --keep on C would give D anything to join.
+claude_sync "$d" setup --volume "$vol_d" --private >/dev/null
+id_d=$(docker exec -u "$owner_d" "$d" syncthing device-id)
+CLAUDE_SYNC_NAME=$d timeout 300 "$root/claude-sync" pair "$id_c" --address "tcp://$c:22000" >/dev/null 2>&1 &
+d_pairing=$!
+check "joining devices with no files is refused" fails_with "has no files to join" \
+    pair_bounded "$c" "$id_d" --address "tcp://$d:22000"
+check "  and C keeps its files" [ "$(in_target "$mount_c" 'cat /t/claude.json')" = "c claude.json" ]
+check "  all of them" in_target "$mount_c" '[ -e /t/c-only.md ]'
+check "  and is unpaired" [ "$(st "$c" "$owner_c" config devices list)" = "$id_c" ]
+check "  and send-receive again" [ "$(folder_type "$c" "$owner_c")" = sendreceive ]
+kill "$d_pairing" 2>/dev/null || true
+docker rm --force "$d" >/dev/null
+wait "$d_pairing" || true
+
+echo "# pair, a device with its own files joining"
+# Started before A accepts C, so nothing can let it finish but waiting for A.
+CLAUDE_SYNC_NAME=$c timeout 300 "$root/claude-sync" pair "$id_a" --address "tcp://$a:22000" \
+    >"$scratch/join.out" 2>&1 &
+joining=$!
+check "a join says what to run on the device it joins through" \
+    wait_for grep -qF "claude-sync pair $id_c" "$scratch/join.out"
+check "  and waits for it" kill -0 "$joining"
+check "  and leaves C's files alone meanwhile" [ "$(in_target "$mount_c" 'cat /t/claude.json')" = "c claude.json" ]
+pair_bounded "$a" "$id_c" --address "tcp://$c:22000" >/dev/null
+check "C joins once A accepts" wait "$joining"
+check "C gets A's claude.json" [ "$(in_target "$mount_c" 'cat /t/claude.json')" = "fixture claude.json" ]
+check "C's own file is discarded" in_target "$mount_c" '[ ! -e /t/c-only.md ]'
+check "  into C's trash can" in_target "$mount_c" '[ -e /t/.stversions/c-only.md ]'
+check "C's folder is send-receive after joining" [ "$(folder_type "$c" "$owner_c")" = sendreceive ]
+in_target "$mount_c" "echo c >/t/from-c.md && chown $owner_c /t/from-c.md"
+check "C's edits reach A" wait_for in_target "$mount_a" '[ -e /t/from-c.md ]'
+check "  and B" wait_for in_target "$mount_b" '[ -e /t/from-c.md ]'
+# Checked once C's edits have spread, so anything C sent on joining would have too.
+check "A gets no conflict files" no_conflict_files "$mount_a"
+check "B gets no conflict files" no_conflict_files "$mount_b"
+
+echo "# every device introduces the others"
+check "B learns of C" wait_for knows_device "$b" "$owner_b" "$id_c"
+check "C learns of B" wait_for knows_device "$c" "$owner_c" "$id_b"
+# D starts over with a file of its own and pairs through B rather than A. Its join is cut
+# off, and --keep finishes it without discarding the file.
+claude_sync "$d" uninstall >/dev/null
+in_target "type=volume,src=$vol_d" "echo d >/t/d-only.md && chown $owner_d /t/d-only.md"
+claude_sync "$d" setup --volume "$vol_d" --private >/dev/null
+id_d=$(docker exec -u "$owner_d" "$d" syncthing device-id)
+check "D's join cut off while waiting" fails env CLAUDE_SYNC_NAME="$d" timeout 10 \
+    "$root/claude-sync" pair "$id_b" --address "tcp://$b:22000"
+check "  leaves D's folder receive-only" [ "$(folder_type "$d" "$owner_d")" = receiveonly ]
+pair_bounded "$b" "$id_d" --address "tcp://$d:22000" >/dev/null
+check "--keep ends it" pair_bounded "$d" "$id_b" --address "tcp://$b:22000" --keep
+check "  leaving D's folder send-receive" [ "$(folder_type "$d" "$owner_d")" = sendreceive ]
+check "  and D's own file in place" in_target "type=volume,src=$vol_d" '[ -e /t/d-only.md ]'
+check "D's own file reaches A" wait_for in_target "$mount_a" '[ -e /t/d-only.md ]'
+check "A learns of D" wait_for knows_device "$a" "$owner_a" "$id_d"
+check "C learns of D" wait_for knows_device "$c" "$owner_c" "$id_d"
+check "D learns of A and C" wait_for knows_device "$d" "$owner_d" "$id_a"
+check "  and C" wait_for knows_device "$d" "$owner_d" "$id_c"
+check "A trusts D as introducer" wait_for trusts "$a" "$owner_a" "$id_d"
+check "D trusts A as introducer" wait_for trusts "$d" "$owner_d" "$id_a"
+in_target "type=volume,src=$vol_d" "echo d >/t/from-d.md && chown $owner_d /t/from-d.md"
+check "D's edits reach A" wait_for in_target "$mount_a" '[ -e /t/from-d.md ]'
+check "  and C" wait_for in_target "$mount_c" '[ -e /t/from-d.md ]'
 
 echo "# uninstall refuses what claude-sync did not create"
 # One foreign object at a time, so each refusal can only come from its own check.
