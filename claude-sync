@@ -108,7 +108,8 @@ setup() {
 
     local created_config=""
     if docker volume inspect "$name-config" >/dev/null 2>&1; then
-        ours_volume "$name-config" || die "volume $name-config exists but was not created by claude-sync"
+        ours_volume "$name-config" ||
+            die "volume $name-config exists but was not created by claude-sync; if it is state from an earlier claude-sync, remove it with: docker volume rm $name-config"
     else
         docker volume create --label "$label" "$name-config" >/dev/null
         created_config=1
@@ -130,7 +131,7 @@ setup() {
         for port in "${ports[@]}"; do
             # shellcheck disable=SC2016 # expanded by the container's shell
             probe=$(compose run --rm --no-deps --entrypoint sh syncthing \
-                -c 'nc -z 127.0.0.1 "$1"; echo "nc=$?"' sh "$port" 2>&1) || true
+                -c 'nc -z 127.0.0.1 "$1"; echo "nc=$?"' sh "$port" 2>&1 </dev/null) || true
             case ${probe##*$'\n'} in
                 nc=1) ;;
                 nc=0) refusal="port $port is in use; is another Syncthing running on this host?" ;;
@@ -170,7 +171,8 @@ uninstall() {
         container=1
     fi
     if docker volume inspect "$name-config" >/dev/null 2>&1; then
-        ours_volume "$name-config" || die "volume $name-config was not created by claude-sync; not removing it"
+        ours_volume "$name-config" ||
+            die "volume $name-config was not created by claude-sync; not removing it (if it is state from an earlier claude-sync, remove it with: docker volume rm $name-config)"
         volume=1
     fi
     if [[ -n $container ]]; then

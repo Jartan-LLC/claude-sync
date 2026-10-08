@@ -62,7 +62,7 @@ Everything in `~/.claude` except what is meaningless or harmful on another machi
 | `.update.lock`, `ide/*.lock`, `tasks/*/.lock`, `plugins/cache/**/.in_use` | Held by a process on one machine |
 | `plugins/marketplaces/` | Git clones each machine pulls on its own |
 | `daemon/`, `session-env/`, `shell-snapshots/`, `telemetry/` | This machine's daemon, session environments, shell snapshots and unsent telemetry |
-| `*.tmp.<digits>*` | Half-written files mid-save |
+| `*.tmp.<8 hex>`, `*.tmp.<pid>.<12 hex>` | Half-written files mid-save |
 
 Each device keeps the previous copy of anything another device deleted or overwrote for
 14 days, in Syncthing's trash can (`.stversions` in the synced folder).

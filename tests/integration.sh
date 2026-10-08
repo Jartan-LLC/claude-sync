@@ -62,7 +62,8 @@ readonly ignored=(
     session-env/0b6c1f9e-4d2a-4c8e-9f3b-2a7d5e8c1b40/sessionstart-hook-1.sh
     shell-snapshots/snapshot-bash-1700000000000-abc123.sh
     telemetry/1p_failed_events.0b6c1f9e.json
-    settings.json.tmp.4242.1700000000
+    settings.json.tmp.ab12cd34
+    history.jsonl.tmp.4242.0123456789ab
 )
 
 failures=0
@@ -207,7 +208,10 @@ on_exit() {
 }
 
 cleanup
-trap 'echo "aborted at tests/integration.sh:$LINENO" >&2' ERR
+# -E carries the trap into functions; the subshell test skips command substitutions in
+# check arguments, which fail on purpose.
+set -E
+trap '((BASH_SUBSHELL == 0)) && echo "aborted at tests/integration.sh:$LINENO" >&2' ERR
 trap on_exit EXIT
 
 docker network create "$net" >/dev/null
@@ -237,6 +241,7 @@ check "a one-character CLAUDE_SYNC_NAME is rejected" fails_with CLAUDE_SYNC_NAME
     claude_sync x setup --volume "$vol_missing"
 docker run -d --name "$listener" --entrypoint sh "$image" \
     -c 'while true; do nc -l -p 8384 >/dev/null; done' >/dev/null
+wait_for docker exec "$listener" nc -z 127.0.0.1 8384
 check "a busy port is refused" fails_with "port 8384 is in use" \
     env CLAUDE_SYNC_COMPOSE_OVERRIDE="$root/tests/compose.busy.yaml" \
     CLAUDE_SYNC_NAME="$c" "$root/claude-sync" setup --volume "$vol_c"
@@ -301,8 +306,8 @@ if wait_for synced_to_b; then
 else
     check "B catches up with A" false
 fi
-# 000: no connection at all. An HTTP error would mean the port is open.
 check "A's sync port is reachable from another host" docker exec "$b" nc -z "$a" 22000
+# 000: no connection at all. An HTTP error would mean the port is open.
 check "A's web UI is unreachable from another host" [ "$(docker exec "$b" \
     curl -s -o /dev/null -w '%{http_code}' -m 3 "http://$a:8384/rest/noauth/health")" = 000 ]
 
@@ -313,13 +318,15 @@ check "a task folder deleted on A goes on B despite B's own .lock" \
     wait_for in_target "$mount_b" "[ ! -e '/t/$task' ]"
 
 echo "# uninstall refuses what claude-sync did not create"
+# One foreign object at a time, so each refusal can only come from its own check.
 docker run -d --name "$foreign" --entrypoint sleep "$image" 600 >/dev/null
-docker volume create "$foreign-config" >/dev/null
-check "a foreign container is refused" fails_with "not created by claude-sync" claude_sync "$foreign" uninstall
+check "a foreign container is refused" fails_with "container $foreign was not created by claude-sync" \
+    claude_sync "$foreign" uninstall
 check "  and survives" docker container inspect "$foreign"
-check "  as does its volume" docker volume inspect "$foreign-config"
 docker rm --force "$foreign" >/dev/null
-check "a foreign volume is refused" fails_with "not created by claude-sync" claude_sync "$foreign" uninstall
+docker volume create "$foreign-config" >/dev/null
+check "a foreign volume is refused" fails_with "volume $foreign-config was not created by claude-sync" \
+    claude_sync "$foreign" uninstall
 check "  and survives" docker volume inspect "$foreign-config"
 
 echo "# uninstall"

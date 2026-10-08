@@ -24,5 +24,8 @@
 /shell-snapshots
 /telemetry
 
-// Half-written files mid-save, such as settings.json.tmp.<pid>.<time>.
-*.tmp.[0-9]*
+// Half-written files mid-save: Claude Code names them <file>.tmp.<8 hex> or
+// <file>.tmp.<pid>.<12 hex>. Each ? stands for a hex digit, since Syncthing's glob takes
+// only one range per [] class and rejects the whole file otherwise.
+*.tmp.????????
+*.tmp.[0-9]*.????????????
