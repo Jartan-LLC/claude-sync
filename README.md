@@ -135,12 +135,15 @@ discarding anything.
 ./claude-sync unpair OLD-ID    # on any device that syncs
 ```
 
-`unpair` removes the device on every device, wherever you run it. It lists the ID in
-`.claude-sync-unpaired` in the synced folder, and each device removes the devices listed
-there, again whenever an introduction brings one back. Once every device refuses the
-removed one, it stops syncing; run `uninstall` there to remove its state. Pairing the
-device again with `pair` takes it off the list. A device set up before claude-sync had
-`unpair` applies the list once `setup` has run there again.
+`unpair` removes the device on every device, wherever you run it. It adds a file named
+after the ID to the `.claude-sync-unpaired` directory in the synced folder, and each
+device removes the devices listed there, again whenever an introduction brings one back.
+Once every device refuses the removed one, it stops syncing; run `uninstall` there to
+remove its state. Pairing the device again with `pair` takes it off the list. `unpair`
+refuses on a device that is still joining; finish the join first. A device set up before
+claude-sync had `unpair` applies the list once `setup` has run there again, and one using
+its own Syncthing applies it when claude-sync runs there (see [Use your own
+Syncthing](#use-your-own-syncthing)).
 
 ### Private networks
 
@@ -170,7 +173,8 @@ claude-sync's `.claude-sync-unpaired`, stay in it and can be deleted, though del
 `.stversions` empties the trash can.
 
 If you set up with `--use-host-syncthing`, `uninstall` removes only claude-sync's folder
-from your Syncthing, and the devices you paired stay. Syncthing deletes the folder's
+from your Syncthing, and the devices you paired stay, apart from any `unpair` removed.
+Syncthing deletes the folder's
 `.stfolder` itself.
 
 ## What syncs

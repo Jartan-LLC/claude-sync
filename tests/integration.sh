@@ -725,7 +725,7 @@ check "  which keeps D until claude-sync runs there" \
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 reconnect "$a" "$owner_a" "$id_h"
 check "the host device, still sharing with D, introduces it to A again" \
-    sh -c "docker logs --since $since $a 2>&1 | grep 'vouched for by introducer' | grep -q device=${id_d:0:7}"
+    wait_for sh -c "docker logs --since $since $a 2>&1 | grep 'vouched for by introducer' | grep -q device=${id_d:0:7}"
 check "  and A removes it again" wait_for forgets "$a" "$owner_a" "$id_d"
 host_sync pair "$id_a" --address "tcp://$a:22000" >/dev/null
 check "the host device drops D from claude-sync's folder once claude-sync runs there" \
@@ -745,6 +745,7 @@ in_target "$mount_b" "echo b >/t/after-unpair.md && chown $owner_b /t/after-unpa
 check "  and D syncs again" wait_for in_target "type=volume,src=$vol_d" '[ -e /t/after-unpair.md ]'
 
 echo "# uninstall, on the host's Syncthing"
+wait_for on_host test -e claude/after-unpair.md
 wait_for host_idle
 before=$(host_snapshot)
 devices=$(on_host syncthing cli config devices list | sort)

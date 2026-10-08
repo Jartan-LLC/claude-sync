@@ -259,10 +259,13 @@ companion_script() {
     cat <<'EOF'
 apply() {
     [ -d "$1" ] || return 0
-    devices=$(syncthing cli config devices list 2>/dev/null) || return 0
+    self=$(syncthing cli show system 2>/dev/null | sed -n 's/^  "myID": "\(.*\)",$/\1/p')
+    { [ -n "$self" ] && devices=$(syncthing cli config devices list 2>/dev/null); } || return 0
     for d in $devices; do
-        [ -e "$1/$d" ] || continue
-        syncthing cli config folders "$2" devices "$d" delete 2>/dev/null
+        # Syncthing would re-create this device's own entry, losing its name.
+        [ "$d" != "$self" ] && [ -e "$1/$d" ] || continue
+        # Either may have gone already, removed by another pass of this script.
+        syncthing cli config folders "$2" devices "$d" delete 2>/dev/null || :
         # A device that also syncs other folders of this Syncthing stays for those.
         shared=""
         for f in $(syncthing cli config folders list); do
@@ -270,8 +273,9 @@ apply() {
                 shared=1
             fi
         done
-        [ -n "$shared" ] || syncthing cli config devices "$d" delete
+        [ -n "$shared" ] || syncthing cli config devices "$d" delete 2>/dev/null || :
     done
+    return 0
 }
 if [ "${3-}" = loop ]; then
     while :; do
@@ -300,9 +304,9 @@ in_folder() {
     fi
 }
 
-# Takes ID off the unpaired list, so the device can be paired again. The deletion is sent
-# before pair introduces the device, or the other devices' companions would remove it
-# again on its way in.
+# Takes ID off the unpaired list, so the device can be paired again. The deletion is
+# indexed, and so offered to the other devices, before pair introduces the device, or
+# their companions would remove it again on its way in.
 forget_unpaired() {
     # shellcheck disable=SC2016 # expanded by sh
     in_folder '[ -e "$1" ] && rm "$1"' sh "$folder_path/$unpaired_dir/$1" || return 0
@@ -574,6 +578,8 @@ pair() {
         known=1
     fi
     forget_unpaired "$id"
+    # A device set up again on files that list it would otherwise unpair itself everywhere.
+    forget_unpaired "$self"
     err=$(st config devices add --device-id "$id" --addresses "$address" 2>&1) ||
         die "cannot add device $id: $err"
     # Adding a known device changes nothing (Syncthing 2.1.6), so a corrected address is
@@ -753,7 +759,7 @@ uninstall() {
             folder_path=$(st config folders "$folder_id" path get)
             apply_unpaired
             st config folders "$folder_id" delete
-            echo "Removed the $folder_id folder from the Syncthing on this host; its devices and other folders stay."
+            echo "Removed the $folder_id folder from the Syncthing on this host; its other folders stay, and so do its devices, apart from any unpaired."
         fi
     fi
     echo "The synced files are untouched."
