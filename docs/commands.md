@@ -87,7 +87,7 @@ With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninsta
 | `not a device ID` | Copy the ID as the other device's `setup` printed it |
 | `cannot add device` | Syncthing's reason follows; if it is about the ID, copy it again as the other device's `setup` printed it |
 | `this device is private` | Give the other device's `--address` |
-| `has no files to join` | Nothing was discarded. On the device whose files to start from, rerun `pair` with `--keep` (here, the command the message prints); if the other device stopped with this message too, rerun `pair` there without `--keep`. See [Joining](pairing.md#joining) |
+| `has no files to join` | Nothing was discarded. On the device whose files to start from, rerun `pair` with `--keep`; if that is this device, rerun the command the message prints. If the other device stopped with this message too, rerun `pair` there without `--keep`. See [Joining](pairing.md#joining) |
 | `files here keep changing during the join` | Stop Claude Code on this device and rerun `pair` |
 | `cannot reach Syncthing` | Check that claude-sync's container (`docker ps`) or your own Syncthing is running, then rerun; a join picks up where it stopped |
 | `this device is still joining` | Finish the join with `pair`, then rerun `unpair` |
