@@ -127,7 +127,8 @@ folder_status() {
 }
 
 # Dies with Syncthing's own message when it cannot run the folder, such as an ignore
-# pattern it rejects; the scan that loads the ignore list ends in idle or error.
+# pattern it rejects; the scan that loads the ignore list ends in idle or error. Dies too
+# when Syncthing's API never answers, rather than reporting a scan still under way.
 wait_folder_started() {
     local i status state reached=""
     for ((i = 0; i < 120; i++)); do
@@ -229,8 +230,10 @@ host_syncthing_configured() {
 host_folders() {
     local config
     config=$(host_config_file) || return 0
-    sed -n 's/^ *<folder id="\([^"]*\)" [^>]*path="\([^"]*\)".*/\1\t\2/p' "$config" |
-        sed -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&quot;/"/g' -e "s/&apos;/'/g" -e 's/&amp;/\&/g'
+    # A folder with no ID is the defaults block's template for new folders.
+    sed -n 's/^ *<folder id="\([^"][^"]*\)" [^>]*path="\([^"]*\)".*/\1\t\2/p' "$config" |
+        sed -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&quot;/"/g' -e 's/&#34;/"/g' \
+            -e "s/&apos;/'/g" -e "s/&#39;/'/g" -e 's/&amp;/\&/g'
 }
 
 # PATH with a leading ~ expanded and, where it exists here, symlinks resolved: Syncthing
@@ -258,7 +261,7 @@ target_taken_by() {
             return
         fi
     done < <(docker ps -aq | xargs -r docker container inspect --format \
-        '{{.Name}}|{{.Config.Image}}|{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{else}}{{.Source}}{{end}};{{end}}')
+        '{{.Name}}|{{.Config.Image}}|{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{else}}{{.Source}}{{end}};{{end}}' 2>/dev/null)
 }
 
 # Points the helpers at the Syncthing running as this user on this host.
@@ -402,19 +405,17 @@ setup() {
         return
     fi
     command -v docker >/dev/null || die "Docker is required"
+    # Docker cleans a bind mount's path, so the target is compared as Docker will show it;
+    # resolved without needing to exist here, as Docker resolves it on its host.
+    [[ $kind != path ]] || target=$(realpath -ms -- "$target")
     # Under the default name, pair and uninstall would act on a container instead of the
-    # Syncthing that already syncs claude-sync's folder; with --path, the container would
-    # usually also be a second device on the same files, as it would be beside any folder of
-    # that Syncthing inside or around the directory.
-    if [[ $name == "$default_name" ]] && host_syncthing_configured; then
+    # Syncthing that already syncs claude-sync's folder. With --path, under any name, the
+    # container would also be a second device on files a folder of that Syncthing syncs.
+    if host_syncthing_configured; then
         local fid fpath real_target=""
-        if [[ $kind == path ]]; then
-            real_target=$target
-            [[ $real_target == /* ]] || real_target=$PWD/$real_target
-            real_target=$(real_path "$real_target")
-        fi
+        [[ $kind != path ]] || real_target=$(real_path "$target")
         while IFS=$'\t' read -r fid fpath; do
-            if [[ $fid == "$folder_id" ]]; then
+            if [[ $fid == "$folder_id" && $name == "$default_name" ]]; then
                 [[ $kind == volume ]] ||
                     die "already set up in the Syncthing on this host; add --use-host-syncthing, or run uninstall first"
                 die "the Syncthing on this host already syncs claude-sync's folder; to sync this volume beside it, set CLAUDE_SYNC_NAME to another name"
@@ -434,7 +435,6 @@ setup() {
         # filesystem when claude-sync runs inside a container sharing the host's daemon.
         # --mount takes comma-separated fields, with no quoting for a comma in a value.
         [[ $target != *,* ]] || die "paths containing a comma are not supported: $target"
-        [[ $target == /* ]] || target=$PWD/$target
         mount="type=bind,src=$target,dst=/target"
     fi
 
@@ -494,13 +494,14 @@ setup() {
     compose up --detach --wait --wait-timeout 120 --quiet-pull
 
     # A web UI on the sync port would leave nothing to reach Syncthing through, so the two
-    # are checked as they will end up. Each moves before the one that takes its port, or
-    # the second would wait on Syncthing's retry; an exact swap still does.
+    # are checked as they will end up. The web UI moves first when the sync port takes its
+    # port, or the sync listener would wait on Syncthing's retry; not in an exact swap,
+    # where the web UI could not bind until then and setup would lose the API.
     local gui sync current_gui
     { current_gui=$(gui_port) && gui=${want_gui:-$current_gui} && sync=${want_sync:-$(sync_port)}; } ||
         die "cannot reach Syncthing in container $name"
     [[ $gui != "$sync" ]] || die "the web UI and sync ports would both be $gui; choose different ones"
-    if [[ $sync == "$current_gui" ]]; then
+    if [[ $sync == "$current_gui" && $gui != "$(sync_port)" ]]; then
         move_gui_port "$want_gui"
         move_sync_port "$want_sync"
     else

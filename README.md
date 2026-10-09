@@ -148,7 +148,9 @@ folder. Each device removes the devices listed there, and removes them again if 
 introduction brings one back. Once all of them refuse it, the removed device stops
 syncing; run `uninstall` on it to clear its state.
 
-To pair the device again later, use `pair` as usual, which takes it off the list.
+To pair the device again later, use `pair` as usual, which takes it off the list; on a
+device that is still joining, `pair` refuses a listed device, so pair it from one that
+already syncs.
 `unpair` refuses to run on a device that is still joining; finish the join first.
 
 Two kinds of device apply the list late:

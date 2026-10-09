@@ -250,12 +250,12 @@ host_idle() {
         jq -e '.state == "idle" and .needTotalItems == 0'
 }
 
-# Without .stfolder, Syncthing's marker, which it deletes along with the folder.
 # The files of the user's other folders.
 host_others() {
     on_host sh -c "find photos notes tilde -type f ! -path '*/.stfolder/*' -exec sha256sum {} + | sort"
 }
 
+# Without .stfolder, Syncthing's marker, which it deletes along with the folder.
 host_snapshot() {
     on_host sh -c 'cd claude && find . -path ./.stfolder -prune -o -print | sort &&
         find . -path ./.stfolder -prune -o -type f -exec sha256sum {} + | sort'
@@ -410,6 +410,8 @@ chmod +x "$scratch/host/syncthing"
 host_folders() {
     {
         echo '<configuration version="51">'
+        # As Syncthing writes it: the template for new folders, with no ID or path.
+        printf '    <defaults>\n        <folder id="" label="" path="" type="sendreceive">\n        </folder>\n    </defaults>\n'
         while (($#)); do
             printf '    <folder id="%s" label="x" path="%s" type="sendreceive">\n    </folder>\n' "$1" "$2"
             shift 2
@@ -433,9 +435,15 @@ check "a directory inside a folder of that Syncthing is refused" fails_with "fol
     beside_host --path "$elsewhere/photos/sub"
 check "  and one around it" fails_with "folder photos already syncs" beside_host --path "$elsewhere"
 check "  but not one beside it" fails_with "cannot read $elsewhere/photos2" beside_host --path "$elsewhere/photos2"
+check "  nor one here, where the folder template's empty path would point" \
+    fails_with "cannot read $PWD/${prefix}here" beside_host --path "${prefix}here"
+check "  and under another name too" fails_with "folder photos already syncs" \
+    env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME="$c" "$root/claude-sync" setup --path "$elsewhere/photos/sub"
 host_folders music "$elsewhere/rock&amp;roll"
 check "  read with the path's XML escapes undone" fails_with "folder music already syncs" \
     beside_host --path "$elsewhere/rock&roll/live"
+host_folders notes "$elsewhere/it&#39;s"
+check "  numeric ones too" fails_with "folder notes already syncs" beside_host --path "$elsewhere/it's/x"
 check "no container or state is left behind" fails docker container inspect "$a"
 check "  nor Syncthing state" fails docker volume inspect "$a-config"
 
@@ -473,6 +481,8 @@ check "a missing directory is rejected" fails_with "cannot read /nonexistent/$pr
     claude_sync "$c" setup --path "/nonexistent/$prefix$$"
 check "a path with a comma is rejected" fails_with comma claude_sync "$c" setup --path /tmp/a,b
 check "a relative path is made absolute" relative_path_resolved
+check "  and one spelled loosely is cleaned as Docker does" fails_with "cannot read $root/${prefix}missing" \
+    claude_sync "$c" setup --path "$root/./${prefix}missing/"
 check "the overlay bind-mounts the directory" path_overlay_renders
 
 echo "# setup fails when Syncthing cannot run the folder"
@@ -848,6 +858,9 @@ check "the sync port moving onto the web UI's" \
 check "  moves the web UI first" listens "$g" 8585
 # Syncthing retries a failed listener only after about a minute.
 check "  so the sync port binds without waiting for a retry" listens_soon "$g" 8484
+check "an exact swap of the two ports" beside "$g" setup --volume "$vol_g" --gui-port 8484 --sync-port 8585
+check "  keeps Syncthing's API in reach" st "$g" "$owner_g" show version
+check "  and the sync port binds once Syncthing retries" wait_for listens "$g" 8585
 check "a target another instance syncs is refused" fails_with "container $e already syncs $vol_e" \
     beside "$k" setup --volume "$vol_e"
 check "  creating no Syncthing state" fails docker volume inspect "$k-config"
