@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-09
+
 ### Added
 
 - Each release ships claude-sync as a single file, with its SHA-256, and as an RPM for
@@ -35,4 +37,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Syncthing applies; a device using its own Syncthing applies it when claude-sync runs
   there.
 
-[Unreleased]: https://github.com/Jartan-LLC/claude-sync/commits/main
+[Unreleased]: https://github.com/Jartan-LLC/claude-sync/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Jartan-LLC/claude-sync/releases/tag/v0.1.0
