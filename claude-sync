@@ -228,10 +228,11 @@ host_syncthing_configured() {
 # This user's Syncthing's folders, as ID, a tab and path per line, from its config file, so
 # whether it runs or not.
 host_folders() {
-    local config
+    local config tab=$'\t'
     config=$(host_config_file) || return 0
-    # A folder with no ID is the defaults block's template for new folders.
-    sed -n 's/^ *<folder id="\([^"][^"]*\)" [^>]*path="\([^"]*\)".*/\1\t\2/p' "$config" |
+    # A folder with no ID is the defaults block's template for new folders. The tab is put
+    # in by bash, as not every sed reads \t.
+    sed -n "s/^ *<folder id=\"\\([^\"][^\"]*\\)\" [^>]*path=\"\\([^\"]*\\)\".*/\\1$tab\\2/p" "$config" |
         sed -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&quot;/"/g' -e 's/&#34;/"/g' \
             -e "s/&apos;/'/g" -e "s/&#39;/'/g" -e 's/&amp;/\&/g'
 }
@@ -267,8 +268,8 @@ clean_path() {
     echo "/${cleaned[*]}"
 }
 
-# The other container running a Syncthing image that mounts TARGET, a volume name or a
-# host path, if any.
+# Another container from a Syncthing image, running or stopped, that mounts TARGET, a
+# volume name or a host path, if any.
 target_taken_by() {
     local cname cimage mounts
     while IFS='|' read -r cname cimage mounts; do

@@ -395,10 +395,10 @@ check "  and one below 1024" fails_with "not a port" claude_sync "$c" setup --vo
 check "  and the same port for both" fails_with "need different ports" \
     claude_sync "$c" setup --volume "$vol_c" --gui-port 8500 --sync-port 8500
 check "  and creates no Syncthing state" fails docker volume inspect "$c-config"
-# A stand-in for this user's Syncthing on the host, stopped: it answers only `paths`, so the
-# checks must read its config file, which host_folders writes. The volume and directories
-# do not exist, so even a setup that got past the checks would stop before creating
-# anything under the default name.
+# A stand-in for this user's Syncthing on the host, stopped: it answers only `paths`, so
+# the checks must read its config file, which write_host_folders writes. The volume and
+# directories do not exist, so even a setup that got past the checks would stop before
+# creating anything under the default name.
 mkdir "$scratch/host"
 cat >"$scratch/host/syncthing" <<'EOF'
 #!/bin/sh
@@ -407,7 +407,7 @@ printf 'Configuration file:\n\t%s/config.xml\n' "${0%/*}"
 EOF
 chmod +x "$scratch/host/syncthing"
 # The stand-in's folders, as ID and path pairs, the path already escaped for XML.
-host_folders() {
+write_host_folders() {
     {
         echo '<configuration version="51">'
         # As Syncthing writes it: the template for new folders, with no ID or path.
@@ -423,12 +423,12 @@ beside_host() {
     env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME=claude-sync "$root/claude-sync" setup "$@"
 }
 readonly elsewhere=/nonexistent/$prefix$$
-host_folders claude-sync "$elsewhere/claude"
+write_host_folders claude-sync "$elsewhere/claude"
 check "a volume beside a Syncthing that syncs claude-sync's folder is refused" \
     fails_with "set CLAUDE_SYNC_NAME to another name" beside_host --volume "$vol_missing"
 check "  and a directory, pointing to --use-host-syncthing" fails_with "add --use-host-syncthing" \
     beside_host --path "$elsewhere/other"
-host_folders photos "$elsewhere/photos"
+write_host_folders photos "$elsewhere/photos"
 check "  but not beside one without that folder" fails_with "no Docker volume named $vol_missing" \
     beside_host --volume "$vol_missing"
 check "a directory inside a folder of that Syncthing is refused" fails_with "folder photos already syncs" \
@@ -439,13 +439,13 @@ check "  nor one here, where the folder template's empty path would point" \
     fails_with "cannot read $PWD/${prefix}here" beside_host --path "${prefix}here"
 check "  and under another name too" fails_with "folder photos already syncs" \
     env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME="$c" "$root/claude-sync" setup --path "$elsewhere/photos/sub"
-host_folders claude-sync "$elsewhere/claude"
+write_host_folders claude-sync "$elsewhere/claude"
 check "  where claude-sync's own folder there counts as any other" fails_with "folder claude-sync already syncs" \
     env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME="$c" "$root/claude-sync" setup --path "$elsewhere/claude/x"
-host_folders music "$elsewhere/rock&amp;roll"
+write_host_folders music "$elsewhere/rock&amp;roll"
 check "  read with the path's XML escapes undone" fails_with "folder music already syncs" \
     beside_host --path "$elsewhere/rock&roll/live"
-host_folders notes "$elsewhere/it&#39;s"
+write_host_folders notes "$elsewhere/it&#39;s"
 check "  numeric ones too" fails_with "folder notes already syncs" beside_host --path "$elsewhere/it's/x"
 check "no container or state is left behind" fails docker container inspect "$a"
 check "  nor Syncthing state" fails docker volume inspect "$a-config"
