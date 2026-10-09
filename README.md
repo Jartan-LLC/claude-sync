@@ -47,8 +47,9 @@ sudo dnf install \
     https://github.com/Jartan-LLC/claude-sync/releases/latest/download/claude-sync.noarch.rpm
 ```
 
-The package is not signed, so `dnf` warns that it skipped its OpenPGP check;
-`gh attestation verify` checks it as it does the single file.
+The package is not signed, so `dnf` warns that it skipped its OpenPGP check. To check it
+first, download it and run `gh attestation verify` on it as on the single file, then
+`sudo dnf install ./claude-sync.noarch.rpm`.
 
 ## Quickstart
 

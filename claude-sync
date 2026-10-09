@@ -497,7 +497,7 @@ setup() {
         --mount "type=volume,src=$name-config,dst=/config" "$image" -c 'cat >/config/claude-sync-companion'
 
     export CLAUDE_SYNC_UID=${owner%:*} CLAUDE_SYNC_GID=${owner#*:} CLAUDE_SYNC_TARGET=$target
-    # Compose reads only files, and only `up` below needs them.
+    # Compose reads only files; the port checks and `up` below use them.
     local compose_dir
     compose_dir=$(mktemp -d -t claude-sync.XXXXXX)
     # shellcheck disable=SC2064 # expanded now: compose_dir is local

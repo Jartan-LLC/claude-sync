@@ -100,10 +100,10 @@ the rest of the run: checkpoints, the operator session, logs.
 
 ## CI
 
-`ci.yml`'s `lint` job and the dev container build gate the `check` aggregator. Adding or
-removing a gating job also means updating its `check.needs` and results entries. The Node
-checks are commented steps inside `lint`: uncomment them there, with no `check` change
-needed.
+`ci.yml`'s `lint`, `integration` and `rpm` jobs and the dev container build gate the
+`check` aggregator. Adding or removing a gating job also means updating its `check.needs`
+and results entries. The Node checks are commented steps inside `lint`: uncomment them
+there, with no `check` change needed.
 
 In `.github/dependabot.yml`, remove the ecosystems you don't use, add the ones you need,
 and adjust `directory` where manifests aren't at the root.
