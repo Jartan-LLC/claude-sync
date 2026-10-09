@@ -394,15 +394,19 @@ descendants() {
 }
 
 on_exit() {
-    local status=$? node pids i out
-    # Parents first, so none starts another, and again until none is left: then nothing
-    # creates an object after cleanup. Bounded, so a process that will not die cannot hang it.
+    local status=$? node pids frozen=() i out
+    # Stopped, a process starts no other, so freeze them all until no new one appears, then
+    # end them: nothing then creates an object after cleanup. Bounded, so it cannot hang.
     for ((i = 0; i < 50; i++)); do
         mapfile -t pids < <(descendants $$)
-        ((${#pids[@]})) || break
-        kill "${pids[@]}" 2>/dev/null || true
-        sleep 0.2
+        [[ ${pids[*]} != "${frozen[*]}" ]] || break
+        kill -STOP "${pids[@]}" 2>/dev/null || true
+        frozen=("${pids[@]}")
     done
+    if ((${#frozen[@]})); then
+        kill -TERM "${frozen[@]}" 2>/dev/null || true
+        kill -CONT "${frozen[@]}" 2>/dev/null || true
+    fi
     wait 2>/dev/null || true
     if ((status != 0)); then
         for node in "$a" "$b" "$c" "$d" "$e" "$g" "$j" "$l" "$m" "$h"; do
