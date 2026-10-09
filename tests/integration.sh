@@ -423,7 +423,8 @@ on_exit() {
 scratch=""
 cleanup
 # -E carries the trap into functions; the subshell test skips command substitutions in
-# check arguments, which fail on purpose. A group runs in a subshell of its own (top).
+# check arguments, which fail on purpose. A group runs in a subshell of its own, whose
+# level it stores in top.
 top=0
 set -E
 trap '((BASH_SUBSHELL == top)) && echo "aborted at tests/integration.sh:$LINENO${FUNCNAME:+ in ${FUNCNAME[0]}, called from line ${BASH_LINENO[0]}}" >&2' ERR
@@ -465,7 +466,8 @@ in_target "$mount_a" "$fixture && chown -R $owner_a /t"
 in_target "$mount_b" "chown $owner_b /t"
 in_target "type=volume,src=$vol_d" "chown $owner_d /t"
 
-# The groups below share only the network and the fixture volumes, so they run at once.
+# The groups below share only the test network, each with nodes and volumes of its own,
+# so they run in parallel.
 # Each runs in the background, its output in $scratch/NAME.log and its failure count in
 # $scratch/NAME.failures; one that aborts writes no count.
 declare -A group_of=()
@@ -513,9 +515,6 @@ group_chain() {
         claude_sync "$a" setup --volume "$vol_b"
     check "  and writes nothing to it" in_target "$mount_b" '[ ! -e /t/.stignore ]'
 
-    # A real --path run would need a directory on the Docker host, which is not this filesystem
-    # when the tests run in a dev container that shares the host's daemon. Path mode differs from volume
-    # mode only in its compose overlay and path handling, which these check without a mount.
     echo "# pair rejects bad input"
     check "pair before setup is refused" fails_with "run setup first" \
         pair_bounded "$c" "$id_a" --address "tcp://$a:22000"
@@ -961,8 +960,9 @@ group_stuck() {
     docker volume create "$vol_j" >/dev/null
 
     echo "# pair, a join stuck on this device's own ignored files"
-    # A copy whose ignore list has no (?d), as in 0.1.0: Syncthing cannot remove J's own
-    # plugin version while its .in_use is there, so J's join cannot finish.
+    # A copy with every (?d) taken out, which leaves .in_use without one as in 0.1.0:
+    # Syncthing cannot remove J's own plugin version while its .in_use is there, so J's
+    # join cannot finish.
     mkdir "$scratch/old"
     cp "$root/claude-sync" "$root"/compose*.yaml "$scratch/old"
     sed 's/^(?d)//' "$root/stignore" >"$scratch/old/stignore"
@@ -977,7 +977,8 @@ group_stuck() {
     check "J's join does not finish under that list" cut_off env CLAUDE_SYNC_NAME="$j" timeout 15 \
         "$scratch/old/claude-sync" pair "$id_l" --address "tcp://$l:22000"
     check "setup applies this version's ignore list" claude_sync "$j" setup --volume "$vol_j" --private
-    # Without setup's help Syncthing too reloads the list, at a pull, but not for minutes.
+    # Syncthing reloads the list on its own at a later pull, but only minutes later, so a
+    # join that finishes within this timeout shows setup applied it.
     check "  and the join then finishes at once" env CLAUDE_SYNC_NAME="$j" timeout 30 \
         "$bin" pair "$id_l" --address "tcp://$l:22000"
     check "  discarding J's own plugin version" in_target "$mount_j" "[ ! -e /t/$j_plugin ]"
@@ -1071,6 +1072,10 @@ EOF
     check "no container or state is left behind" fails docker container inspect "$m"
     check "  nor Syncthing state" fails docker volume inspect "$m-config"
 
+    # A real --path run would need a directory on the Docker host, which is not this
+    # filesystem when the tests run in a dev container that shares the host's daemon. Path
+    # mode differs from volume mode only in its compose overlay and path handling, which
+    # these check without a mount.
     echo "# setup --path"
     check "a missing directory is rejected" fails_with "cannot read /nonexistent/$prefix$$" \
         claude_sync "$m" setup --path "/nonexistent/$prefix$$"

@@ -2,7 +2,8 @@
 // Everything in ~/.claude syncs except what is meaningless or harmful on another machine.
 // (?d) lets Syncthing delete this machine's ignored files along with their directory, when
 // another device deletes it or a joining device discards its own. Without it the directory
-// stays, and a join never finishes.
+// stays, and a join never finishes. Top-level entries need none: ~/.claude itself is never
+// deleted.
 
 // Login token: one per device.
 /.credentials.json
