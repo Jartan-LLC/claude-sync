@@ -101,6 +101,6 @@ With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninsta
 | `already syncs` ... `which overlaps` | Choose a directory that none of your own Syncthing's folders syncs, inside or around |
 | `already set up in the Syncthing on this host` | Add `--use-host-syncthing`, or run `uninstall` first |
 | `already syncs claude-sync's folder; to sync this volume beside it` | Set `CLAUDE_SYNC_NAME` to another name for this instance |
-| `container NAME already syncs` | Another Syncthing container syncs that target; give this instance another one, or uninstall the other |
+| `container NAME already syncs` | Give this instance another target, or remove container NAME, which `docker ps -a` lists even when stopped; for a claude-sync instance, `CLAUDE_SYNC_NAME=NAME ./claude-sync uninstall` removes it |
 | `paths containing a comma` or `a newline are not supported` | Choose or rename a directory without one |
-| `is on the list of unpaired devices` | Run `pair` for that device on a device that already syncs, then rerun it here |
+| `is on the list of unpaired devices` | Run `pair` for that device on a device that already syncs, then rerun `pair` here |
