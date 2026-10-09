@@ -2,4 +2,4 @@
 # another program holds, as on a busy host, without binding anything on the host.
 services:
   syncthing:
-    network_mode: container:claude-sync-test-listener
+    network_mode: container:${CLAUDE_SYNC_TEST_LISTENER:?}
