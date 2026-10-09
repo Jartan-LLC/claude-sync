@@ -2,4 +2,4 @@
 # shared bridge instead, where peers reach each other by container name.
 services:
   syncthing:
-    network_mode: claude-sync-test-net
+    network_mode: ${CLAUDE_SYNC_TEST_NET:?}

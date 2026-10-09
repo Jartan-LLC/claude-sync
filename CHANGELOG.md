@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-09
+
+### Fixed
+
+- `pair` no longer gets stuck joining when this device has directories of its own that the
+  other device lacks and that hold files claude-sync does not sync, such as a plugin
+  version's `.in_use` marker or a half-written file. A device stuck joining under 0.1.0
+  finishes after you upgrade and rerun `setup`, then `pair`.
+- `pair` no longer waits forever on a directory the other device deleted while this device
+  still has files in it.
+- A directory deleted on another device is removed here too, even when it holds files
+  claude-sync does not sync, such as a plugin's `.in_use` marker.
+- `setup` applies a new ignore list at once instead of at Syncthing's next scan.
+- `setup` no longer waits minutes for Syncthing's first scan of a large `~/.claude`.
+- Messages that send you to Syncthing's web UI give its address, and a join that cannot finish
+  says this device sends nothing until it does.
+
 ## [0.1.0] - 2026-10-09
 
 ### Added
@@ -37,5 +54,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Syncthing applies; a device using its own Syncthing applies it when claude-sync runs
   there.
 
-[Unreleased]: https://github.com/Jartan-LLC/claude-sync/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Jartan-LLC/claude-sync/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Jartan-LLC/claude-sync/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Jartan-LLC/claude-sync/releases/tag/v0.1.0

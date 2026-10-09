@@ -114,6 +114,8 @@ Everything in `~/.claude` except what is meaningless or harmful on another machi
 | `daemon/`, `session-env/`, `shell-snapshots/`, `telemetry/` | This machine's daemon, session environments, shell snapshots and unsent telemetry |
 | `*.tmp.<8 hex>`, `*.tmp.<pid>.<12 hex>` | Half-written files mid-save |
 
+A directory deleted on another device is deleted here too, with any of these files in it.
+
 ## Documentation
 
 - [Pairing devices](docs/pairing.md): joining, `--keep`, adding and removing devices,

@@ -11,7 +11,7 @@ make install
 pre-commit hook. The devcontainer has everything; on a bare host it needs Python 3.12+ and
 [uv](https://docs.astral.sh/uv/getting-started/installation/).
 `make lint` runs the [pre-commit](https://pre-commit.com/) hooks; some need
-Docker (actionlint, lychee) and Node (markdownlint) — the devcontainer has both.
+Docker (actionlint, lychee) and Node (markdownlint), which the devcontainer has.
 
 ## Verify before opening a PR
 
@@ -19,15 +19,16 @@ Docker (actionlint, lychee) and Node (markdownlint) — the devcontainer has bot
 make check
 ```
 
-Runs the lint and integration checks CI runs. CI also builds the dev container, runs the
-integration tests against the built file and builds the RPM (see [Building](#building));
-all must pass before merge.
+Runs the lint and integration checks CI runs. CI runs more (see [CI](docs/scaffold.md#ci)),
+and all of it must pass before merge.
 
 `make test` (`tests/integration.sh`) runs claude-sync against real Syncthing containers and
-needs Docker. Every container, volume, network and image it keeps is named
-`claude-sync-test-*` and removed afterwards, and it removes nothing else, which matters when
-the dev container shares the host's Docker daemon. It never reaches a Syncthing of your
-own.
+needs Docker and bash 5.1 or newer. Every container, volume, network and image it keeps is
+named `claude-sync-test-*` and removed afterwards, and it removes nothing else, which matters
+when the dev container shares the host's Docker daemon. It never reaches a Syncthing of your
+own. `CLAUDE_SYNC_TEST_PREFIX=claude-sync-test-NAME-` keeps a run's objects apart from
+another run's on the same daemon, and `CLAUDE_SYNC_TEST_FAIL_FAST=1` stops at the first
+failing check.
 
 ## Building
 
@@ -39,9 +40,6 @@ and its own files (`compose*.yaml`, `stignore`) built in. To test that file:
 make build VERSION=0.0.0-test
 CLAUDE_SYNC_BIN=$PWD/dist/claude-sync CLAUDE_SYNC_BIN_VERSION=0.0.0-test make test
 ```
-
-CI runs the integration tests against both. It also builds the RPM with
-`packaging/rpm.sh` in a Fedora container, and installs it there.
 
 ## Releasing
 

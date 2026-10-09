@@ -21,7 +21,8 @@
   "containerEnv": {
     "HOST_PROJECT_PATH": "${localWorkspaceFolder}",
     "CONTAINER_WORKSPACE_FOLDER": "${containerWorkspaceFolder}",
-    "UV_SYSTEM_PYTHON": "1"
+    "UV_SYSTEM_PYTHON": "1",
+    "DOCKER_HOST": "unix:///var/run/docker-host.sock"
   },
   "customizations": {
     "vscode": {
