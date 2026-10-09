@@ -439,6 +439,10 @@ check "  nor one here, where the folder template's empty path would point" \
     fails_with "cannot read $PWD/${prefix}here" beside_host --path "${prefix}here"
 check "  and under another name too" fails_with "folder photos already syncs" \
     env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME="$c" "$root/claude-sync" setup --path "$elsewhere/photos/sub"
+host_folders claude-sync "$elsewhere/claude"
+check "  where claude-sync's own folder there counts as any other" fails_with "folder claude-sync already syncs" \
+    env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME="$c" "$root/claude-sync" setup --path "$elsewhere/claude/x"
+host_folders photos "$elsewhere/photos"
 host_folders music "$elsewhere/rock&amp;roll"
 check "  read with the path's XML escapes undone" fails_with "folder music already syncs" \
     beside_host --path "$elsewhere/rock&roll/live"
@@ -482,7 +486,7 @@ check "a missing directory is rejected" fails_with "cannot read /nonexistent/$pr
 check "a path with a comma is rejected" fails_with comma claude_sync "$c" setup --path /tmp/a,b
 check "a relative path is made absolute" relative_path_resolved
 check "  and one spelled loosely is cleaned as Docker does" fails_with "cannot read $root/${prefix}missing" \
-    claude_sync "$c" setup --path "$root/./${prefix}missing/"
+    claude_sync "$c" setup --path "$root/./tests/..//${prefix}missing/"
 check "the overlay bind-mounts the directory" path_overlay_renders
 
 echo "# setup fails when Syncthing cannot run the folder"
@@ -855,7 +859,7 @@ check "the web UI on the sync port is refused" fails_with "would both be 22100" 
 check "  and the web UI stays put" listens "$g" 8484
 check "the sync port moving onto the web UI's" \
     beside "$g" setup --volume "$vol_g" --gui-port 8585 --sync-port 8484
-check "  moves the web UI first" listens "$g" 8585
+check "  puts the web UI on its new port" listens "$g" 8585
 # Syncthing retries a failed listener only after about a minute.
 check "  so the sync port binds without waiting for a retry" listens_soon "$g" 8484
 check "an exact swap of the two ports" beside "$g" setup --volume "$vol_g" --gui-port 8484 --sync-port 8585

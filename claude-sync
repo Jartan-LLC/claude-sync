@@ -244,9 +244,27 @@ real_path() {
 }
 
 # Whether one of two resolved paths is the other or inside it, so both would sync the same
-# files.
+# files. The slash is dropped before adding one, so a folder at / covers every path.
 paths_overlap() {
-    [[ $1 == "$2" || $1 == "$2"/* || $2 == "$1"/* ]]
+    [[ $1 == "$2" || $1 == "${2%/}"/* || $2 == "${1%/}"/* ]]
+}
+
+# PATH made absolute and cleaned as Docker cleans a bind mount's path: no ".", ".." or
+# repeated or trailing slashes. Without needing it to exist here, since Docker resolves the
+# path on its host, and in bash alone, since realpath's options differ between systems.
+clean_path() {
+    local path=$1 part parts cleaned=()
+    [[ $path == /* ]] || path=$PWD/$path
+    IFS=/ read -ra parts <<<"$path"
+    for part in "${parts[@]}"; do
+        case $part in
+            '' | .) ;;
+            ..) ((${#cleaned[@]} == 0)) || unset 'cleaned[${#cleaned[@]}-1]' ;;
+            *) cleaned+=("$part") ;;
+        esac
+    done
+    local IFS=/
+    echo "/${cleaned[*]}"
 }
 
 # The other container running a Syncthing image that mounts TARGET, a volume name or a
@@ -405,9 +423,7 @@ setup() {
         return
     fi
     command -v docker >/dev/null || die "Docker is required"
-    # Docker cleans a bind mount's path, so the target is compared as Docker will show it;
-    # resolved without needing to exist here, as Docker resolves it on its host.
-    [[ $kind != path ]] || target=$(realpath -ms -- "$target")
+    [[ $kind != path ]] || target=$(clean_path "$target")
     # Under the default name, pair and uninstall would act on a container instead of the
     # Syncthing that already syncs claude-sync's folder. With --path, under any name, the
     # container would also be a second device on files a folder of that Syncthing syncs.
@@ -553,9 +569,10 @@ move_gui_port() {
     wait_reachable || die "Syncthing's web UI did not come up on port $1"
 }
 
+# After an exact port swap, Syncthing's API takes tens of seconds to come back.
 wait_reachable() {
     local i
-    for ((i = 0; i < 30; i++)); do
+    for ((i = 0; i < 60; i++)); do
         st show version >/dev/null 2>&1 && return 0
         sleep 1
     done

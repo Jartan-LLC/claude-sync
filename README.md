@@ -73,9 +73,9 @@ is not made an introducer, since the devices it introduces would join those fold
 
 Once your Syncthing syncs claude-sync's folder, `setup` without `--use-host-syncthing`
 refuses to start a container beside it, since `pair`, `unpair` and `uninstall` would then
-act on the container instead. It also refuses a directory inside or around one of your
-Syncthing's folders. Both checks read your Syncthing's configuration, so they hold while
-it is stopped too.
+act on the container instead; that applies to the default `CLAUDE_SYNC_NAME` only. Under
+any name, it also refuses a directory inside or around one of your Syncthing's folders.
+Both checks read your Syncthing's configuration, so they hold while it is stopped too.
 
 A device that `unpair` removed elsewhere stays in your Syncthing until claude-sync's
 `setup`, `pair`, `unpair` or `uninstall` next runs here: with no container, nothing beside
