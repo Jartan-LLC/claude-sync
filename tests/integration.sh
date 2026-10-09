@@ -47,6 +47,13 @@ for tool in docker jq cmp; do
         exit 1
     }
 done
+# A relay on Docker's socket, such as a dev container's socat, can cut a container's output
+# after half a second while the command still succeeds, as claude-sync's in the host fixture.
+if [[ $(docker run --rm --entrypoint sh "$image" -c 'sleep 1; echo ok') != ok ]]; then
+    echo "Docker's output is cut short here; point DOCKER_HOST at the daemon's own socket" \
+        "(in this repository's dev container, unix:///var/run/docker-host.sock)" >&2
+    exit 1
+fi
 
 # Synthetic ~/.claude: real filename shapes, no real data. The look-alikes in `synced`
 # (lockfiles, .tmp-like names, nested daemon/ and ide/) must not be caught by ignore rules.

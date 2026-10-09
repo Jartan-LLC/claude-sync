@@ -109,3 +109,8 @@ With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninsta
 | `container NAME already syncs` | Give this instance another target, or remove container NAME, which `docker ps -a` lists even when stopped; for a claude-sync instance, `CLAUDE_SYNC_NAME=NAME claude-sync uninstall` removes it |
 | `paths containing a comma` or `a newline are not supported` | Choose or rename a directory without one |
 | `is on the list of unpaired devices` | Run `pair` for that device on a device that already syncs, then rerun `pair` here |
+
+Inside a dev container that reaches Docker through a relay on its socket, such as `socat`,
+Docker can cut a container's output after half a second while the command still succeeds:
+`setup` then prints no device ID, and `pair` stops without saying why. Point `DOCKER_HOST`
+at the daemon's own socket instead.
