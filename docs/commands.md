@@ -31,8 +31,8 @@ host](#several-instances-on-one-host)).
 ## setup
 
 `setup` refuses a root-owned target: `chown` it to the user who runs Claude Code. It is
-safe to re-run, rewrites `.stignore` from the ignore list built into claude-sync each
-time, and prints this device's ID. It fails, with Syncthing's message, if Syncthing cannot
+safe to re-run, rewrites `.stignore` each time from the ignore list built into
+claude-sync, and prints this device's ID. It fails, with Syncthing's message, if Syncthing cannot
 sync the folder, and fails too if Syncthing's API never answers.
 
 In its own container, `setup` also prints the web UI port and the sync port: Syncthing's

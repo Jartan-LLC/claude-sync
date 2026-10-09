@@ -23,8 +23,8 @@ Requires:       sed
 %description
 claude-sync keeps ~/.claude in sync across devices: change a setting or write a
 memory on one machine, and it is there on the others. It runs Syncthing in a
-Docker container, which needs Docker Engine 25 or newer with its Compose plugin,
-or adds its folder to a Syncthing already running on the host.
+Docker container, which needs Docker Engine 25 or newer with its Compose plugin.
+It can instead add its folder to a Syncthing already running on the host.
 
 %prep
 %autosetup

@@ -12,7 +12,8 @@ die() {
     exit 1
 }
 
-# In a container, the checkout belongs to another user than root, which git otherwise refuses.
+# In a container the checkout belongs to a user other than root, and git refuses a
+# repository its user does not own.
 git() {
     command git -C "$root" -c safe.directory='*' "$@"
 }
@@ -20,7 +21,8 @@ git() {
 (($# == 2)) || die "usage: packaging/rpm.sh VERSION OUTDIR"
 # The version goes into sed and the spec before build.sh checks it.
 [[ $1 =~ ^[0-9A-Za-z][0-9A-Za-z.+~-]*$ ]] || die "not a version: $1"
-# RPM sorts ~ before a release, where a tag has -.
+# RPM's Version cannot hold a -; ~ replaces it and, like a tag's -, sorts before the
+# release.
 version=${1//-/\~} outdir=$2
 
 work=$(mktemp -d)

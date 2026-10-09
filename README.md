@@ -36,8 +36,8 @@ chmod +x ~/.local/bin/claude-sync
 ```
 
 `gh attestation verify ~/.local/bin/claude-sync --repo Jartan-LLC/claude-sync` checks that
-the file was built by this repository's release workflow; each release also lists its
-SHA-256 in `claude-sync.sha256`.
+a workflow in this repository built the file; each release also lists its SHA-256 in
+`claude-sync.sha256`.
 
 On Fedora, or another distribution that installs RPMs with `dnf`, install the release's
 package instead:
