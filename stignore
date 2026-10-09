@@ -1,8 +1,8 @@
 // Written by `claude-sync setup`, which replaces any local edits on each run.
 // Everything in ~/.claude syncs except what is meaningless or harmful on another machine.
-// (?d) lets Syncthing delete this machine's ignored files with the directory they are in,
-// when another device deletes it or a joining device discards its own: otherwise the
-// directory stays, and the join never finishes.
+// (?d) lets Syncthing delete this machine's ignored files along with their directory, when
+// another device deletes it or a joining device discards its own. Without it the directory
+// stays, and a join never finishes.
 
 // Login token: one per device.
 /.credentials.json

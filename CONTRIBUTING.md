@@ -27,7 +27,7 @@ all must pass before merge.
 needs Docker. Every container, volume, network and image it keeps is named
 `claude-sync-test-*` and removed afterwards, and it removes nothing else, which matters when
 the dev container shares the host's Docker daemon. It never reaches a Syncthing of your
-own. Its checks run as four groups at once, each on Syncthing nodes of its own.
+own. Its checks run in groups at once, each on Syncthing nodes of its own.
 `CLAUDE_SYNC_TEST_PREFIX=claude-sync-test-NAME-` keeps a run's objects apart from another
 run's on the same daemon, and `CLAUDE_SYNC_TEST_FAIL_FAST=1` stops at the first failing
 check, as a mutation check needs.
