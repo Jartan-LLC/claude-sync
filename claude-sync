@@ -8,6 +8,12 @@ readonly default_name=claude-sync
 export CLAUDE_SYNC_NAME=${CLAUDE_SYNC_NAME:-$default_name}
 readonly name=$CLAUDE_SYNC_NAME
 readonly folder_id=claude-sync
+# Devices unpaired anywhere, one empty file per device ID in the synced folder, so every
+# device sees them and unpairs of different devices never touch the same file.
+readonly unpaired_dir=.claude-sync-unpaired
+# Syncthing also accepts other spellings of an ID, but its CLI and the checks here match
+# only this one, as setup prints it.
+readonly id_re='^[A-Z2-7]{7}(-[A-Z2-7]{7}){7}$'
 # The synced folder as Syncthing sees it; with --use-host-syncthing, the directory itself.
 folder_path=/var/syncthing/claude
 readonly trash_days=14
@@ -49,6 +55,9 @@ Usage:
                                     conflict copy
       --address tcp://HOST:22000    Where to reach DEVICE-ID; required on a private
                                     device. Pairing again with it replaces the address
+  claude-sync unpair DEVICE-ID      Remove the device DEVICE-ID from every device; run it
+                                    on any device. A device using its own Syncthing drops
+                                    it the next time claude-sync runs there
   claude-sync uninstall             Remove claude-sync's container and Syncthing state,
                                     or its folder from the Syncthing on this host; the
                                     synced files are left untouched
@@ -235,9 +244,69 @@ detect_mode() {
         use_host
         folder_path=$(st config folders "$folder_id" path get 2>/dev/null) ||
             die "claude-sync is not set up on this device; run setup first"
+        # No companion runs beside this Syncthing, so every command that acts on it applies
+        # the list.
+        apply_unpaired
     else
         die "claude-sync is not set up on this device; run setup first"
     fi
+}
+
+# Removes the devices on the unpaired list from this device's Syncthing. In a container,
+# the start command (compose.yaml) runs it in a loop beside Syncthing, since introductions
+# would bring an unpaired device back. Kept POSIX: it runs in the image's shell. Its
+# arguments are DIR, the list's directory, and FOLDER, claude-sync's folder ID.
+companion_script() {
+    cat <<'EOF'
+apply() {
+    [ -d "$1" ] || return 0
+    self=$(syncthing device-id 2>/dev/null)
+    { [ -n "$self" ] && devices=$(syncthing cli config devices list 2>/dev/null); } || return 0
+    for d in $devices; do
+        # Syncthing would re-create this device's own entry, losing its name.
+        [ "$d" != "$self" ] && [ -e "$1/$d" ] || continue
+        # Either may have gone already, removed by another pass of this script.
+        syncthing cli config folders "$2" devices "$d" delete 2>/dev/null || :
+        # A device that also syncs other folders of this Syncthing stays for those.
+        shared=""
+        for f in $(syncthing cli config folders list); do
+            if [ "$f" != "$2" ] && syncthing cli config folders "$f" devices list | grep -qxF "$d"; then
+                shared=1
+            fi
+        done
+        [ -n "$shared" ] || syncthing cli config devices "$d" delete 2>/dev/null || :
+    done
+    return 0
+}
+apply "$1" "$2"
+EOF
+}
+
+apply_unpaired() {
+    if [[ $mode == host ]]; then
+        companion_script | sh -s "$folder_path/$unpaired_dir" "$folder_id"
+    else
+        companion_script | docker exec -i -u "$owner" "$name" sh -s "$folder_path/$unpaired_dir" "$folder_id"
+    fi
+}
+
+# Runs the sh SCRIPT with ARGS where the synced folder is: in the container, or here.
+in_folder() {
+    if [[ $mode == host ]]; then
+        sh -c "$@"
+    else
+        docker exec -u "$owner" "$name" sh -c "$@"
+    fi
+}
+
+# Takes ID off the unpaired list, so the device can be paired again. The deletion is
+# indexed, and so offered to the other devices, before pair introduces the device, or
+# their companions would remove it again on its way in.
+forget_unpaired() {
+    # shellcheck disable=SC2016 # expanded by sh
+    in_folder '[ -e "$1" ] && rm "$1"' sh "$folder_path/$unpaired_dir/$1" || return 0
+    rest "/rest/db/scan?folder=$folder_id" -X POST >/dev/null || die "cannot reach Syncthing $where"
+    wait_folder_started
 }
 
 setup() {
@@ -334,6 +403,8 @@ setup() {
     # so without this Syncthing cannot write its config as the target's owner.
     docker run --rm --entrypoint chown --mount "type=volume,src=$name-config,dst=/config" \
         "$image" -R "$owner" /config
+    companion_script | docker run --rm -i --user "$owner" --entrypoint sh \
+        --mount "type=volume,src=$name-config,dst=/config" "$image" -c 'cat >/config/claude-sync-companion'
 
     export CLAUDE_SYNC_UID=${owner%:*} CLAUDE_SYNC_GID=${owner#*:} CLAUDE_SYNC_TARGET=$target
     compose_files=(-f "$here/compose.yaml" -f "$here/compose.$kind.yaml")
@@ -449,6 +520,7 @@ setup_host() {
     cp "$here/stignore" "$target/.stignore"
     st config folders list | grep -qxF "$folder_id" || add_folder sendreceive
     wait_folder_started
+    apply_unpaired
 
     printf 'The Syncthing on this host syncs %s.\nThis device ID: %s\n' "$target" "$(syncthing_run device-id)"
 }
@@ -478,9 +550,6 @@ pair() {
     check_name
     detect_mode
 
-    # Syncthing also accepts other spellings of an ID, but its CLI and the checks below
-    # match only this one, as setup prints it.
-    local id_re='^[A-Z2-7]{7}(-[A-Z2-7]{7}){7}$'
     [[ $id =~ $id_re ]] || die "not a device ID: $id; copy it as setup printed it"
     local self
     self=$(syncthing_run device-id)
@@ -503,6 +572,13 @@ pair() {
     if grep -qxF -- "$id" <<<"$devices"; then
         known=1
     fi
+    local syncing
+    syncing=$(st config folders "$folder_id" devices list 2>/dev/null | grep -cvxF -- "$self") || true
+    forget_unpaired "$id"
+    # A device set up again on files that list it would otherwise unpair itself everywhere.
+    # One that still syncs with others was unpaired on purpose, and taking it off the list
+    # there would undo that through any device that has not dropped it yet.
+    ((syncing != 0)) || forget_unpaired "$self"
     err=$(st config devices add --device-id "$id" --addresses "$address" 2>&1) ||
         die "cannot add device $id: $err"
     # Adding a known device changes nothing (Syncthing 2.1.6), so a corrected address is
@@ -632,6 +708,26 @@ nothing_to_join() {
     [[ $(field globalTotalItems <<<"$status") == 0 && $(field receiveOnlyTotalItems <<<"$status") != 0 ]]
 }
 
+unpair() {
+    if (($# != 1)); then
+        usage >&2
+        exit 2
+    fi
+    local id=$1 self
+    check_name
+    detect_mode
+    [[ $id =~ $id_re ]] || die "not a device ID: $id; copy it as setup printed it"
+    self=$(syncthing_run device-id)
+    [[ $id != "$self" ]] || die "that is this device's own ID; run unpair with it on another device"
+    # A receive-only folder never sends the list, and the join's undo would remove it.
+    [[ $(st config folders "$folder_id" type get) != receiveonly ]] ||
+        die "this device is still joining; finish that with pair first"
+    # shellcheck disable=SC2016 # expanded by sh
+    in_folder 'mkdir -p "$1" && : >"$1/$2"' sh "$folder_path/$unpaired_dir" "$id"
+    apply_unpaired
+    printf 'Unpaired %s here. The other devices drop it as the list of unpaired devices reaches them; one using its own Syncthing does so the next time claude-sync runs there. Once they all refuse %s, it stops syncing; run uninstall on it to remove its state.\n' "$id" "$id"
+}
+
 uninstall() {
     (($# == 0)) || die "uninstall takes no arguments"
     check_name
@@ -659,8 +755,10 @@ uninstall() {
     if [[ -z $container && $name == "$default_name" ]] && host_syncthing_configured; then
         use_host
         if st config folders list | grep -qxF "$folder_id"; then
+            folder_path=$(st config folders "$folder_id" path get)
+            apply_unpaired
             st config folders "$folder_id" delete
-            echo "Removed the $folder_id folder from the Syncthing on this host; its devices and other folders stay."
+            echo "Removed the $folder_id folder from the Syncthing on this host; its other folders stay, and so do its devices, apart from unpaired ones that share no other folder."
         fi
     fi
     echo "The synced files are untouched."
@@ -674,6 +772,10 @@ case ${1:-help} in
     pair)
         shift
         pair "$@"
+        ;;
+    unpair)
+        shift
+        unpair "$@"
         ;;
     uninstall)
         shift
