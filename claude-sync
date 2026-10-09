@@ -225,8 +225,8 @@ host_syncthing_configured() {
     [[ -f $config ]]
 }
 
-# This user's Syncthing's folders, as ID, a tab and path per line, from its config file, so
-# whether it runs or not.
+# This user's Syncthing's folders, as ID, a tab and path per line, read from its config
+# file so they are found whether that Syncthing runs or not.
 host_folders() {
     local config tab=$'\t'
     config=$(host_config_file) || return 0
@@ -428,9 +428,9 @@ setup() {
         [[ $target != *$'\n'* ]] || die "paths containing a newline are not supported"
         target=$(clean_path "$target")
     fi
-    # Under the default name, pair and uninstall would act on a container instead of the
-    # Syncthing that already syncs claude-sync's folder. With --path, under any name, the
-    # container would also be a second device on files a folder of that Syncthing syncs.
+    # Under the default name, pair, unpair and uninstall would act on a container instead of
+    # the Syncthing that already syncs claude-sync's folder. With --path, under any name,
+    # the container would also be a second device on files a folder of that Syncthing syncs.
     if host_syncthing_configured; then
         local fid fpath real_target=""
         [[ $kind != path ]] || real_target=$(real_path "$target")
@@ -440,7 +440,7 @@ setup() {
                     die "already set up in the Syncthing on this host; add --use-host-syncthing, or run uninstall first"
                 die "the Syncthing on this host already syncs claude-sync's folder; to sync this volume beside it, set CLAUDE_SYNC_NAME to another name"
             elif [[ $kind == path ]] && paths_overlap "$real_target" "$(real_path "$fpath")"; then
-                die "your Syncthing's folder $fid already syncs $fpath, which overlaps $target; choose another directory"
+                die "this host's Syncthing folder $fid already syncs $fpath, which overlaps $target; choose another directory"
             fi
         done < <(host_folders)
     fi
@@ -516,7 +516,8 @@ setup() {
     # A web UI on the sync port would leave nothing to reach Syncthing through, so the two
     # are checked as they will end up. The web UI moves first when the sync port takes its
     # port, or the sync listener would wait on Syncthing's retry; not in an exact swap,
-    # where the web UI could not bind until then and setup would lose the API.
+    # where the web UI would move onto the port the sync listener still holds and setup
+    # would lose the API.
     local gui sync current_gui
     { current_gui=$(gui_port) && gui=${want_gui:-$current_gui} && sync=${want_sync:-$(sync_port)}; } ||
         die "cannot reach Syncthing in container $name"
@@ -599,8 +600,7 @@ setup_host() {
     fi
     local id path real real_target
     # A folder inside or around another would sync the same files twice, and the join's
-    # undo would reach the other folder's devices. Compared with symlinks resolved, since
-    # Syncthing follows a symlinked folder root.
+    # undo would reach the other folder's devices.
     real_target=$(real_path "$target")
     while IFS= read -r id; do
         path=$(st config folders "$id" path get)

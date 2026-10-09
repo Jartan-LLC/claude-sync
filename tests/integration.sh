@@ -398,7 +398,7 @@ check "  and creates no Syncthing state" fails docker volume inspect "$c-config"
 # A stand-in for this user's Syncthing on the host, stopped: it answers only `paths`, so
 # the checks must read its config file, which write_host_folders writes. The volume and
 # directories do not exist, so even a setup that got past the checks would stop before
-# creating anything under the default name.
+# creating anything.
 mkdir "$scratch/host"
 cat >"$scratch/host/syncthing" <<'EOF'
 #!/bin/sh
@@ -625,7 +625,7 @@ id_d=$(docker exec -u "$owner_d" "$d" syncthing device-id)
 check "D's join cut off while waiting" fails env CLAUDE_SYNC_NAME="$d" timeout 10 \
     "$root/claude-sync" pair "$id_b" --address "tcp://$b:22000"
 check "  leaves D's folder receive-only" [ "$(folder_type "$d" "$owner_d")" = receiveonly ]
-# B on the list as D's folder holds it, which a joining D could never take off.
+# B on the unpaired list in D's folder, where a joining D could never take it off.
 in_target "type=volume,src=$vol_d" "mkdir /t/.claude-sync-unpaired && touch /t/.claude-sync-unpaired/$id_b &&
     chown -R $owner_d /t/.claude-sync-unpaired"
 check "  where pair refuses a device on the unpaired list" \

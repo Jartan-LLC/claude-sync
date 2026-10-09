@@ -39,14 +39,16 @@ cd claude-sync
 
 `setup` refuses a root-owned target: `chown` it to the user who runs Claude Code. It is
 safe to re-run, rewrites `.stignore` from this repo each time, and prints this device's
-ID. It fails, with Syncthing's message, if Syncthing cannot sync the folder.
+ID. It fails, with Syncthing's message, if Syncthing cannot sync the folder, and fails
+too if Syncthing's API never answers.
 
 In its own container, `setup` also prints the web UI port and the sync port: Syncthing's
-usual 8384 and 22000, or free ports Syncthing picks on the first run when another
-program, such as another Syncthing, holds those. `--gui-port` and `--sync-port` choose
-them instead, and later runs keep them. Swapping the two takes about a minute to settle,
-while Syncthing retries the sync port. If another program later takes the web UI port,
-Syncthing cannot start its web UI and `setup` cannot move it: free that port again.
+usual 8384 and 22000, or free ports Syncthing picks on the first run when another program,
+such as another Syncthing, holds those. `--gui-port` and `--sync-port` choose them
+instead, and later runs keep them. Swapping the two ports with each other leaves the sync
+port down for about a minute, until Syncthing retries it. If another program later takes
+the web UI port, Syncthing cannot start its web UI and `setup` cannot move it: free that
+port again.
 
 ### Use your own Syncthing
 
@@ -71,11 +73,12 @@ When you pair (see below), a device that already syncs other folders with your S
 is not made an introducer, since the devices it introduces would join those folders too.
 `pair` then says so, and this device needs pairing with each of the others directly.
 
-Once your Syncthing syncs claude-sync's folder, `setup` without `--use-host-syncthing`
-refuses to start a container beside it, since `pair`, `unpair` and `uninstall` would then
-act on the container instead; that applies to the default `CLAUDE_SYNC_NAME` only. Under
-any name, it also refuses a directory inside or around one of your Syncthing's folders.
-Both checks read your Syncthing's configuration, so they hold while it is stopped too.
+Under the default `CLAUDE_SYNC_NAME`, once your Syncthing syncs claude-sync's folder,
+`setup` without `--use-host-syncthing` refuses to start a container beside it, since
+`pair`, `unpair` and `uninstall` would then act on the container instead. Under any name,
+it also refuses a directory one of your Syncthing's folders syncs, or one inside or around
+it, following symlinks. Both checks read your Syncthing's configuration, so they hold
+while it is stopped too.
 
 A device that `unpair` removed elsewhere stays in your Syncthing until claude-sync's
 `setup`, `pair`, `unpair` or `uninstall` next runs here: with no container, nothing beside
@@ -98,10 +101,11 @@ CLAUDE_SYNC_NAME=claude-work ./claude-sync pair OTHER-ID
 
 Each instance gets ports of its own, which `setup` prints, as long as the other instances
 are running when it first starts: Syncthing takes free ports only then. Each needs a
-target of its own too: `setup` refuses one another Syncthing container already syncs. A
-name other than the default, `claude-sync`, can't be combined with `--use-host-syncthing`,
-since your own Syncthing holds one claude-sync folder; neither can `--gui-port` or
-`--sync-port`, since you set that Syncthing's ports in Syncthing itself.
+target of its own too: `setup` refuses a volume or directory that another Syncthing
+container mounts, running or stopped. A name other than the default, `claude-sync`, can't
+be combined with `--use-host-syncthing`, since your own Syncthing holds one claude-sync
+folder; neither can `--gui-port` or `--sync-port`, since you set that Syncthing's ports in
+Syncthing itself.
 
 ## Pair devices
 
@@ -148,9 +152,9 @@ folder. Each device removes the devices listed there, and removes them again if 
 introduction brings one back. Once all of them refuse it, the removed device stops
 syncing; run `uninstall` on it to clear its state.
 
-To pair the device again later, use `pair` as usual, which takes it off the list; on a
-device that is still joining, `pair` refuses a listed device, so pair it from one that
-already syncs.
+To pair the device again later, use `pair` as usual, which takes it off the list. A
+device that is still joining cannot change the list, so `pair` there refuses a listed
+device: pair it from a device that already syncs.
 `unpair` refuses to run on a device that is still joining; finish the join first.
 
 Two kinds of device apply the list late:
