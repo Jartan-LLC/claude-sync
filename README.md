@@ -44,7 +44,7 @@ ID. It fails, with Syncthing's message, if Syncthing cannot sync the folder.
 In its own container, `setup` also prints the web UI port and the sync port: Syncthing's
 usual 8384 and 22000, or free ports Syncthing picks on the first run when another
 program, such as another Syncthing, holds those. `--gui-port` and `--sync-port` choose
-them instead, and later runs keep them. Swapping the two takes up to a minute to settle,
+them instead, and later runs keep them. Swapping the two takes about a minute to settle,
 while Syncthing retries the sync port. If another program later takes the web UI port,
 Syncthing cannot start its web UI and `setup` cannot move it: free that port again.
 

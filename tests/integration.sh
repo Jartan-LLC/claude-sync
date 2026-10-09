@@ -442,7 +442,6 @@ check "  and under another name too" fails_with "folder photos already syncs" \
 host_folders claude-sync "$elsewhere/claude"
 check "  where claude-sync's own folder there counts as any other" fails_with "folder claude-sync already syncs" \
     env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME="$c" "$root/claude-sync" setup --path "$elsewhere/claude/x"
-host_folders photos "$elsewhere/photos"
 host_folders music "$elsewhere/rock&amp;roll"
 check "  read with the path's XML escapes undone" fails_with "folder music already syncs" \
     beside_host --path "$elsewhere/rock&roll/live"
@@ -484,6 +483,7 @@ echo "# setup --path"
 check "a missing directory is rejected" fails_with "cannot read /nonexistent/$prefix$$" \
     claude_sync "$c" setup --path "/nonexistent/$prefix$$"
 check "a path with a comma is rejected" fails_with comma claude_sync "$c" setup --path /tmp/a,b
+check "  and one with a newline" fails_with newline claude_sync "$c" setup --path $'/tmp/a\nb'
 check "a relative path is made absolute" relative_path_resolved
 check "  and one spelled loosely is cleaned as Docker does" fails_with "cannot read $root/${prefix}missing" \
     claude_sync "$c" setup --path "$root/./tests/..//${prefix}missing/"

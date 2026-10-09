@@ -423,7 +423,10 @@ setup() {
         return
     fi
     command -v docker >/dev/null || die "Docker is required"
-    [[ $kind != path ]] || target=$(clean_path "$target")
+    if [[ $kind == path ]]; then
+        [[ $target != *$'\n'* ]] || die "paths containing a newline are not supported"
+        target=$(clean_path "$target")
+    fi
     # Under the default name, pair and uninstall would act on a container instead of the
     # Syncthing that already syncs claude-sync's folder. With --path, under any name, the
     # container would also be a second device on files a folder of that Syncthing syncs.
