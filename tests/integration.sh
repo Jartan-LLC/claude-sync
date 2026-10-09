@@ -41,19 +41,25 @@ export CLAUDE_SYNC_TEST_NET=$net CLAUDE_SYNC_TEST_LISTENER=$listener
 export STHOMEDIR=/nonexistent/${prefix}home
 unset STCONFDIR STDATADIR STGUIADDRESS STGUIAPIKEY
 
-for tool in docker jq cmp; do
+for tool in docker jq cmp pgrep; do
     command -v "$tool" >/dev/null || {
         echo "tests/integration.sh needs $tool" >&2
         exit 1
     }
 done
-# A relay on Docker's socket, such as a dev container's socat, can cut a container's output
-# after half a second while the command still succeeds, as claude-sync's in the host fixture.
-if [[ $(docker run --rm --entrypoint sh "$image" -c 'sleep 1; echo ok') != ok ]]; then
+# wait -n -p, which collects the groups below, came in bash 5.1.
+((BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 501)) || {
+    echo "tests/integration.sh needs bash 5.1 or newer" >&2
+    exit 1
+}
+# A relay on Docker's socket, such as a dev container's socat, can cut off a container's
+# output after half a second while the command still succeeds.
+out=$(docker run --rm --entrypoint sh "$image" -c 'sleep 1; echo ok')
+[[ $out == ok ]] || {
     echo "Docker's output is cut short here; point DOCKER_HOST at the daemon's own socket" \
         "(in this repository's dev container, unix:///var/run/docker-host.sock)" >&2
     exit 1
-fi
+}
 
 # Synthetic ~/.claude: real filename shapes, no real data. The look-alikes in `synced`
 # (lockfiles, .tmp-like names, nested daemon/ and ide/) must not be caught by ignore rules.
@@ -109,6 +115,12 @@ check() {
 
 fails() {
     ! "$@" >/dev/null 2>&1
+}
+
+# Whether the command ran until its timeout cut it off, as a join that waits does.
+cut_off() {
+    "$@" >/dev/null 2>&1
+    (($? == 124))
 }
 
 fails_with() {
@@ -370,11 +382,22 @@ cleanup() {
     docker network rm "$net" >/dev/null 2>&1 || true
 }
 
-on_exit() {
-    local status=$? node job out
-    for job in $(jobs -p); do
-        kill "$job" 2>/dev/null || true
+# This run's processes, deepest first.
+descendants() {
+    local child
+    for child in $(pgrep -P "$1"); do
+        descendants "$child"
+        echo "$child"
     done
+}
+
+on_exit() {
+    local status=$? node pid out
+    # All of them, not only the groups, so none creates an object after cleanup.
+    for pid in $(descendants $$); do
+        kill "$pid" 2>/dev/null || true
+    done
+    wait 2>/dev/null || true
     if ((status != 0)); then
         for node in "$a" "$b" "$c" "$d" "$e" "$g" "$j" "$l" "$m" "$h"; do
             docker logs --tail 30 "$node" 2>&1 | sed "s/^/[$node] /" || true
@@ -505,7 +528,7 @@ group_chain() {
     check "a private device needs --address" fails_with "--address" pair_bounded "$a" "$id_b" --keep
     check "  and adds no device" [ "$(st "$a" "$owner_a" config devices list)" = "$id_a" ]
     # B starts joining before A pairs with it, and is cut off while it waits.
-    check "a join cut off while waiting" fails env CLAUDE_SYNC_NAME="$b" timeout 10 \
+    check "a join cut off while waiting" cut_off env CLAUDE_SYNC_NAME="$b" timeout 10 \
         "$bin" pair "$id_a" --address "tcp://$a:22000"
     check "  leaves B's folder receive-only" [ "$(folder_type "$b" "$owner_b")" = receiveonly ]
     check "  where unpair refuses until the join ends" fails_with "still joining" claude_sync "$b" unpair "$id_a"
@@ -629,7 +652,7 @@ group_chain() {
     in_target "type=volume,src=$vol_d" "echo d >/t/d-only.md && chown $owner_d /t/d-only.md"
     claude_sync "$d" setup --volume "$vol_d" --private >/dev/null
     id_d=$(docker exec -u "$owner_d" "$d" syncthing device-id)
-    check "D's join cut off while waiting" fails env CLAUDE_SYNC_NAME="$d" timeout 10 \
+    check "D's join cut off while waiting" cut_off env CLAUDE_SYNC_NAME="$d" timeout 10 \
         "$bin" pair "$id_b" --address "tcp://$b:22000"
     check "  leaves D's folder receive-only" [ "$(folder_type "$d" "$owner_d")" = receiveonly ]
     # B on the unpaired list in D's folder, where a joining D could never take it off.
@@ -928,7 +951,7 @@ group_stuck() {
     docker volume create "$vol_j" >/dev/null
 
     echo "# pair, a join stuck on this device's own ignored files"
-    # A copy whose ignore list has no (?d), as before 0.1.1: Syncthing cannot remove J's own
+    # A copy whose ignore list has no (?d), as in 0.1.0: Syncthing cannot remove J's own
     # plugin version while its .in_use is there, so J's join cannot finish.
     mkdir "$scratch/old"
     cp "$root/claude-sync" "$root"/compose*.yaml "$scratch/old"
@@ -941,7 +964,7 @@ group_stuck() {
     claude_sync "$l" setup --volume "$vol_l" --private >/dev/null
     id_l=$(docker exec -u "$owner_l" "$l" syncthing device-id)
     pair_bounded "$l" "$id_j" --address "tcp://$j:22000" --keep >/dev/null
-    check "J's join does not finish under that list" fails env CLAUDE_SYNC_NAME="$j" timeout 15 \
+    check "J's join does not finish under that list" cut_off env CLAUDE_SYNC_NAME="$j" timeout 15 \
         "$scratch/old/claude-sync" pair "$id_l" --address "tcp://$l:22000"
     check "setup applies this version's ignore list" claude_sync "$j" setup --volume "$vol_j" --private
     # Without setup's help Syncthing too reloads the list, at a pull, but not for minutes.

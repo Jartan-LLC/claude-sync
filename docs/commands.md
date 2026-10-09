@@ -35,7 +35,7 @@ safe to re-run, rewrites `.stignore` each time from the ignore list built into c
 and has Syncthing apply it at once, and prints this device's ID. It fails, with
 Syncthing's message, if Syncthing cannot sync the folder, and fails too if Syncthing's API
 never answers. It does not wait for Syncthing's first scan, which takes minutes on a large
-`~/.claude`: it says the scan goes on, and gives the web UI's address to follow it.
+`~/.claude`: while the scan goes on, it says so and gives the web UI's address to follow it.
 
 In its own container, `setup` also prints the web UI port and the sync port: Syncthing's
 usual 8384 and 22000, or free ports Syncthing picks on the first run when another program,
@@ -109,8 +109,3 @@ With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninsta
 | `container NAME already syncs` | Give this instance another target, or remove container NAME, which `docker ps -a` lists even when stopped; for a claude-sync instance, `CLAUDE_SYNC_NAME=NAME claude-sync uninstall` removes it |
 | `paths containing a comma` or `a newline are not supported` | Choose or rename a directory without one |
 | `is on the list of unpaired devices` | Run `pair` for that device on a device that already syncs, then rerun `pair` here |
-
-Inside a dev container that reaches Docker through a relay on its socket, such as `socat`,
-Docker can cut a container's output after half a second while the command still succeeds:
-`setup` then prints no device ID, and `pair` stops without saying why. Point `DOCKER_HOST`
-at the daemon's own socket instead.

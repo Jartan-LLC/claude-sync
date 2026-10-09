@@ -135,8 +135,9 @@ folder_status() {
 }
 
 # Dies with Syncthing's own message when it cannot run the folder, such as an ignore
-# pattern it rejects. A scan loads the ignore list before it starts, so a scan under way
-# means the folder runs; it is not waited for. Dies too when Syncthing's API never answers.
+# pattern it rejects. Syncthing loads the ignore list before it scans or pulls, so any
+# other state means the folder runs; a scan or sync under way is not waited for. Dies too
+# when Syncthing's API never answers.
 wait_folder_started() {
     local i status state reached=""
     for ((i = 0; i < 120; i++)); do
@@ -148,8 +149,8 @@ wait_folder_started() {
         fi
         state=$(field state <<<"$status")
         case $state in
-            idle | scan-waiting | scanning) return 0 ;;
             error) die "Syncthing cannot sync the folder: $(field error <<<"$status")" ;;
+            ?*) return 0 ;;
         esac
         sleep 1
     done
@@ -169,7 +170,9 @@ load_ignores() {
 
 # Tells that Syncthing is still at work on the folder, unless it is done.
 tell_busy() {
-    [[ $(folder_status | field state) == idle ]] ||
+    local status
+    status=$(folder_status) || return 0
+    [[ $(field state <<<"$status") == idle ]] ||
         echo "Syncthing is still scanning or syncing your files; see progress at $(web_ui)."
 }
 
@@ -185,6 +188,15 @@ web_ui() {
 add_folder() {
     st config folders add --id "$folder_id" --label claude --path "$folder_path" --type "$1"
     set_trash_can
+}
+
+# Applies the ignore list just written to an existing folder, or adds the folder.
+ensure_folder() {
+    if st config folders list | grep -qxF "$folder_id"; then
+        load_ignores
+    else
+        add_folder sendreceive
+    fi
 }
 
 set_trash_can() {
@@ -571,11 +583,7 @@ setup() {
         move_gui_port "$want_gui"
     fi
 
-    if st config folders list | grep -qx "$folder_id"; then
-        load_ignores
-    else
-        add_folder sendreceive
-    fi
+    ensure_folder
     # Left as it is when neither is given, so re-running setup never makes a device public.
     if [[ -n $network ]]; then
         local option on=true
@@ -661,11 +669,7 @@ setup_host() {
 
     # Before the folder is added, as in setup.
     asset stignore >"$target/.stignore"
-    if st config folders list | grep -qxF "$folder_id"; then
-        load_ignores
-    else
-        add_folder sendreceive
-    fi
+    ensure_folder
     wait_folder_started
     apply_unpaired
     tell_busy
@@ -818,7 +822,8 @@ shares_other_folder() {
 # far as it can before its own changes are undone: a directory deleted there fails to go
 # while it holds files of this device's own.
 join_wait() {
-    local id=$1 self=$2 there=$3 first=${4:-} told="" failures=0 polls=0 remote status need errors
+    local id=$1 self=$2 there=$3 first=${4:-} told="" failures=0 polls=0 remote status state need
+    local errors failing
     while :; do
         if ! status=$(folder_status) ||
             ! remote=$(rest "/rest/db/completion?folder=$folder_id&device=$id" | field remoteState); then
@@ -827,15 +832,21 @@ join_wait() {
             continue
         fi
         failures=0
-        [[ $(field state <<<"$status") != error ]] ||
-            die "Syncthing cannot sync the folder: $(field error <<<"$status")"
+        state=$(field state <<<"$status")
+        [[ $state != error ]] || die "Syncthing cannot sync the folder: $(field error <<<"$status")"
         need=$(field needTotalItems <<<"$status")
         if [[ $remote == valid ]]; then
-            [[ $(field state <<<"$status") != idle || $need != 0 ]] || return 0
             errors=$(field errors <<<"$status")
-            [[ -z $first || $(field state <<<"$status") != idle || $need != "${errors:-0}" ]] || return 0
-            [[ ${errors:-0} == 0 ]] && errors="" || errors=", $errors failing ($(web_ui) shows why)"
-            ((++polls % 15)) || [[ $need == 0 ]] || echo "Still syncing: $need files and directories to go$errors."
+            if [[ $state == idle ]]; then
+                [[ $need != 0 ]] || return 0
+                # All that is left fails to sync: as far as FIRST goes.
+                [[ -z $first || $need != "${errors:-0}" ]] || return 0
+            fi
+            if ((++polls % 15 == 0)) && [[ $need != 0 ]]; then
+                failing=""
+                [[ ${errors:-0} == 0 ]] || failing=", $errors failing ($(web_ui) shows why)"
+                echo "Still syncing: $need files and directories to go$failing."
+            fi
         elif [[ -z $told ]]; then
             printf 'Waiting for %s; if not done yet, run there: claude-sync pair %s%s\n' "$id" "$self" "$there"
             told=1
