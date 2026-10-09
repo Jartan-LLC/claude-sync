@@ -10,8 +10,8 @@ Run `setup` on every device first; it prints the device's ID. Pair two devices b
 so that one gets `--keep`:
 
 ```bash
-./claude-sync pair OTHER-ID --keep    # on the device whose files to start from
-./claude-sync pair FIRST-ID           # on the other device
+claude-sync pair OTHER-ID --keep    # on the device whose files to start from
+claude-sync pair FIRST-ID           # on the other device
 ```
 
 ## Adding a device
@@ -63,7 +63,7 @@ discarding anything.
 ## Removing a device
 
 ```bash
-./claude-sync unpair OLD-ID    # on any device that syncs
+claude-sync unpair OLD-ID    # on any device that syncs
 ```
 
 `unpair` removes the device from every device, whichever one you run it on. It puts an
@@ -90,7 +90,7 @@ relays, with traffic encrypted end to end. `setup --private` turns off global di
 relays and NAT traversal, so each device needs the other's address when pairing:
 
 ```bash
-./claude-sync pair OTHER-ID --address tcp://other-host:22000
+claude-sync pair OTHER-ID --address tcp://other-host:22000
 ```
 
 Use the sync port the other device's `setup` printed, 22000 unless it said otherwise; for a

@@ -12,19 +12,82 @@ concurrency:
 permissions: {}
 
 jobs:
+  # The single file the release ships, tested before anything is published.
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: make build VERSION="${GITHUB_REF_NAME#v}"
+      - run: CLAUDE_SYNC_BIN_VERSION="${GITHUB_REF_NAME#v}" make test
+        env:
+          CLAUDE_SYNC_BIN: ${{ github.workspace }}/dist/claude-sync
+      - run: cd dist && sha256sum claude-sync >claude-sync.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: claude-sync
+          path: dist/
+          if-no-files-found: error
+
+  rpm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    container: fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+    steps:
+      # Before checkout, which without git fetches no repository for rpm.sh to archive.
+      - run: dnf -y install git-core rpm-build
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: packaging/rpm.sh "${GITHUB_REF_NAME#v}" dist
+      - run: dnf -y install dist/claude-sync.noarch.rpm
+      # The RPM's version has ~ where the tag has -.
+      - run: |
+          version=${GITHUB_REF_NAME#v}
+          test "$(claude-sync version)" = "claude-sync ${version//-/\~}"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: claude-sync-rpm
+          path: dist/claude-sync.noarch.rpm
+          if-no-files-found: error
+
   release:
+    needs: [build, rpm]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
-      # No checkout needed: gh talks to the API and resolves the repo from
-      # GH_REPO. The view-or-create guard keeps re-runs on the same tag
-      # idempotent instead of failing with "release already exists".
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: claude-sync*
+          path: dist
+          merge-multiple: true
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/claude-sync
+            dist/claude-sync.noarch.rpm
+      # No checkout needed: gh resolves the repo from GH_REPO. Uploading over an existing
+      # release keeps re-runs on the same tag idempotent.
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
-            || gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            flags=(--generate-notes --verify-tag)
+            # README installs from releases/latest, which must never be a pre-release.
+            case $GITHUB_REF_NAME in *-*) flags+=(--prerelease) ;; esac
+            gh release create "$GITHUB_REF_NAME" dist/* "${flags[@]}"
+          fi

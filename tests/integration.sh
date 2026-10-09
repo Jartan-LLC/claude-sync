@@ -122,7 +122,7 @@ in_target() {
 claude_sync() {
     local node=$1
     shift
-    CLAUDE_SYNC_NAME=$node "$root/claude-sync" "$@"
+    CLAUDE_SYNC_NAME=$node "$bin" "$@"
 }
 
 st() {
@@ -267,7 +267,7 @@ beside() {
     local node=$1
     shift
     CLAUDE_SYNC_COMPOSE_OVERRIDE=$root/tests/compose.busy.yaml CLAUDE_SYNC_NAME=$node \
-        timeout 300 "$root/claude-sync" "$@"
+        timeout 300 "$bin" "$@"
 }
 
 # A node's sync port, from its listen addresses.
@@ -295,12 +295,12 @@ listens_soon() {
 pair_bounded() {
     local node=$1
     shift
-    CLAUDE_SYNC_NAME=$node timeout 300 "$root/claude-sync" pair "$@"
+    CLAUDE_SYNC_NAME=$node timeout 300 "$bin" pair "$@"
 }
 
 relative_path_resolved() {
     local err
-    err=$(cd "$root" && CLAUDE_SYNC_NAME=$c ./claude-sync setup --path "${prefix}missing" 2>&1 >/dev/null) &&
+    err=$(cd "$root" && CLAUDE_SYNC_NAME=$c "$bin" setup --path "${prefix}missing" 2>&1 >/dev/null) &&
         return 1
     grep -qxF "claude-sync: cannot read $root/${prefix}missing" <<<"$err"
 }
@@ -310,6 +310,17 @@ path_overlay_renders() {
         docker compose -f "$root/compose.yaml" -f "$root/compose.path.yaml" config --format json |
         jq -e '.services.syncthing.volumes | any(
             .type == "bind" and .source == "/srv/claude" and .target == "/var/syncthing/claude")'
+}
+
+# Whether the claude-sync under test gives out FILE as this checkout has it, including the
+# compose overlay for --path, which no test runs in a container.
+carries() {
+    # shellcheck disable=SC2016 # expanded by the inner bash
+    bash -c 'source "$1" help >/dev/null && asset "$2"' _ "$bin" "$1" | cmp -s - "$root/$1"
+}
+
+no_leftovers() {
+    [ -z "$(ls -A "$TMPDIR")" ]
 }
 
 snapshot() {
@@ -357,6 +368,20 @@ set -E
 trap '((BASH_SUBSHELL == 0)) && echo "aborted at tests/integration.sh:$LINENO${FUNCNAME:+ in ${FUNCNAME[0]}, called from line ${BASH_LINENO[0]}}" >&2' ERR
 trap on_exit EXIT
 scratch=$(mktemp -d -t "${prefix}XXXXXX")
+# The claude-sync under test: this checkout's, or with CLAUDE_SYNC_BIN the single file
+# `make build` writes, alone in a directory so it can only use the files it carries.
+if [[ -n ${CLAUDE_SYNC_BIN:-} ]]; then
+    : "${CLAUDE_SYNC_BIN_VERSION:?the version CLAUDE_SYNC_BIN was built as}"
+    mkdir "$scratch/bin"
+    cp "$CLAUDE_SYNC_BIN" "$scratch/bin/claude-sync"
+    bin=$scratch/bin/claude-sync
+else
+    bin=$root/claude-sync
+fi
+readonly bin
+# Where setup writes its compose files, so checks can see it removes them.
+export TMPDIR=$scratch/tmp
+mkdir "$TMPDIR"
 
 docker network create "$net" >/dev/null
 docker volume create "$vol_a" >/dev/null
@@ -376,6 +401,13 @@ done
 in_target "$mount_a" "$fixture && chown -R $owner_a /t"
 in_target "$mount_b" "chown $owner_b /t"
 in_target "type=volume,src=$vol_d" "chown $owner_d /t"
+
+echo "# version"
+check "version prints the version" [ "$("$bin" version)" = "claude-sync ${CLAUDE_SYNC_BIN_VERSION:-dev}" ]
+check "  and so does --version" [ "$("$bin" --version)" = "claude-sync ${CLAUDE_SYNC_BIN_VERSION:-dev}" ]
+for f in compose.yaml compose.path.yaml compose.volume.yaml stignore; do
+    check "carries $f unchanged" carries "$f"
+done
 
 echo "# setup rejects bad input"
 check "a missing volume is rejected" fails_with "no Docker volume named $vol_missing" \
@@ -420,7 +452,7 @@ write_host_folders() {
     } >"$scratch/host/config.xml"
 }
 beside_host() {
-    env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME=claude-sync "$root/claude-sync" setup "$@"
+    env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME=claude-sync "$bin" setup "$@"
 }
 readonly elsewhere=/nonexistent/$prefix$$
 write_host_folders claude-sync "$elsewhere/claude"
@@ -438,10 +470,10 @@ check "  but not one beside it" fails_with "cannot read $elsewhere/photos2" besi
 check "  nor one here, where the folder template's empty path would point" \
     fails_with "cannot read $PWD/${prefix}here" beside_host --path "${prefix}here"
 check "  and under another name too" fails_with "folder photos already syncs" \
-    env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME="$c" "$root/claude-sync" setup --path "$elsewhere/photos/sub"
+    env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME="$c" "$bin" setup --path "$elsewhere/photos/sub"
 write_host_folders claude-sync "$elsewhere/claude"
 check "  where claude-sync's own folder there counts as any other" fails_with "folder claude-sync already syncs" \
-    env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME="$c" "$root/claude-sync" setup --path "$elsewhere/claude/x"
+    env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME="$c" "$bin" setup --path "$elsewhere/claude/x"
 write_host_folders music "$elsewhere/rock&amp;roll"
 check "  read with the path's XML escapes undone" fails_with "folder music already syncs" \
     beside_host --path "$elsewhere/rock&roll/live"
@@ -456,13 +488,16 @@ id_a=$(docker exec -u "$owner_a" "$a" syncthing device-id)
 check "prints this device's ID" grep -qF "This device ID: $id_a" <<<"$out"
 check "Syncthing writes as the volume's owner" wait_for owned_by "$mount_a" .stfolder "$owner_a"
 check ".stignore is the repo's stignore" stignore_installed "$mount_a"
+check "leaves no compose files behind" no_leftovers
 check "trash can versioning, 14 days" trash_can_14_days "$a" "$owner_a"
 check "no global discovery, relays or NAT traversal" \
     [ "$(network_options "$a" "$owner_a")" = '[false,false,false]' ]
 
 echo "# setup --volume, again"
+container_a=$(docker inspect -f '{{.Id}}' "$a")
 out=$(claude_sync "$a" setup --volume "$vol_a")
 check "keeps the device ID" grep -qF "This device ID: $id_a" <<<"$out"
+check "keeps the container" [ "$(docker inspect -f '{{.Id}}' "$a")" = "$container_a" ]
 check "keeps exactly one folder" [ "$(st "$a" "$owner_a" config folders list)" = claude-sync ]
 check "keeps trash can versioning" trash_can_14_days "$a" "$owner_a"
 check "stays private" [ "$(network_options "$a" "$owner_a")" = '[false,false,false]' ]
@@ -495,6 +530,7 @@ cp "$root/claude-sync" "$root"/compose*.yaml "$root/stignore" "$scratch"
 echo '*.bad[0-9a-f]' >>"$scratch/stignore"
 check "an ignore list Syncthing rejects fails setup with its error" fails_with "invalid pattern" \
     env CLAUDE_SYNC_NAME="$c" "$scratch/claude-sync" setup --volume "$vol_c" --private
+check "  and leaves no compose files behind" no_leftovers
 claude_sync "$c" uninstall >/dev/null
 
 echo "# pair rejects bad input"
@@ -520,7 +556,7 @@ check "a private device needs --address" fails_with "--address" pair_bounded "$a
 check "  and adds no device" [ "$(st "$a" "$owner_a" config devices list)" = "$id_a" ]
 # B starts joining before A pairs with it, and is cut off while it waits.
 check "a join cut off while waiting" fails env CLAUDE_SYNC_NAME="$b" timeout 10 \
-    "$root/claude-sync" pair "$id_a" --address "tcp://$a:22000"
+    "$bin" pair "$id_a" --address "tcp://$a:22000"
 check "  leaves B's folder receive-only" [ "$(folder_type "$b" "$owner_b")" = receiveonly ]
 check "  where unpair refuses until the join ends" fails_with "still joining" claude_sync "$b" unpair "$id_a"
 check "A pairs with B, keeping its files" pair_bounded "$a" "$id_b" --address "tcp://$b:22000" --keep
@@ -579,7 +615,7 @@ id_c=$(docker exec -u "$owner_c" "$c" syncthing device-id)
 # only --keep on C would give D anything to join.
 claude_sync "$d" setup --volume "$vol_d" --private >/dev/null
 id_d=$(docker exec -u "$owner_d" "$d" syncthing device-id)
-CLAUDE_SYNC_NAME=$d timeout 300 "$root/claude-sync" pair "$id_c" --address "tcp://$c:22000" >/dev/null 2>&1 &
+CLAUDE_SYNC_NAME=$d timeout 300 "$bin" pair "$id_c" --address "tcp://$c:22000" >/dev/null 2>&1 &
 d_pairing=$!
 check "joining devices with no files is refused" fails_with "has no files to join" \
     pair_bounded "$c" "$id_d" --address "tcp://$d:22000"
@@ -593,7 +629,7 @@ wait "$d_pairing" || true
 
 echo "# pair, a device with its own files joining"
 # Started before A accepts C, so nothing can let it finish but waiting for A.
-CLAUDE_SYNC_NAME=$c timeout 300 "$root/claude-sync" pair "$id_a" --address "tcp://$a:22000" \
+CLAUDE_SYNC_NAME=$c timeout 300 "$bin" pair "$id_a" --address "tcp://$a:22000" \
     >"$scratch/join.out" 2>&1 &
 joining=$!
 check "a join says what to run on the device it joins through" \
@@ -623,7 +659,7 @@ in_target "type=volume,src=$vol_d" "echo d >/t/d-only.md && chown $owner_d /t/d-
 claude_sync "$d" setup --volume "$vol_d" --private >/dev/null
 id_d=$(docker exec -u "$owner_d" "$d" syncthing device-id)
 check "D's join cut off while waiting" fails env CLAUDE_SYNC_NAME="$d" timeout 10 \
-    "$root/claude-sync" pair "$id_b" --address "tcp://$b:22000"
+    "$bin" pair "$id_b" --address "tcp://$b:22000"
 check "  leaves D's folder receive-only" [ "$(folder_type "$d" "$owner_d")" = receiveonly ]
 # B on the unpaired list in D's folder, where a joining D could never take it off.
 in_target "type=volume,src=$vol_d" "mkdir /t/.claude-sync-unpaired && touch /t/.claude-sync-unpaired/$id_b &&
@@ -652,8 +688,10 @@ docker build -q -t "$host_image" --build-arg IMAGE="$image" -f "$root/tests/host
 docker run -d --name "$h" --network "$net" --user user --entrypoint env "$host_image" \
     -u STHOMEDIR -u STGUIADDRESS HOME=/home/user syncthing serve --no-browser >/dev/null
 docker exec -u 0 "$h" mkdir /opt/claude-sync
-docker cp -q "$root/claude-sync" "$h:/opt/claude-sync/"
-docker cp -q "$root/stignore" "$h:/opt/claude-sync/"
+docker cp -q "$bin" "$h:/opt/claude-sync/"
+# Beside the script only for this checkout's, which reads it from there.
+[[ -n ${CLAUDE_SYNC_BIN:-} ]] || docker cp -q "$root/stignore" "$h:/opt/claude-sync/"
+docker cp -q "$root/stignore" "$h:/opt/stignore"
 wait_for on_host syncthing cli show version
 id_h=$(on_host syncthing device-id)
 # The user's own Syncthing: folders of their own, one shared with B, private options, and
@@ -709,7 +747,7 @@ out=$(host_sync setup --path claude --use-host-syncthing)
 check "prints this device's ID" grep -qF "This device ID: $id_h" <<<"$out"
 check "the folder is the directory, made absolute" \
     [ "$(on_host syncthing cli config folders claude-sync path get)" = /home/user/claude ]
-check ".stignore is the repo's stignore" on_host cmp -s claude/.stignore /opt/claude-sync/stignore
+check ".stignore is the repo's stignore" on_host cmp -s claude/.stignore /opt/stignore
 check "trash can versioning, 14 days" host_trash_can_14_days
 check "setup again, naming the directory another way" host_sync setup --path ./claude/ --use-host-syncthing
 # A curl that never reaches the API, while `syncthing cli` still does.
@@ -871,7 +909,7 @@ check "  creating no Syncthing state" fails docker volume inspect "$k-config"
 id_e=$(docker exec -u "$owner_e" "$e" syncthing device-id)
 # Started before A accepts, so the join prints what to run there, with E's own sync port.
 CLAUDE_SYNC_COMPOSE_OVERRIDE=$root/tests/compose.busy.yaml CLAUDE_SYNC_NAME=$e timeout 300 \
-    "$root/claude-sync" pair "$id_a" --address "tcp://$a:22000" >"$scratch/join.out" 2>&1 &
+    "$bin" pair "$id_a" --address "tcp://$a:22000" >"$scratch/join.out" 2>&1 &
 joining=$!
 check "pair names this instance's sync port" \
     wait_for grep -qF "tcp://THIS-HOST:$port_e" "$scratch/join.out"

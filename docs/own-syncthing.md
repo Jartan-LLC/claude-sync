@@ -5,7 +5,7 @@ and claude-sync, `--use-host-syncthing` adds claude-sync's folder to it instead 
 starting a container:
 
 ```bash
-./claude-sync setup --path ~/.claude --use-host-syncthing
+claude-sync setup --path ~/.claude --use-host-syncthing
 ```
 
 This needs curl but not Docker, and works only with `--path`. claude-sync changes nothing

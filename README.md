@@ -6,9 +6,6 @@
 Continuous sync of `~/.claude` across devices: change a setting or write a memory on one
 machine, and it is there on the others.
 
-> **Status:** early. `setup`, `pair`, `unpair` and `uninstall` work on Linux; expect rough
-> edges.
-
 ## How it works
 
 - `claude-sync` runs [Syncthing](https://syncthing.net/) in a container that syncs your
@@ -25,30 +22,57 @@ machine, and it is there on the others.
 
 - Linux with Docker Engine 25 or newer and its Compose plugin, unless you [use your own
   Syncthing](docs/own-syncthing.md). macOS is untested.
-- With `--path`, run claude-sync on the host itself, not inside a dev container: Docker
-  resolves the path on the host.
+
+## Install
+
+claude-sync is one file. Download the latest release into `~/.local/bin`, which must be on
+your `PATH`:
+
+```bash
+mkdir -p ~/.local/bin
+curl -fsSLo ~/.local/bin/claude-sync \
+    https://github.com/Jartan-LLC/claude-sync/releases/latest/download/claude-sync
+chmod +x ~/.local/bin/claude-sync
+```
+
+`gh attestation verify ~/.local/bin/claude-sync --repo Jartan-LLC/claude-sync` checks that
+a workflow in this repository built the file; each release also lists its SHA-256 in
+`claude-sync.sha256`.
+
+On Fedora, or another distribution that installs RPMs with `dnf`, install the release's
+package instead:
+
+```bash
+sudo dnf install \
+    https://github.com/Jartan-LLC/claude-sync/releases/latest/download/claude-sync.noarch.rpm
+```
+
+The package is not signed, so `dnf` warns that it skipped its OpenPGP check. To check it
+first, download it and run `gh attestation verify` on it as on the single file, then
+`sudo dnf install ./claude-sync.noarch.rpm`.
 
 ## Quickstart
 
 1. On both devices, set up claude-sync; `setup` prints the device's ID:
 
    ```bash
-   git clone https://github.com/Jartan-LLC/claude-sync.git
-   cd claude-sync
-   ./claude-sync setup --path ~/.claude        # a directory
-   ./claude-sync setup --volume claude-data    # or a Docker volume
+   claude-sync setup --path ~/.claude        # a directory
+   claude-sync setup --volume claude-data    # or a Docker volume
    ```
+
+   Run `setup --path` on the host itself, not inside a container: Docker resolves the path
+   on the host.
 
 2. On the device whose files to start from, pair with the other one:
 
    ```bash
-   ./claude-sync pair OTHER-ID --keep
+   claude-sync pair OTHER-ID --keep
    ```
 
 3. Stop Claude Code on the other device, then pair it with the first:
 
    ```bash
-   ./claude-sync pair FIRST-ID
+   claude-sync pair FIRST-ID
    ```
 
    It joins: it takes the first device's files and moves its own changes to the trash can.
@@ -56,14 +80,20 @@ machine, and it is there on the others.
 
 To add a device later, set it up, stop Claude Code on it, and pair it with any device that
 already syncs, on both sides; start Claude Code there again once its `pair` returns. To
-remove one, run `./claude-sync unpair OLD-ID` on any device that syncs.
+remove one, run `claude-sync unpair OLD-ID` on any device that syncs.
 [Pairing devices](docs/pairing.md) explains joining, `--keep`, private networks and what
 to do when `pair` stops.
+
+## Upgrade
+
+Download claude-sync again, or rerun the `dnf install` line, as in [Install](#install).
+Then rerun `setup` on each device as you first ran it there, so it applies the new
+version's Syncthing settings and ignore list.
 
 ## Uninstall
 
 ```bash
-./claude-sync uninstall
+claude-sync uninstall
 ```
 
 Removes the container and this device's Syncthing state; with your own Syncthing, it
