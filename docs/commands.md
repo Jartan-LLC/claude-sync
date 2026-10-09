@@ -1,7 +1,7 @@
 # Commands
 
 Every command and flag, what `setup` checks, and what to do about errors whose message
-leaves the fix out. `./claude-sync help` prints the same commands and flags.
+leaves the fix out. `claude-sync help` prints the same commands and flags.
 
 ## Commands and flags
 
@@ -30,9 +30,9 @@ host](#several-instances-on-one-host)).
 ## setup
 
 `setup` refuses a root-owned target: `chown` it to the user who runs Claude Code. It is
-safe to re-run, rewrites `.stignore` from this repo each time, and prints this device's
-ID. It fails, with Syncthing's message, if Syncthing cannot sync the folder, and fails
-too if Syncthing's API never answers.
+safe to re-run, rewrites `.stignore` from the ignore list built into claude-sync each
+time, and prints this device's ID. It fails, with Syncthing's message, if Syncthing cannot
+sync the folder, and fails too if Syncthing's API never answers.
 
 In its own container, `setup` also prints the web UI port and the sync port: Syncthing's
 usual 8384 and 22000, or free ports Syncthing picks on the first run when another program,
@@ -50,8 +50,8 @@ directories, each as a device of its own. Give the same name to every command fo
 instance:
 
 ```bash
-CLAUDE_SYNC_NAME=claude-work ./claude-sync setup --volume work-claude
-CLAUDE_SYNC_NAME=claude-work ./claude-sync pair OTHER-ID
+CLAUDE_SYNC_NAME=claude-work claude-sync setup --volume work-claude
+CLAUDE_SYNC_NAME=claude-work claude-sync pair OTHER-ID
 ```
 
 Each instance gets ports of its own, which `setup` prints, as long as the other instances
@@ -65,7 +65,7 @@ Syncthing itself.
 ## uninstall
 
 ```bash
-./claude-sync uninstall
+claude-sync uninstall
 ```
 
 Removes the container and this device's Syncthing state, including its device ID. Your
@@ -101,6 +101,6 @@ With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninsta
 | `already syncs` ... `which overlaps` | Choose a directory that none of your own Syncthing's folders syncs, inside or around |
 | `already set up in the Syncthing on this host` | Add `--use-host-syncthing`, or run `uninstall` first |
 | `already syncs claude-sync's folder; to sync this volume beside it` | Set `CLAUDE_SYNC_NAME` to another name for this instance |
-| `container NAME already syncs` | Give this instance another target, or remove container NAME, which `docker ps -a` lists even when stopped; for a claude-sync instance, `CLAUDE_SYNC_NAME=NAME ./claude-sync uninstall` removes it |
+| `container NAME already syncs` | Give this instance another target, or remove container NAME, which `docker ps -a` lists even when stopped; for a claude-sync instance, `CLAUDE_SYNC_NAME=NAME claude-sync uninstall` removes it |
 | `paths containing a comma` or `a newline are not supported` | Choose or rename a directory without one |
 | `is on the list of unpaired devices` | Run `pair` for that device on a device that already syncs, then rerun `pair` here |

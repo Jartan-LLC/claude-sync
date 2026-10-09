@@ -78,13 +78,39 @@ jobs:
       # - run: pnpm exec prettier --check .
 
   integration:
+    name: integration (${{ matrix.claude-sync }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # built: the single file a release ships, as release.yml builds it.
+        claude-sync: [source, built]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - if: matrix.claude-sync == 'built'
+        run: |
+          make build VERSION=0.0.0-ci
+          echo "CLAUDE_SYNC_BIN=$PWD/dist/claude-sync" >>"$GITHUB_ENV"
+          echo "CLAUDE_SYNC_BIN_VERSION=0.0.0-ci" >>"$GITHUB_ENV"
       - run: make test
+
+  # The RPM a release ships, from this commit: built with its %check, then installed.
+  rpm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    container: fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+    steps:
+      # Before checkout, which without git fetches no repository for rpm.sh to archive.
+      - run: dnf -y install git-core rpm-build
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: packaging/rpm.sh 0.0.0-ci "$RUNNER_TEMP/rpm"
+      - run: dnf -y install "$RUNNER_TEMP/rpm/claude-sync.noarch.rpm"
+      - run: test "$(claude-sync version)" = "claude-sync 0.0.0~ci"
 
   changes:
     runs-on: ubuntu-24.04
@@ -143,12 +169,12 @@ jobs:
   check:
     if: always()
     # A new gating job goes in BOTH the needs list and the results array below.
-    needs: [lint, integration, changes, devcontainer]
+    needs: [lint, integration, rpm, changes, devcontainer]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - run: |
-          results=("${{ needs.lint.result }}" "${{ needs.integration.result }}" "${{ needs.changes.result }}" "${{ needs.devcontainer.result }}")
+          results=("${{ needs.lint.result }}" "${{ needs.integration.result }}" "${{ needs.rpm.result }}" "${{ needs.changes.result }}" "${{ needs.devcontainer.result }}")
           for r in "${results[@]}"; do
             if [[ "$r" != "success" && "$r" != "skipped" ]]; then
               echo "Check failed: $r"

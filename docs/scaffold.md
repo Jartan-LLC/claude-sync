@@ -110,5 +110,8 @@ and adjust `directory` where manifests aren't at the root.
 
 ## Publishing
 
-Nothing publishes until you push a `v*` tag; `release.yml` then creates a GitHub Release
-with generated notes.
+Nothing publishes until you push a `v*` tag. `release.yml` then builds the single-file
+claude-sync, runs the integration tests against it, and creates a GitHub Release with
+generated notes, the file, its `claude-sync.sha256`, the RPM that `packaging/rpm.sh`
+builds in a Fedora container, and build provenance attestations for both. It needs no
+secret or setup.

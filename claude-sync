@@ -2,8 +2,15 @@
 # Keep ~/.claude in sync across devices with Syncthing. See README.md.
 set -euo pipefail
 
+# BEGIN ASSETS: packaging/build.sh replaces this block with the version and the files.
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-readonly here
+readonly here claude_sync_version=dev
+# Prints one of claude-sync's own files: compose.yaml, compose.path.yaml,
+# compose.volume.yaml or stignore.
+asset() {
+    cat -- "$here/$1"
+}
+# END ASSETS
 readonly default_name=claude-sync
 export CLAUDE_SYNC_NAME=${CLAUDE_SYNC_NAME:-$default_name}
 readonly name=$CLAUDE_SYNC_NAME
@@ -61,6 +68,7 @@ Usage:
   claude-sync uninstall             Remove claude-sync's container and Syncthing state,
                                     or its folder from the Syncthing on this host; the
                                     synced files are left untouched
+  claude-sync version
   claude-sync help
 
 Environment:
@@ -467,8 +475,8 @@ setup() {
     [[ -z $taken ]] || die "container $taken already syncs $target; give this instance another target"
 
     local image
-    image=$(sed -n 's/^ *image: *//p' "$here/compose.yaml")
-    [[ -n $image ]] || die "no image in $here/compose.yaml"
+    image=$(asset compose.yaml | sed -n 's/^ *image: *//p')
+    [[ -n $image ]] || die "no image in compose.yaml"
     owner=$(docker run --rm --entrypoint stat --mount "$mount" "$image" -c %u:%g /target) ||
         die "cannot read $target"
     # Syncthing would run as root and write files Claude Code cannot change.
@@ -489,7 +497,14 @@ setup() {
         --mount "type=volume,src=$name-config,dst=/config" "$image" -c 'cat >/config/claude-sync-companion'
 
     export CLAUDE_SYNC_UID=${owner%:*} CLAUDE_SYNC_GID=${owner#*:} CLAUDE_SYNC_TARGET=$target
-    compose_files=(-f "$here/compose.yaml" -f "$here/compose.$kind.yaml")
+    # Compose reads only files, and only `up` below needs them.
+    local compose_dir
+    compose_dir=$(mktemp -d -t claude-sync.XXXXXX)
+    # shellcheck disable=SC2064 # expanded now: compose_dir is local
+    trap "rm -rf -- '$compose_dir'" EXIT
+    asset compose.yaml >"$compose_dir/compose.yaml"
+    asset "compose.$kind.yaml" >"$compose_dir/compose.$kind.yaml"
+    compose_files=(-f "$compose_dir/compose.yaml" -f "$compose_dir/compose.$kind.yaml")
     [[ -z ${CLAUDE_SYNC_COMPOSE_OVERRIDE:-} ]] || compose_files+=(-f "$CLAUDE_SYNC_COMPOSE_OVERRIDE")
 
     # A port asked for must be free, unless this instance already has it.
@@ -508,8 +523,8 @@ setup() {
     done
 
     # Written before Syncthing first scans the folder, so ignored files are never indexed.
-    docker run --rm -i --user "$owner" --entrypoint sh --mount "$mount" "$image" \
-        -c 'cat >/target/.stignore' <"$here/stignore"
+    asset stignore | docker run --rm -i --user "$owner" --entrypoint sh --mount "$mount" "$image" \
+        -c 'cat >/target/.stignore'
 
     compose up --detach --wait --wait-timeout 120 --quiet-pull
 
@@ -614,7 +629,7 @@ setup_host() {
     folder_path=$target
 
     # Before the folder is added, as in setup.
-    cp "$here/stignore" "$target/.stignore"
+    asset stignore >"$target/.stignore"
     st config folders list | grep -qxF "$folder_id" || add_folder sendreceive
     wait_folder_started
     apply_unpaired
@@ -884,6 +899,7 @@ case ${1:-help} in
         shift
         uninstall "$@"
         ;;
+    version | --version) echo "claude-sync $claude_sync_version" ;;
     help | -h | --help) usage ;;
     *)
         usage >&2

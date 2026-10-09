@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Each release ships claude-sync as a single file, with its SHA-256, and as an RPM for
+  Fedora, both with build provenance attestations.
+- `claude-sync version` prints the installed version.
 - `claude-sync setup --volume NAME | --path DIR`: runs Syncthing in a container that syncs
   `~/.claude` as its owner, skipping per-machine files and keeping a 14-day trash can.
 - `claude-sync uninstall`: removes the container and Syncthing state, leaving the synced

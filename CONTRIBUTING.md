@@ -28,6 +28,29 @@ needs Docker. Every container, volume, network and image it keeps is named
 the dev container shares the host's Docker daemon. It never reaches a Syncthing of your
 own.
 
+## Building
+
+`./claude-sync` runs from the checkout and reports its version as `dev`. `make build`
+writes `dist/claude-sync`, the single file a release ships: the script with its version
+and its own files (`compose*.yaml`, `stignore`) built in. To test that file:
+
+```bash
+make build VERSION=0.0.0-test
+CLAUDE_SYNC_BIN=$PWD/dist/claude-sync CLAUDE_SYNC_BIN_VERSION=0.0.0-test make test
+```
+
+CI runs the integration tests against both. It also builds the RPM with
+`packaging/rpm.sh` in a Fedora container, and installs it there.
+
+## Releasing
+
+1. Move the `## [Unreleased]` entries in `CHANGELOG.md` under `## [X.Y.Z] - YYYY-MM-DD`
+   and update the links at its end.
+2. Once that is merged, tag `main` and push the tag:
+   `git tag vX.Y.Z origin/main && git push origin vX.Y.Z`.
+
+[Publishing](docs/scaffold.md#publishing) covers what the tag sets off.
+
 ## Conventions
 
 - Commits follow [Conventional Commits](https://www.conventionalcommits.org/)
