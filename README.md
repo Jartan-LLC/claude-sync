@@ -30,7 +30,7 @@ machine, and it is there on the others.
 
 ## Quickstart
 
-1. On every device, set up claude-sync; `setup` prints the device's ID:
+1. On both devices, set up claude-sync; `setup` prints the device's ID:
 
    ```bash
    git clone https://github.com/Jartan-LLC/claude-sync.git
@@ -86,7 +86,7 @@ Everything in `~/.claude` except what is meaningless or harmful on another machi
 
 ## Documentation
 
-- [Pairing devices](docs/pairing.md): joining, `--keep`, the mesh, removing a device,
+- [Pairing devices](docs/pairing.md): joining, `--keep`, adding and removing devices,
   private networks
 - [Commands](docs/commands.md): every command and flag, ports, several instances on one
   host, error messages

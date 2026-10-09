@@ -16,9 +16,10 @@ so that one gets `--keep`:
 
 ## Adding a device
 
-To add a device later, pair it with any device that already syncs, on both sides. That
-device introduces it to all the others, and them to it, so every device syncs with every
-other directly. With your own Syncthing, a device it already syncs other folders with is
+To add a device later, stop Claude Code on it and pair it with any device that already
+syncs, on both sides; it joins (see [Joining](#joining)), so start Claude Code there again
+once its `pair` returns. The device it pairs with introduces it to all the others, and
+them to it, so every device syncs with every other directly. With your own Syncthing, a device it already syncs other folders with is
 the exception (see [Using your own Syncthing](own-syncthing.md)).
 
 ## Joining
@@ -45,8 +46,9 @@ discarding anything.
 - It says it is waiting for the other device, and what to run there: run that `pair`
   command on the other device, adding `--keep` if this is the first pairing and that
   device has the files to start from. This one carries on once it accepts.
-- It was interrupted, the other device went away, or the message ends "rerun to finish
-  the join": run the same command again. A join picks up where it stopped.
+- It was interrupted, or the message ends "rerun to finish the join": run the same
+  command again. A join picks up where it stopped. If the other device goes away during a
+  join, `pair` keeps waiting for it; you can interrupt it and rerun later.
 - It says "Syncthing cannot sync the folder": Syncthing's reason follows; fix it, then
   rerun `pair`.
 - It says the other device "has no files to join": nothing was discarded. Rerun `pair`
