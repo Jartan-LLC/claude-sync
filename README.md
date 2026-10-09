@@ -19,7 +19,7 @@ machine, and it is there on the others.
   reach it from another machine through an SSH tunnel (`ssh -L 8384:127.0.0.1:8384 HOST`
   for the usual port 8384).
 - If you already run Syncthing on the host, claude-sync can add its folder to that
-  Syncthing instead (see [Use your own Syncthing](docs/own-syncthing.md)).
+  Syncthing instead (see [Using your own Syncthing](docs/own-syncthing.md)).
 
 ## Requirements
 
@@ -54,8 +54,9 @@ machine, and it is there on the others.
    It joins: it takes the first device's files and moves its own changes to the trash can.
    `pair` returns once the join is done; start Claude Code there again.
 
-To add a device later, set it up and pair it with any device that already syncs, on both
-sides. To remove one, run `./claude-sync unpair OLD-ID` on any device that syncs.
+To add a device later, set it up, stop Claude Code on it, and pair it with any device that
+already syncs, on both sides; start Claude Code there again once its `pair` returns. To
+remove one, run `./claude-sync unpair OLD-ID` on any device that syncs.
 [Pairing devices](docs/pairing.md) explains joining, `--keep`, private networks and what
 to do when `pair` stops.
 
@@ -65,8 +66,8 @@ to do when `pair` stops.
 ./claude-sync uninstall
 ```
 
-Removes the container and this device's Syncthing state, or with your own Syncthing only
-claude-sync's folder; your `~/.claude` is untouched (see
+Removes the container and this device's Syncthing state; with your own Syncthing, it
+removes only claude-sync's folder from it. Your `~/.claude` is untouched (see
 [Commands](docs/commands.md#uninstall)).
 
 ## What syncs

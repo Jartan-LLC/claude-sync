@@ -43,9 +43,12 @@ discarding anything.
 ## When `pair` stops
 
 - It says it is waiting for the other device, and what to run there: run that `pair`
-  command on the other device, and this one carries on once it accepts.
-- It was interrupted, or the other device went away: run the same command again. A join
-  picks up where it stopped.
+  command on the other device, adding `--keep` if this is the first pairing and that
+  device has the files to start from. This one carries on once it accepts.
+- It was interrupted, the other device went away, or the message ends "rerun to finish
+  the join": run the same command again. A join picks up where it stopped.
+- It says "Syncthing cannot sync the folder": Syncthing's reason follows; fix it, then
+  rerun `pair`.
 - It says the other device "has no files to join": see the refusal above, and rerun with
   `--keep` on the device whose files to start from, as the message says.
 - It says "files here keep changing during the join": stop Claude Code on this device and

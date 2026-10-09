@@ -1,7 +1,7 @@
 # Commands
 
-Every command and flag, what `setup` checks, and what each error means. `./claude-sync
-help` prints the same commands and flags.
+Every command and flag, what `setup` checks, and what to do about errors whose message
+leaves the fix out. `./claude-sync help` prints the same commands and flags.
 
 ## Commands and flags
 
@@ -17,12 +17,12 @@ help` prints the same commands and flags.
 | Flag | With | Does |
 |---|---|---|
 | `--use-host-syncthing` | `setup --path` | Uses the Syncthing already running as you on this host ([Using your own Syncthing](own-syncthing.md)) |
-| `--private` | `setup` | Turns off global discovery, relays and NAT traversal ([Private networks](pairing.md#private-networks)) |
-| `--public` | `setup` | Returns a private device to Syncthing's defaults |
-| `--gui-port PORT` | `setup` | Fixes the web UI port |
-| `--sync-port PORT` | `setup` | Fixes the sync port |
+| `--private` | `setup`, not with `--use-host-syncthing` | Turns off global discovery, relays and NAT traversal ([Private networks](pairing.md#private-networks)) |
+| `--public` | `setup`, not with `--use-host-syncthing` | Returns a private device to Syncthing's defaults |
+| `--gui-port PORT` | `setup`, not with `--use-host-syncthing` | Fixes the web UI port, from 1024 to 65535 |
+| `--sync-port PORT` | `setup`, not with `--use-host-syncthing` | Fixes the sync port, from 1024 to 65535 |
 | `--keep` | `pair` | Keeps this device's files instead of joining ([Joining](pairing.md#joining)) |
-| `--address tcp://HOST:PORT` | `pair` | Where to reach the other device; required on a private device |
+| `--address tcp://HOST:PORT` | `pair` | Where to reach the other device; required when global discovery is off here (a `--private` device, or your own Syncthing with it off) |
 
 `CLAUDE_SYNC_NAME` names the instance a command acts on (see [Several instances on one
 host](#several-instances-on-one-host)).
@@ -78,18 +78,18 @@ With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninsta
 | `no Docker volume named` | Check the name with `docker volume ls` |
 | `cannot read DIR` | The directory must exist on the host running Docker; run claude-sync on that host, not inside a dev container |
 | `DIR is owned by root` | `chown` it to the user who runs Claude Code |
-| `already set up for` | This instance syncs another target; run `uninstall` first, or use another `CLAUDE_SYNC_NAME` |
+| `already set up for` | This instance syncs another target; run `uninstall` first, or, with claude-sync's own container, use another `CLAUDE_SYNC_NAME` |
 | `port N is in use` | Give another `--gui-port` or `--sync-port` |
 | `the web UI and sync ports would both be` | Give `--gui-port` and `--sync-port` different ports |
-| `Syncthing cannot sync the folder:` | Syncthing's own reason follows; fix it and rerun `setup` |
+| `Syncthing cannot sync the folder:` | Syncthing's own reason follows; fix it, then rerun the command that failed (`pair` finishes a join) |
 | `Syncthing is not running in container` | Rerun `setup` |
 | `claude-sync is not set up on this device` | Run `setup` first |
 | `not a device ID` | Copy the ID as the other device's `setup` printed it |
-| `cannot add device` | The ID is mistyped; copy it again |
+| `cannot add device` | Syncthing's reason follows; if it is about the ID, copy it again as the other device's `setup` printed it |
 | `this device is private` | Give the other device's `--address` |
 | `has no files to join` | See [Joining](pairing.md#joining); rerun with `--keep` on the device whose files to start from |
 | `files here keep changing during the join` | Stop Claude Code on this device and rerun `pair` |
-| `cannot reach Syncthing` | Check that the container is running (`docker ps`), then rerun |
+| `cannot reach Syncthing` | Check that claude-sync's container (`docker ps`) or your own Syncthing is running, then rerun; a join picks up where it stopped |
 | `this device is still joining` | Finish the join with `pair`, then rerun `unpair` |
 | `cannot reach the Syncthing on this host` | Start your own Syncthing, as the user who runs claude-sync |
 | `claude-sync needs Syncthing 2 or newer` | Upgrade your own Syncthing |
