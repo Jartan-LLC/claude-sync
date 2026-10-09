@@ -81,7 +81,7 @@ With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninsta
 |---|---|
 | `Docker is required` | Install Docker Engine 25 or newer with its Compose plugin, or [use your own Syncthing](own-syncthing.md) with `--path` |
 | `no Docker volume named` | Check the name with `docker volume ls` |
-| `cannot read DIR` | The directory must exist on the host running Docker; run claude-sync on that host, not inside a dev container |
+| `cannot read DIR` | The directory must exist on the host running Docker; run claude-sync on that host, not inside a container |
 | `DIR is owned by root` | `chown` it to the user who runs Claude Code |
 | `already set up for` | This instance syncs another target; run `uninstall` first, or, with claude-sync's own container, use another `CLAUDE_SYNC_NAME` |
 | `port N is in use` | Give another `--gui-port` or `--sync-port` |

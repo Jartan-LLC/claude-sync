@@ -6,9 +6,6 @@
 Continuous sync of `~/.claude` across devices: change a setting or write a memory on one
 machine, and it is there on the others.
 
-> **Status:** early. `setup`, `pair`, `unpair` and `uninstall` work on Linux; expect rough
-> edges.
-
 ## How it works
 
 - `claude-sync` runs [Syncthing](https://syncthing.net/) in a container that syncs your
@@ -25,8 +22,6 @@ machine, and it is there on the others.
 
 - Linux with Docker Engine 25 or newer and its Compose plugin, unless you [use your own
   Syncthing](docs/own-syncthing.md). macOS is untested.
-- With `--path`, run claude-sync on the host itself, not inside a dev container: Docker
-  resolves the path on the host.
 
 ## Install
 
@@ -63,6 +58,9 @@ The package is not signed, so `dnf` warns that it skipped its OpenPGP check;
    claude-sync setup --path ~/.claude        # a directory
    claude-sync setup --volume claude-data    # or a Docker volume
    ```
+
+   Run `setup --path` on the host itself, not inside a container: Docker resolves the path
+   on the host.
 
 2. On the device whose files to start from, pair with the other one:
 
