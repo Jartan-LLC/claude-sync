@@ -31,13 +31,16 @@ host](#several-instances-on-one-host)).
 
 `setup` refuses a root-owned target: `chown` it to the user who runs Claude Code. It is
 safe to re-run, rewrites `.stignore` from this repo each time, and prints this device's
-ID. It fails, with Syncthing's message, if Syncthing cannot sync the folder.
+ID. It fails, with Syncthing's message, if Syncthing cannot sync the folder, and fails
+too if Syncthing's API never answers.
 
 In its own container, `setup` also prints the web UI port and the sync port: Syncthing's
-usual 8384 and 22000, or free ports Syncthing picks on the first run when another
-program, such as another Syncthing, holds those. `--gui-port` and `--sync-port` choose
-them instead, and later runs keep them. If another program later takes the web UI port,
-Syncthing cannot start its web UI and `setup` cannot move it: free that port again.
+usual 8384 and 22000, or free ports Syncthing picks on the first run when another program,
+such as another Syncthing, holds those. `--gui-port` and `--sync-port` choose them
+instead, and later runs keep them. Swapping the two ports with each other leaves the sync
+port down for about a minute, until Syncthing retries it. If another program later takes
+the web UI port, Syncthing cannot start its web UI and `setup` cannot move it: free that
+port again.
 
 ## Several instances on one host
 
@@ -52,10 +55,12 @@ CLAUDE_SYNC_NAME=claude-work ./claude-sync pair OTHER-ID
 ```
 
 Each instance gets ports of its own, which `setup` prints, as long as the other instances
-are running when it first starts: Syncthing takes free ports only then. A name other than
-the default, `claude-sync`, can't be combined with `--use-host-syncthing`, since your own
-Syncthing holds one claude-sync folder; neither can `--gui-port` or `--sync-port`, since
-you set that Syncthing's ports in Syncthing itself.
+are running when it first starts: Syncthing takes free ports only then. Each needs a
+target of its own too: `setup` refuses a volume or directory that another Syncthing
+container mounts, running or stopped. A name other than the default, `claude-sync`, can't
+be combined with `--use-host-syncthing`, since your own Syncthing holds one claude-sync
+folder; neither can `--gui-port` or `--sync-port`, since you set that Syncthing's ports in
+Syncthing itself.
 
 ## uninstall
 
@@ -95,3 +100,7 @@ With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninsta
 | `claude-sync needs Syncthing 2 or newer` | Upgrade your own Syncthing |
 | `already syncs` ... `which overlaps` | Choose a directory that none of your own Syncthing's folders syncs, inside or around |
 | `already set up in the Syncthing on this host` | Add `--use-host-syncthing`, or run `uninstall` first |
+| `already syncs claude-sync's folder; to sync this volume beside it` | Set `CLAUDE_SYNC_NAME` to another name for this instance |
+| `container NAME already syncs` | Give this instance another target, or remove container NAME, which `docker ps -a` lists even when stopped; for a claude-sync instance, `CLAUDE_SYNC_NAME=NAME ./claude-sync uninstall` removes it |
+| `paths containing a comma` or `a newline are not supported` | Choose or rename a directory without one |
+| `is on the list of unpaired devices` | Run `pair` for that device on a device that already syncs, then rerun `pair` here |

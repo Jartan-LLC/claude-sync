@@ -8,7 +8,7 @@ set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 readonly root
 readonly prefix=claude-sync-test-
-readonly net=${prefix}net a=${prefix}a b=${prefix}b c=${prefix}c d=${prefix}d e=${prefix}e g=${prefix}g
+readonly net=${prefix}net a=${prefix}a b=${prefix}b c=${prefix}c d=${prefix}d e=${prefix}e g=${prefix}g k=${prefix}k
 readonly listener=${prefix}listener foreign=${prefix}foreign h=${prefix}h host_image=${prefix}host
 readonly vol_a=${prefix}a-data vol_b=${prefix}b-data vol_missing=${prefix}missing
 readonly vol_root=${prefix}root-data vol_c=${prefix}c-data vol_d=${prefix}d-data
@@ -250,6 +250,11 @@ host_idle() {
         jq -e '.state == "idle" and .needTotalItems == 0'
 }
 
+# The files of the user's other folders.
+host_others() {
+    on_host sh -c "find photos notes tilde -type f ! -path '*/.stfolder/*' -exec sha256sum {} + | sort"
+}
+
 # Without .stfolder, Syncthing's marker, which it deletes along with the folder.
 host_snapshot() {
     on_host sh -c 'cd claude && find . -path ./.stfolder -prune -o -print | sort &&
@@ -273,6 +278,15 @@ sync_port() {
 
 listens() {
     docker exec "$1" nc -z 127.0.0.1 "$2"
+}
+
+listens_soon() {
+    local i
+    for ((i = 0; i < 20; i++)); do
+        listens "$@" && return 0
+        sleep 1
+    done
+    return 1
 }
 
 # A joining device's pair blocks until caught up; a bound turns a hang into a failure.
@@ -304,13 +318,13 @@ snapshot() {
 
 cleanup() {
     local x
-    for x in "$a" "$b" "$c" "$d" "$e" "$g" "$h" "$bad_name" "$listener" "$foreign"; do
+    for x in "$a" "$b" "$c" "$d" "$e" "$g" "$k" "$h" "$bad_name" "$listener" "$foreign"; do
         guard "$x"
         docker rm --force -v "$x" >/dev/null 2>&1 || true
     done
     guard "$host_image"
     docker image rm "$host_image" >/dev/null 2>&1 || true
-    for x in "$a-config" "$b-config" "$c-config" "$d-config" "$e-config" "$g-config" \
+    for x in "$a-config" "$b-config" "$c-config" "$d-config" "$e-config" "$g-config" "$k-config" \
         "$bad_name-config" "$foreign-config" "$vol_a" "$vol_b" "$vol_c" "$vol_d" "$vol_e" "$vol_g" \
         "$vol_missing" "$vol_root"; do
         guard "$x"
@@ -381,27 +395,58 @@ check "  and one below 1024" fails_with "not a port" claude_sync "$c" setup --vo
 check "  and the same port for both" fails_with "need different ports" \
     claude_sync "$c" setup --volume "$vol_c" --gui-port 8500 --sync-port 8500
 check "  and creates no Syncthing state" fails docker volume inspect "$c-config"
-# A stand-in for this user's Syncthing on the host, listing claude-sync's folder unless
-# FOLDERS says otherwise. The volume and the directory do not exist, so even a setup that
-# got past the check would stop before creating anything under the default name.
+# A stand-in for this user's Syncthing on the host, stopped: it answers only `paths`, so
+# the checks must read its config file, which write_host_folders writes. The volume and
+# directories do not exist, so even a setup that got past the checks would stop before
+# creating anything.
 mkdir "$scratch/host"
-touch "$scratch/host/config.xml"
 cat >"$scratch/host/syncthing" <<'EOF'
 #!/bin/sh
-case "$*" in
-    paths) printf 'Configuration file:\n\t%s/config.xml\n' "${0%/*}" ;;
-    "cli config folders list") echo "${FOLDERS-claude-sync}" ;;
-    *) exit 1 ;;
-esac
+[ "$*" = paths ] || exit 1
+printf 'Configuration file:\n\t%s/config.xml\n' "${0%/*}"
 EOF
 chmod +x "$scratch/host/syncthing"
+# The stand-in's folders, as ID and path pairs, the path already escaped for XML.
+write_host_folders() {
+    {
+        echo '<configuration version="51">'
+        # As Syncthing writes it: the template for new folders, with no ID or path.
+        printf '    <defaults>\n        <folder id="" label="" path="" type="sendreceive">\n        </folder>\n    </defaults>\n'
+        while (($#)); do
+            printf '    <folder id="%s" label="x" path="%s" type="sendreceive">\n    </folder>\n' "$1" "$2"
+            shift 2
+        done
+        echo '</configuration>'
+    } >"$scratch/host/config.xml"
+}
+beside_host() {
+    env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME=claude-sync "$root/claude-sync" setup "$@"
+}
+readonly elsewhere=/nonexistent/$prefix$$
+write_host_folders claude-sync "$elsewhere/claude"
 check "a volume beside a Syncthing that syncs claude-sync's folder is refused" \
-    fails_with "set CLAUDE_SYNC_NAME to another name" \
-    env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME=claude-sync "$root/claude-sync" setup --volume "$vol_missing"
+    fails_with "set CLAUDE_SYNC_NAME to another name" beside_host --volume "$vol_missing"
 check "  and a directory, pointing to --use-host-syncthing" fails_with "add --use-host-syncthing" \
-    env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME=claude-sync "$root/claude-sync" setup --path "/nonexistent/$prefix$$"
+    beside_host --path "$elsewhere/other"
+write_host_folders photos "$elsewhere/photos"
 check "  but not beside one without that folder" fails_with "no Docker volume named $vol_missing" \
-    env PATH="$scratch/host:$PATH" FOLDERS=photos CLAUDE_SYNC_NAME=claude-sync "$root/claude-sync" setup --volume "$vol_missing"
+    beside_host --volume "$vol_missing"
+check "a directory inside a folder of that Syncthing is refused" fails_with "folder photos already syncs" \
+    beside_host --path "$elsewhere/photos/sub"
+check "  and one around it" fails_with "folder photos already syncs" beside_host --path "$elsewhere"
+check "  but not one beside it" fails_with "cannot read $elsewhere/photos2" beside_host --path "$elsewhere/photos2"
+check "  nor one here, where the folder template's empty path would point" \
+    fails_with "cannot read $PWD/${prefix}here" beside_host --path "${prefix}here"
+check "  and under another name too" fails_with "folder photos already syncs" \
+    env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME="$c" "$root/claude-sync" setup --path "$elsewhere/photos/sub"
+write_host_folders claude-sync "$elsewhere/claude"
+check "  where claude-sync's own folder there counts as any other" fails_with "folder claude-sync already syncs" \
+    env PATH="$scratch/host:$PATH" CLAUDE_SYNC_NAME="$c" "$root/claude-sync" setup --path "$elsewhere/claude/x"
+write_host_folders music "$elsewhere/rock&amp;roll"
+check "  read with the path's XML escapes undone" fails_with "folder music already syncs" \
+    beside_host --path "$elsewhere/rock&roll/live"
+write_host_folders notes "$elsewhere/it&#39;s"
+check "  numeric ones too" fails_with "folder notes already syncs" beside_host --path "$elsewhere/it's/x"
 check "no container or state is left behind" fails docker container inspect "$a"
 check "  nor Syncthing state" fails docker volume inspect "$a-config"
 
@@ -438,7 +483,10 @@ echo "# setup --path"
 check "a missing directory is rejected" fails_with "cannot read /nonexistent/$prefix$$" \
     claude_sync "$c" setup --path "/nonexistent/$prefix$$"
 check "a path with a comma is rejected" fails_with comma claude_sync "$c" setup --path /tmp/a,b
+check "  and one with a newline" fails_with newline claude_sync "$c" setup --path $'/tmp/a\nb'
 check "a relative path is made absolute" relative_path_resolved
+check "  and one spelled loosely is cleaned as Docker does" fails_with "cannot read $root/${prefix}missing" \
+    claude_sync "$c" setup --path "$root/./tests/..//${prefix}missing/"
 check "the overlay bind-mounts the directory" path_overlay_renders
 
 echo "# setup fails when Syncthing cannot run the folder"
@@ -474,6 +522,7 @@ check "  and adds no device" [ "$(st "$a" "$owner_a" config devices list)" = "$i
 check "a join cut off while waiting" fails env CLAUDE_SYNC_NAME="$b" timeout 10 \
     "$root/claude-sync" pair "$id_a" --address "tcp://$a:22000"
 check "  leaves B's folder receive-only" [ "$(folder_type "$b" "$owner_b")" = receiveonly ]
+check "  where unpair refuses until the join ends" fails_with "still joining" claude_sync "$b" unpair "$id_a"
 check "A pairs with B, keeping its files" pair_bounded "$a" "$id_b" --address "tcp://$b:22000" --keep
 check "pairing again changes nothing" pair_bounded "$a" "$id_b" --address "tcp://$b:22000"
 check "B's join finishes when re-run" pair_bounded "$b" "$id_a" --address "tcp://$a:22000"
@@ -576,6 +625,12 @@ id_d=$(docker exec -u "$owner_d" "$d" syncthing device-id)
 check "D's join cut off while waiting" fails env CLAUDE_SYNC_NAME="$d" timeout 10 \
     "$root/claude-sync" pair "$id_b" --address "tcp://$b:22000"
 check "  leaves D's folder receive-only" [ "$(folder_type "$d" "$owner_d")" = receiveonly ]
+# B on the unpaired list in D's folder, where a joining D could never take it off.
+in_target "type=volume,src=$vol_d" "mkdir /t/.claude-sync-unpaired && touch /t/.claude-sync-unpaired/$id_b &&
+    chown -R $owner_d /t/.claude-sync-unpaired"
+check "  where pair refuses a device on the unpaired list" \
+    fails_with "pair it from a device that already syncs" pair_bounded "$d" "$id_b" --address "tcp://$b:22000"
+in_target "type=volume,src=$vol_d" "rm -r /t/.claude-sync-unpaired"
 pair_bounded "$b" "$id_d" --address "tcp://$d:22000" >/dev/null
 check "--keep ends it" pair_bounded "$d" "$id_b" --address "tcp://$b:22000" --keep
 check "  leaving D's folder send-receive" [ "$(folder_type "$d" "$owner_d")" = sendreceive ]
@@ -604,6 +659,7 @@ id_h=$(on_host syncthing device-id)
 # The user's own Syncthing: folders of their own, one shared with B, private options, and
 # a web UI address with no host.
 on_host mkdir claude photos photos/sub notes other tilde
+on_host sh -c 'echo p >photos/p.md && echo s >photos/sub/s.md && echo n >notes/n.md && echo t >tilde/t.md'
 on_host ln -s photos/sub into-photos
 on_host sh -c 'echo h >claude/h-only.md'
 on_host syncthing cli config devices add --device-id "$id_b" --addresses "tcp://$b:22000"
@@ -617,6 +673,7 @@ for option in global-ann-enabled relays-enabled natenabled; do
 done
 on_host syncthing cli config gui raw-address set :8384
 host_before=$(host_config)
+others_before=$(host_others)
 check "--volume is refused" fails_with "only with --path" \
     host_sync setup --volume "$vol_a" --use-host-syncthing
 check "--private is refused" fails_with "set them in that Syncthing" \
@@ -655,6 +712,12 @@ check "the folder is the directory, made absolute" \
 check ".stignore is the repo's stignore" on_host cmp -s claude/.stignore /opt/claude-sync/stignore
 check "trash can versioning, 14 days" host_trash_can_14_days
 check "setup again, naming the directory another way" host_sync setup --path ./claude/ --use-host-syncthing
+# A curl that never reaches the API, while `syncthing cli` still does.
+docker exec -u user "$h" sh -c 'mkdir /home/user/nocurl && printf "#!/bin/sh\nexit 7\n" >/home/user/nocurl/curl &&
+    chmod +x /home/user/nocurl/curl'
+check "setup says when it cannot reach Syncthing's API" fails_with "cannot reach Syncthing" \
+    on_host env PATH=/home/user/nocurl:/usr/bin:/bin /opt/claude-sync/claude-sync setup --path claude \
+    --use-host-syncthing
 check "  and refuses a different directory" fails_with "already set up for /home/user/claude" \
     host_sync setup --path other --use-host-syncthing
 check "another CLAUDE_SYNC_NAME is refused" fails_with "leave CLAUDE_SYNC_NAME unset" \
@@ -754,6 +817,7 @@ host_sync uninstall >/dev/null
 check "removes claude-sync's folder" fails host_has_folder
 check "keeps the devices it paired" [ "$(on_host syncthing cli config devices list | sort)" = "$devices" ]
 check "keeps the user's other folders and options" [ "$(host_config)" = "$host_before" ]
+check "  and their files, through setup, pair, unpair and uninstall" [ "$(host_others)" = "$others_before" ]
 check "leaves the synced data byte-identical" [ "$(host_snapshot)" = "$before" ]
 check "Syncthing keeps running" on_host syncthing cli show version
 check "pair afterwards is refused" fails_with "run setup first" host_sync pair "$id_a"
@@ -793,6 +857,17 @@ check "  and the instance keeps its own" listens "$g" 8484
 check "the web UI on the sync port is refused" fails_with "would both be 22100" \
     beside "$g" setup --volume "$vol_g" --gui-port 22100
 check "  and the web UI stays put" listens "$g" 8484
+check "the sync port moving onto the web UI's" \
+    beside "$g" setup --volume "$vol_g" --gui-port 8585 --sync-port 8484
+check "  puts the web UI on its new port" listens "$g" 8585
+# Syncthing retries a failed listener only after about a minute.
+check "  so the sync port binds without waiting for a retry" listens_soon "$g" 8484
+check "an exact swap of the two ports" beside "$g" setup --volume "$vol_g" --gui-port 8484 --sync-port 8585
+check "  keeps Syncthing's API in reach" st "$g" "$owner_g" show version
+check "  and the sync port binds once Syncthing retries" wait_for listens "$g" 8585
+check "a target another instance syncs is refused" fails_with "container $e already syncs $vol_e" \
+    beside "$k" setup --volume "$vol_e"
+check "  creating no Syncthing state" fails docker volume inspect "$k-config"
 id_e=$(docker exec -u "$owner_e" "$e" syncthing device-id)
 # Started before A accepts, so the join prints what to run there, with E's own sync port.
 CLAUDE_SYNC_COMPOSE_OVERRIDE=$root/tests/compose.busy.yaml CLAUDE_SYNC_NAME=$e timeout 300 \

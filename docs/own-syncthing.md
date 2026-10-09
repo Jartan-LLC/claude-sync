@@ -21,9 +21,12 @@ When you pair, a device that already syncs other folders with your Syncthing
 is not made an introducer, since the devices it introduces would join those folders too.
 `pair` then says so, and this device needs pairing with each of the others directly.
 
-Once your Syncthing syncs claude-sync's folder, `setup` without `--use-host-syncthing`
-refuses to start a container beside it, since `pair`, `unpair` and `uninstall` would then
-act on the container instead.
+Under the default `CLAUDE_SYNC_NAME`, once your Syncthing syncs claude-sync's folder,
+`setup` without `--use-host-syncthing` refuses to start a container beside it, since
+`pair`, `unpair` and `uninstall` would then act on the container instead. Under any name,
+it also refuses a directory one of your Syncthing's folders syncs, or one inside or around
+it, following symlinks. Both checks read your Syncthing's configuration, so they hold
+while it is stopped too.
 
 A device that `unpair` removed elsewhere stays in your Syncthing until claude-sync's
 `setup`, `pair`, `unpair` or `uninstall` next runs here: with no container, nothing beside
