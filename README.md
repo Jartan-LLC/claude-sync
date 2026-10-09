@@ -44,7 +44,8 @@ ID. It fails, with Syncthing's message, if Syncthing cannot sync the folder.
 In its own container, `setup` also prints the web UI port and the sync port: Syncthing's
 usual 8384 and 22000, or free ports Syncthing picks on the first run when another
 program, such as another Syncthing, holds those. `--gui-port` and `--sync-port` choose
-them instead, and later runs keep them. If another program later takes the web UI port,
+them instead, and later runs keep them. Swapping the two takes up to a minute to settle,
+while Syncthing retries the sync port. If another program later takes the web UI port,
 Syncthing cannot start its web UI and `setup` cannot move it: free that port again.
 
 ### Use your own Syncthing
@@ -72,7 +73,9 @@ is not made an introducer, since the devices it introduces would join those fold
 
 Once your Syncthing syncs claude-sync's folder, `setup` without `--use-host-syncthing`
 refuses to start a container beside it, since `pair`, `unpair` and `uninstall` would then
-act on the container instead.
+act on the container instead. It also refuses a directory inside or around one of your
+Syncthing's folders. Both checks read your Syncthing's configuration, so they hold while
+it is stopped too.
 
 A device that `unpair` removed elsewhere stays in your Syncthing until claude-sync's
 `setup`, `pair`, `unpair` or `uninstall` next runs here: with no container, nothing beside
@@ -94,10 +97,11 @@ CLAUDE_SYNC_NAME=claude-work ./claude-sync pair OTHER-ID
 ```
 
 Each instance gets ports of its own, which `setup` prints, as long as the other instances
-are running when it first starts: Syncthing takes free ports only then. A name other than
-the default, `claude-sync`, can't be combined with `--use-host-syncthing`, since your own
-Syncthing holds one claude-sync folder; neither can `--gui-port` or `--sync-port`, since
-you set that Syncthing's ports in Syncthing itself.
+are running when it first starts: Syncthing takes free ports only then. Each needs a
+target of its own too: `setup` refuses one another Syncthing container already syncs. A
+name other than the default, `claude-sync`, can't be combined with `--use-host-syncthing`,
+since your own Syncthing holds one claude-sync folder; neither can `--gui-port` or
+`--sync-port`, since you set that Syncthing's ports in Syncthing itself.
 
 ## Pair devices
 

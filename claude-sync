@@ -129,9 +129,14 @@ folder_status() {
 # Dies with Syncthing's own message when it cannot run the folder, such as an ignore
 # pattern it rejects; the scan that loads the ignore list ends in idle or error.
 wait_folder_started() {
-    local i status state
+    local i status state reached=""
     for ((i = 0; i < 120; i++)); do
-        status=$(folder_status) || status=""
+        if status=$(folder_status); then
+            reached=1
+        else
+            status=""
+            ((i < 15)) || [[ -n $reached ]] || die "cannot reach Syncthing $where"
+        fi
         state=$(field state <<<"$status")
         case $state in
             idle) return 0 ;;
@@ -207,12 +212,53 @@ current_target() {
         "$name" 2>/dev/null
 }
 
+host_config_file() {
+    command -v syncthing >/dev/null || return 1
+    syncthing paths 2>/dev/null | sed -n '/^Configuration file:/{n;s/^[[:space:]]*//p;}'
+}
+
 # Whether this user has a Syncthing on this host, running or not: its config file exists.
 host_syncthing_configured() {
     local config
-    command -v syncthing >/dev/null || return 1
-    config=$(syncthing paths | sed -n '/^Configuration file:/{n;s/^[[:space:]]*//p;}')
+    config=$(host_config_file) || return 1
     [[ -f $config ]]
+}
+
+# This user's Syncthing's folders, as ID, a tab and path per line, from its config file, so
+# whether it runs or not.
+host_folders() {
+    local config
+    config=$(host_config_file) || return 0
+    sed -n 's/^ *<folder id="\([^"]*\)" [^>]*path="\([^"]*\)".*/\1\t\2/p' "$config" |
+        sed -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&quot;/"/g' -e "s/&apos;/'/g" -e 's/&amp;/\&/g'
+}
+
+# PATH with a leading ~ expanded and, where it exists here, symlinks resolved: Syncthing
+# follows a symlinked folder root.
+real_path() {
+    local path=${1/#\~/$HOME}
+    (cd -- "$path" 2>/dev/null && pwd -P) || echo "${path%/}"
+}
+
+# Whether one of two resolved paths is the other or inside it, so both would sync the same
+# files.
+paths_overlap() {
+    [[ $1 == "$2" || $1 == "$2"/* || $2 == "$1"/* ]]
+}
+
+# The other container running a Syncthing image that mounts TARGET, a volume name or a
+# host path, if any.
+target_taken_by() {
+    local cname cimage mounts
+    while IFS='|' read -r cname cimage mounts; do
+        cname=${cname#/}
+        [[ $cname != "$name" && $cimage == *syncthing* ]] || continue
+        if [[ ";$mounts" == *";$1;"* ]]; then
+            echo "$cname"
+            return
+        fi
+    done < <(docker ps -aq | xargs -r docker container inspect --format \
+        '{{.Name}}|{{.Config.Image}}|{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{else}}{{.Source}}{{end}};{{end}}')
 }
 
 # Points the helpers at the Syncthing running as this user on this host.
@@ -358,12 +404,24 @@ setup() {
     command -v docker >/dev/null || die "Docker is required"
     # Under the default name, pair and uninstall would act on a container instead of the
     # Syncthing that already syncs claude-sync's folder; with --path, the container would
-    # usually also be a second device on the same files.
-    if [[ $name == "$default_name" ]] && host_syncthing_configured &&
-        syncthing cli config folders list 2>/dev/null | grep -qxF "$folder_id"; then
-        [[ $kind == volume ]] ||
-            die "already set up in the Syncthing on this host; add --use-host-syncthing, or run uninstall first"
-        die "the Syncthing on this host already syncs claude-sync's folder; to sync this volume beside it, set CLAUDE_SYNC_NAME to another name"
+    # usually also be a second device on the same files, as it would be beside any folder of
+    # that Syncthing inside or around the directory.
+    if [[ $name == "$default_name" ]] && host_syncthing_configured; then
+        local fid fpath real_target=""
+        if [[ $kind == path ]]; then
+            real_target=$target
+            [[ $real_target == /* ]] || real_target=$PWD/$real_target
+            real_target=$(real_path "$real_target")
+        fi
+        while IFS=$'\t' read -r fid fpath; do
+            if [[ $fid == "$folder_id" ]]; then
+                [[ $kind == volume ]] ||
+                    die "already set up in the Syncthing on this host; add --use-host-syncthing, or run uninstall first"
+                die "the Syncthing on this host already syncs claude-sync's folder; to sync this volume beside it, set CLAUDE_SYNC_NAME to another name"
+            elif [[ $kind == path ]] && paths_overlap "$real_target" "$(real_path "$fpath")"; then
+                die "your Syncthing's folder $fid already syncs $fpath, which overlaps $target; choose another directory"
+            fi
+        done < <(host_folders)
     fi
 
     local mount
@@ -383,6 +441,10 @@ setup() {
     local current
     current=$(current_target) || current=""
     [[ -z $current || $current == "$target" ]] || die "already set up for $current; run uninstall first"
+    # Two Syncthings on one target would each sync it as a device of its own.
+    local taken
+    taken=$(target_taken_by "$target")
+    [[ -z $taken ]] || die "container $taken already syncs $target; give this instance another target"
 
     local image
     image=$(sed -n 's/^ *image: *//p' "$here/compose.yaml")
@@ -432,22 +494,18 @@ setup() {
     compose up --detach --wait --wait-timeout 120 --quiet-pull
 
     # A web UI on the sync port would leave nothing to reach Syncthing through, so the two
-    # are checked as they will end up, and the sync port moves first.
-    local gui sync
-    { gui=${want_gui:-$(gui_port)} && sync=${want_sync:-$(sync_port)}; } ||
+    # are checked as they will end up. Each moves before the one that takes its port, or
+    # the second would wait on Syncthing's retry; an exact swap still does.
+    local gui sync current_gui
+    { current_gui=$(gui_port) && gui=${want_gui:-$current_gui} && sync=${want_sync:-$(sync_port)}; } ||
         die "cannot reach Syncthing in container $name"
     [[ $gui != "$sync" ]] || die "the web UI and sync ports would both be $gui; choose different ones"
-    if [[ -n $want_sync && $want_sync != "$(sync_port)" ]]; then
-        # Replaces all listen addresses; the relay one is Syncthing's default, and
-        # --private keeps relays off through its own option.
-        rest /rest/config/options -X PATCH -H 'Content-Type: application/json' \
-            -d "{\"listenAddresses\": [\"tcp://:$want_sync\", \"quic://:$want_sync\", \"dynamic+https://relays.syncthing.net/endpoint\"]}" \
-            >/dev/null || die "cannot set the sync port"
-    fi
-    if [[ -n $want_gui && $want_gui != "$(gui_port)" ]]; then
-        # The web UI moves at once, so this call may not get its answer.
-        st config gui raw-address set "127.0.0.1:$want_gui" 2>/dev/null || true
-        wait_reachable || die "Syncthing's web UI did not come up on port $want_gui"
+    if [[ $sync == "$current_gui" ]]; then
+        move_gui_port "$want_gui"
+        move_sync_port "$want_sync"
+    else
+        move_sync_port "$want_sync"
+        move_gui_port "$want_gui"
     fi
 
     st config folders list | grep -qx "$folder_id" || add_folder sendreceive
@@ -474,6 +532,24 @@ setup() {
         fi
     fi
     printf 'This device ID: %s\n' "$(docker exec -u "$owner" "$name" syncthing device-id)"
+}
+
+# Moves the sync port to PORT, if given and new.
+move_sync_port() {
+    [[ -n $1 && $1 != "$(sync_port)" ]] || return 0
+    # Replaces all listen addresses; the relay one is Syncthing's default, and --private
+    # keeps relays off through its own option.
+    rest /rest/config/options -X PATCH -H 'Content-Type: application/json' \
+        -d "{\"listenAddresses\": [\"tcp://:$1\", \"quic://:$1\", \"dynamic+https://relays.syncthing.net/endpoint\"]}" \
+        >/dev/null || die "cannot set the sync port"
+}
+
+# Moves the web UI to PORT, if given and new.
+move_gui_port() {
+    [[ -n $1 && $1 != "$(gui_port)" ]] || return 0
+    # The web UI moves at once, so this call may not get its answer.
+    st config gui raw-address set "127.0.0.1:$1" 2>/dev/null || true
+    wait_reachable || die "Syncthing's web UI did not come up on port $1"
 }
 
 wait_reachable() {
@@ -503,14 +579,13 @@ setup_host() {
     # A folder inside or around another would sync the same files twice, and the join's
     # undo would reach the other folder's devices. Compared with symlinks resolved, since
     # Syncthing follows a symlinked folder root.
-    real_target=$(cd -- "$target" && pwd -P)
+    real_target=$(real_path "$target")
     while IFS= read -r id; do
         path=$(st config folders "$id" path get)
-        path=${path/#\~/$HOME}
-        real=$(cd -- "$path" 2>/dev/null && pwd -P) || real=${path%/}
+        real=$(real_path "$path")
         if [[ $id == "$folder_id" ]]; then
             [[ $real == "$real_target" ]] || die "already set up for $path; run uninstall first"
-        elif [[ $real_target == "$real" || $real_target == "$real"/* || $real == "$real_target"/* ]]; then
+        elif paths_overlap "$real_target" "$real"; then
             die "this host's Syncthing folder $id already syncs $path, which overlaps $target; choose another directory"
         fi
     done < <(st config folders list)
@@ -574,6 +649,12 @@ pair() {
     fi
     local syncing
     syncing=$(st config folders "$folder_id" devices list 2>/dev/null | grep -cvxF -- "$self") || true
+    # A joining device's folder never sends its changes, so the ID could not leave the list.
+    # shellcheck disable=SC2016 # expanded by sh
+    if in_folder '[ -e "$1" ]' sh "$folder_path/$unpaired_dir/$id" &&
+        [[ $(st config folders "$folder_id" type get 2>/dev/null) == receiveonly ]]; then
+        die "$id is on the list of unpaired devices, which this joining device cannot change; pair it from a device that already syncs first"
+    fi
     forget_unpaired "$id"
     # A device set up again on files that list it would otherwise unpair itself everywhere.
     # One that still syncs with others was unpaired on purpose, and taking it off the list
