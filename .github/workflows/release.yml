@@ -47,7 +47,10 @@ jobs:
           persist-credentials: false
       - run: packaging/rpm.sh "${GITHUB_REF_NAME#v}" dist
       - run: dnf -y install dist/claude-sync.noarch.rpm
-      - run: test "$(claude-sync version)" = "claude-sync $(rpm -q --qf '%{VERSION}' claude-sync)"
+      # The RPM's version has ~ where the tag has -.
+      - run: |
+          version=${GITHUB_REF_NAME#v}
+          test "$(claude-sync version)" = "claude-sync ${version//-/\~}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: claude-sync-rpm
@@ -83,5 +86,8 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" dist/* --clobber
           else
-            gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --verify-tag
+            flags=(--generate-notes --verify-tag)
+            # README installs from releases/latest, which must never be a pre-release.
+            case $GITHUB_REF_NAME in *-*) flags+=(--prerelease) ;; esac
+            gh release create "$GITHUB_REF_NAME" dist/* "${flags[@]}"
           fi

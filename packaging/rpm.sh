@@ -18,6 +18,8 @@ git() {
 }
 
 (($# == 2)) || die "usage: packaging/rpm.sh VERSION OUTDIR"
+# The version goes into sed and the spec before build.sh checks it.
+[[ $1 =~ ^[0-9A-Za-z][0-9A-Za-z.+~-]*$ ]] || die "not a version: $1"
 # RPM sorts ~ before a release, where a tag has -.
 version=${1//-/\~} outdir=$2
 

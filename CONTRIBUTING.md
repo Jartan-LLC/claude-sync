@@ -47,7 +47,8 @@ CI runs the integration tests against both. It also builds the RPM with
 1. Move the `## [Unreleased]` entries in `CHANGELOG.md` under `## [X.Y.Z] - YYYY-MM-DD`
    and update the links at its end.
 2. Once that is merged, tag `main` and push the tag:
-   `git tag vX.Y.Z origin/main && git push origin vX.Y.Z`.
+   `git fetch origin && git tag vX.Y.Z origin/main && git push origin vX.Y.Z`. A tag with a
+   pre-release part, such as `v0.2.0-rc.1`, is published as a pre-release.
 
 [Publishing](docs/scaffold.md#publishing) covers what the tag sets off.
 

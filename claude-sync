@@ -501,7 +501,7 @@ setup() {
     local compose_dir
     compose_dir=$(mktemp -d -t claude-sync.XXXXXX)
     # shellcheck disable=SC2064 # expanded now: compose_dir is local
-    trap "rm -rf -- '$compose_dir'" EXIT
+    trap "rm -rf -- $(printf %q "$compose_dir")" EXIT
     asset compose.yaml >"$compose_dir/compose.yaml"
     asset "compose.$kind.yaml" >"$compose_dir/compose.$kind.yaml"
     compose_files=(-f "$compose_dir/compose.yaml" -f "$compose_dir/compose.$kind.yaml")

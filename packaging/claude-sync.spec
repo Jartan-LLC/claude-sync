@@ -16,6 +16,7 @@ BuildRequires:  sed
 Requires:       bash
 Requires:       coreutils
 Requires:       curl
+Requires:       findutils
 Requires:       grep
 Requires:       sed
 

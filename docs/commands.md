@@ -12,6 +12,7 @@ leaves the fix out. `claude-sync help` prints the same commands and flags.
 | `pair DEVICE-ID` | Syncs with the device DEVICE-ID; run on both devices |
 | `unpair DEVICE-ID` | Removes the device DEVICE-ID from every device; run it on any device |
 | `uninstall` | Removes claude-sync's container and Syncthing state, or its folder from your own Syncthing |
+| `version` | Prints claude-sync's version |
 | `help` | Prints the commands and flags |
 
 | Flag | With | Does |
