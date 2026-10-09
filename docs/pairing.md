@@ -57,6 +57,9 @@ discarding anything.
   there without `--keep`, so it joins.
 - It says "files here keep changing during the join": stop Claude Code on this device and
   rerun.
+- It says "this device's own changes are still not undone": Syncthing's web UI, at the
+  address the message gives, shows the files left and why; fix that, then rerun. Until
+  the join finishes, this device gets the other devices' changes but sends none of its own.
 - It says it "cannot reach Syncthing": check that claude-sync's container (or your own
   Syncthing) is running, then rerun to finish the join.
 

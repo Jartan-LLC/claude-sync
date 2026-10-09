@@ -9,14 +9,16 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 readonly root
 readonly prefix=claude-sync-test-
 readonly net=${prefix}net a=${prefix}a b=${prefix}b c=${prefix}c d=${prefix}d e=${prefix}e g=${prefix}g k=${prefix}k
+readonly j=${prefix}j
 readonly listener=${prefix}listener foreign=${prefix}foreign h=${prefix}h host_image=${prefix}host
 readonly vol_a=${prefix}a-data vol_b=${prefix}b-data vol_missing=${prefix}missing
 readonly vol_root=${prefix}root-data vol_c=${prefix}c-data vol_d=${prefix}d-data
-readonly vol_e=${prefix}e-data vol_g=${prefix}g-data
+readonly vol_e=${prefix}e-data vol_g=${prefix}g-data vol_j=${prefix}j-data
 # Not Syncthing's default 1000, so a match proves the owner was read from the target.
 readonly owner_a=1234:1234 owner_b=2345:2345 owner_c=3456:3456 owner_d=4567:4567
-readonly owner_e=6789:6789 owner_g=7890:7890
+readonly owner_e=6789:6789 owner_g=7890:7890 owner_j=8901:8901
 readonly mount_a=type=volume,src=$vol_a mount_b=type=volume,src=$vol_b mount_c=type=volume,src=$vol_c
+readonly mount_j=type=volume,src=$vol_j
 image=$(sed -n 's/^ *image: *//p' "$root/compose.yaml")
 readonly image
 [[ -n $image ]] || {
@@ -176,6 +178,11 @@ network_options() {
     st "$1" "$2" config options dump-json | jq -c '[.globalAnnounceEnabled, .relaysEnabled, .natEnabled]'
 }
 
+# Whether a node's Syncthing is scanning the folder, or waiting to.
+scanning() {
+    [[ $(folder_status "$1" "$2" | jq -r .state) == scan* ]]
+}
+
 folder_type() {
     st "$1" "$2" config folders claude-sync type get
 }
@@ -329,15 +336,15 @@ snapshot() {
 
 cleanup() {
     local x
-    for x in "$a" "$b" "$c" "$d" "$e" "$g" "$k" "$h" "$bad_name" "$listener" "$foreign"; do
+    for x in "$a" "$b" "$c" "$d" "$e" "$g" "$k" "$j" "$h" "$bad_name" "$listener" "$foreign"; do
         guard "$x"
         docker rm --force -v "$x" >/dev/null 2>&1 || true
     done
     guard "$host_image"
     docker image rm "$host_image" >/dev/null 2>&1 || true
     for x in "$a-config" "$b-config" "$c-config" "$d-config" "$e-config" "$g-config" "$k-config" \
-        "$bad_name-config" "$foreign-config" "$vol_a" "$vol_b" "$vol_c" "$vol_d" "$vol_e" "$vol_g" \
-        "$vol_missing" "$vol_root"; do
+        "$j-config" "$bad_name-config" "$foreign-config" "$vol_a" "$vol_b" "$vol_c" "$vol_d" "$vol_e" \
+        "$vol_g" "$vol_j" "$vol_missing" "$vol_root"; do
         guard "$x"
         docker volume rm "$x" >/dev/null 2>&1 || true
     done
@@ -351,7 +358,7 @@ on_exit() {
         kill "$job" 2>/dev/null || true
     done
     if ((status != 0)); then
-        for node in "$a" "$b" "$c" "$d" "$e" "$g" "$h"; do
+        for node in "$a" "$b" "$c" "$d" "$e" "$g" "$j" "$h"; do
             docker logs --tail 30 "$node" 2>&1 | sed "s/^/[$node] /" || true
         done
         [[ ! -s $scratch/join.out ]] || sed 's/^/[join] /' "$scratch/join.out"
@@ -391,6 +398,7 @@ docker volume create "$vol_c" >/dev/null
 docker volume create "$vol_d" >/dev/null
 docker volume create "$vol_e" >/dev/null
 docker volume create "$vol_g" >/dev/null
+docker volume create "$vol_j" >/dev/null
 in_target "type=volume,src=$vol_e" "echo e >/t/e-only.md && chown -R $owner_e /t"
 in_target "type=volume,src=$vol_g" "chown $owner_g /t"
 in_target "$mount_c" "chown $owner_c /t"
@@ -604,11 +612,27 @@ in_target "$mount_b" "echo b >'/t/$task/.lock' && chown $owner_b '/t/$task/.lock
 in_target "$mount_a" "rm -r '/t/$task'"
 check "a task folder deleted on A goes on B despite B's own .lock" \
     wait_for in_target "$mount_b" "[ ! -e '/t/$task' ]"
+# B's own copies of the ignored files inside these folders, and a half-written file.
+own="cd /t"
+for f in "${ignored[@]}" plugins/cache/market/demo/1.0.0/plugin.json.tmp.ab12cd34; do
+    case $f in
+        plugins/* | ide/* | sessions/*) own+=" && mkdir -p \"\$(dirname '$f')\" && echo b >'$f'" ;;
+    esac
+done
+in_target "$mount_b" "$own && chown -R $owner_b plugins ide sessions"
+in_target "$mount_a" "rm -r /t/plugins /t/ide /t/sessions"
+for dir in plugins ide sessions; do
+    check "$dir/ deleted on A goes on B despite B's own ignored files in it" \
+        wait_for in_target "$mount_b" "[ ! -e /t/$dir ]"
+done
 
 echo "# pair, the first device of a new set without --keep"
 # C's claude.json is newer than A's, so Syncthing's newest-wins rule alone would pick C's.
-in_target "$mount_c" "echo 'c claude.json' >/t/claude.json && \
-    echo c >/t/c-only.md && chown -R $owner_c /t"
+# C's own plugin version holds files the ignore list keeps out of sync.
+c_plugin=plugins/cache/market/c-only/1.0.0
+in_target "$mount_c" "echo 'c claude.json' >/t/claude.json && echo c >/t/c-only.md && \
+    mkdir -p /t/$c_plugin && cd /t/$c_plugin && echo c >plugin.json && echo c >.in_use && \
+    echo c >plugin.json.tmp.ab12cd34 && echo c >plugin.json.tmp.4242.0123456789ab && chown -R $owner_c /t"
 claude_sync "$c" setup --volume "$vol_c" --private >/dev/null
 id_c=$(docker exec -u "$owner_c" "$c" syncthing device-id)
 # C, with files, and D, with none, both pair with no other device yet: both join, and
@@ -641,6 +665,8 @@ check "C joins once A accepts" wait "$joining"
 check "C gets A's claude.json" [ "$(in_target "$mount_c" 'cat /t/claude.json')" = "fixture claude.json" ]
 check "C's own file is discarded" in_target "$mount_c" '[ ! -e /t/c-only.md ]'
 check "  into C's trash can" in_target "$mount_c" '[ -e /t/.stversions/c-only.md ]'
+check "C's own plugin version is discarded, ignored files and all" in_target "$mount_c" "[ ! -e /t/$c_plugin ]"
+check "  into C's trash can" in_target "$mount_c" "[ -e /t/.stversions/$c_plugin/plugin.json ]"
 check "C's folder is send-receive after joining" [ "$(folder_type "$c" "$owner_c")" = sendreceive ]
 in_target "$mount_c" "echo c >/t/from-c.md && chown $owner_c /t/from-c.md"
 check "C's edits reach A" wait_for in_target "$mount_a" '[ -e /t/from-c.md ]'
@@ -935,6 +961,40 @@ docker volume create "$foreign-config" >/dev/null
 check "a foreign volume is refused" fails_with "volume $foreign-config was not created by claude-sync" \
     claude_sync "$foreign" uninstall
 check "  and survives" docker volume inspect "$foreign-config"
+
+echo "# setup, while Syncthing's first scan runs"
+# A sparse file takes Syncthing far longer to hash than these checks, and no disk space.
+in_target "$mount_j" "truncate -s 64G /t/big && chown -R $owner_j /t"
+out=$(claude_sync "$j" setup --volume "$vol_j" --private)
+check "setup returns while Syncthing still scans" scanning "$j" "$owner_j"
+check "  and says so, with the web UI's address" \
+    grep -qF "see progress at http://$(st "$j" "$owner_j" config gui raw-address get)" <<<"$out"
+check "setup again returns too" claude_sync "$j" setup --volume "$vol_j" --private
+check "  before the scan ends" scanning "$j" "$owner_j"
+claude_sync "$j" uninstall >/dev/null
+docker volume rm "$vol_j" >/dev/null
+docker volume create "$vol_j" >/dev/null
+
+echo "# pair, a join stuck on this device's own ignored files"
+# A copy whose ignore list has no (?d), as before 0.1.1: Syncthing cannot remove J's own
+# plugin version while its .in_use is there, so J's join cannot finish.
+mkdir "$scratch/old"
+cp "$root/claude-sync" "$root"/compose*.yaml "$scratch/old"
+sed 's/^(?d)//' "$root/stignore" >"$scratch/old/stignore"
+j_plugin=plugins/cache/market/j-only/1.0.0
+in_target "$mount_j" "mkdir -p /t/$j_plugin && echo j >/t/$j_plugin/plugin.json && \
+    echo j >/t/$j_plugin/.in_use && chown -R $owner_j /t"
+env CLAUDE_SYNC_NAME="$j" "$scratch/old/claude-sync" setup --volume "$vol_j" --private >/dev/null
+id_j=$(docker exec -u "$owner_j" "$j" syncthing device-id)
+pair_bounded "$a" "$id_j" --address "tcp://$j:22000" >/dev/null
+check "J's join does not finish under that list" fails env CLAUDE_SYNC_NAME="$j" timeout 30 \
+    "$scratch/old/claude-sync" pair "$id_a" --address "tcp://$a:22000"
+check "setup applies this version's ignore list" claude_sync "$j" setup --volume "$vol_j" --private
+# Without setup's help Syncthing too reloads the list, at a pull, but not for minutes.
+check "  and the join then finishes at once" env CLAUDE_SYNC_NAME="$j" timeout 30 \
+    "$bin" pair "$id_a" --address "tcp://$a:22000"
+check "  discarding J's own plugin version" in_target "$mount_j" "[ ! -e /t/$j_plugin ]"
+check "  into J's trash can" in_target "$mount_j" "[ -e /t/.stversions/$j_plugin/plugin.json ]"
 
 echo "# uninstall"
 before=$(snapshot "$mount_a")

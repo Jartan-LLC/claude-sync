@@ -135,8 +135,8 @@ folder_status() {
 }
 
 # Dies with Syncthing's own message when it cannot run the folder, such as an ignore
-# pattern it rejects; the scan that loads the ignore list ends in idle or error. Dies too
-# when Syncthing's API never answers, rather than reporting a scan still under way.
+# pattern it rejects. A scan loads the ignore list before it starts, so a scan under way
+# means the folder runs; it is not waited for. Dies too when Syncthing's API never answers.
 wait_folder_started() {
     local i status state reached=""
     for ((i = 0; i < 120; i++)); do
@@ -148,12 +148,38 @@ wait_folder_started() {
         fi
         state=$(field state <<<"$status")
         case $state in
-            idle) return 0 ;;
+            idle | scan-waiting | scanning) return 0 ;;
             error) die "Syncthing cannot sync the folder: $(field error <<<"$status")" ;;
         esac
         sleep 1
     done
-    echo "Syncthing is still scanning the folder; its web UI shows when it is done."
+}
+
+# Has Syncthing load the ignore list as its web UI does: saved, applied at once and scanned
+# in the background. A written .stignore alone waits for the folder's next scan or pull.
+load_ignores() {
+    local lines answer err
+    # One JSON string per line; the list holds no control characters.
+    lines=$(asset stignore | sed 's/[\\"]/\\&/g; s/.*/"&"/' | paste -sd, -)
+    answer=$(rest "/rest/db/ignores?folder=$folder_id" -X POST -H 'Content-Type: application/json' \
+        -d "{\"ignore\": [$lines]}") || die "cannot reach Syncthing $where"
+    err=$(field error <<<"$answer")
+    [[ $err == null ]] || die "Syncthing cannot use the ignore list: $err"
+}
+
+# Tells that Syncthing is still at work on the folder, unless it is done.
+tell_busy() {
+    [[ $(folder_status | field state) == idle ]] ||
+        echo "Syncthing is still scanning or syncing your files; see progress at $(web_ui)."
+}
+
+# Syncthing's web UI, for messages.
+web_ui() {
+    if [[ $mode == host ]]; then
+        echo "$api_url"
+    else
+        echo "http://$(st config gui raw-address get)"
+    fi
 }
 
 add_folder() {
@@ -545,7 +571,11 @@ setup() {
         move_gui_port "$want_gui"
     fi
 
-    st config folders list | grep -qx "$folder_id" || add_folder sendreceive
+    if st config folders list | grep -qx "$folder_id"; then
+        load_ignores
+    else
+        add_folder sendreceive
+    fi
     # Left as it is when neither is given, so re-running setup never makes a device public.
     if [[ -n $network ]]; then
         local option on=true
@@ -559,6 +589,7 @@ setup() {
     { gui=$(gui_port) && sync=$(sync_port); } || die "cannot reach Syncthing in container $name"
     printf 'Syncthing is running in container %s, web UI on 127.0.0.1:%s, sync port %s.\n' \
         "$name" "$gui" "$sync"
+    tell_busy
     # A new config volume is Syncthing's first start, when it takes free ports in place of
     # busy defaults.
     if [[ -n $created_config ]] && { [[ -z $want_gui && $gui != "$default_gui_port" ]] ||
@@ -630,9 +661,14 @@ setup_host() {
 
     # Before the folder is added, as in setup.
     asset stignore >"$target/.stignore"
-    st config folders list | grep -qxF "$folder_id" || add_folder sendreceive
+    if st config folders list | grep -qxF "$folder_id"; then
+        load_ignores
+    else
+        add_folder sendreceive
+    fi
     wait_folder_started
     apply_unpaired
+    tell_busy
 
     printf 'The Syncthing on this host syncs %s.\nThis device ID: %s\n' "$target" "$(syncthing_run device-id)"
 }
@@ -742,7 +778,7 @@ pair() {
         return
     fi
 
-    join_wait "$id" "$self" "$there"
+    join_wait "$id" "$self" "$there" first
     # Joining devices with no files would only discard this device's: likely the first
     # pairing of a new set, missing --keep. Read twice, since the other device's index can
     # arrive just after it starts sharing. Nothing here was sent while receive-only, so
@@ -778,9 +814,11 @@ shares_other_folder() {
     return 1
 }
 
-# Until this device has the folder as the device joined through has it.
+# Until this device has the folder as the device joined through has it. With FIRST, only as
+# far as it can before its own changes are undone: a directory deleted there fails to go
+# while it holds files of this device's own.
 join_wait() {
-    local id=$1 self=$2 there=$3 told="" failures=0 polls=0 remote status need errors
+    local id=$1 self=$2 there=$3 first=${4:-} told="" failures=0 polls=0 remote status need errors
     while :; do
         if ! status=$(folder_status) ||
             ! remote=$(rest "/rest/db/completion?folder=$folder_id&device=$id" | field remoteState); then
@@ -795,7 +833,8 @@ join_wait() {
         if [[ $remote == valid ]]; then
             [[ $(field state <<<"$status") != idle || $need != 0 ]] || return 0
             errors=$(field errors <<<"$status")
-            [[ ${errors:-0} == 0 ]] && errors="" || errors=", $errors failing (the web UI shows why)"
+            [[ -z $first || $(field state <<<"$status") != idle || $need != "${errors:-0}" ]] || return 0
+            [[ ${errors:-0} == 0 ]] && errors="" || errors=", $errors failing ($(web_ui) shows why)"
             ((++polls % 15)) || [[ $need == 0 ]] || echo "Still syncing: $need files and directories to go$errors."
         elif [[ -z $told ]]; then
             printf 'Waiting for %s; if not done yet, run there: claude-sync pair %s%s\n' "$id" "$self" "$there"
@@ -812,7 +851,7 @@ undo_changes() {
     for ((i = 0; ; i++)); do
         status=$(folder_status) || die "cannot reach Syncthing $where; rerun to finish the join"
         [[ $(field receiveOnlyTotalItems <<<"$status") != 0 ]] || return 0
-        ((i < 60)) || die "this device's changes are still not undone after two minutes; rerun to finish the join"
+        ((i < 60)) || die "this device's own changes are still not undone after two minutes, so the join cannot finish; Syncthing's web UI at $(web_ui) shows what is left. Until the join finishes, this device gets the other devices' changes but sends none of its own. Rerun to try again."
         rest "/rest/db/revert?folder=$folder_id" -X POST >/dev/null ||
             die "cannot reach Syncthing $where; rerun to finish the join"
         sleep 2

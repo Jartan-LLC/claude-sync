@@ -32,8 +32,10 @@ host](#several-instances-on-one-host)).
 
 `setup` refuses a root-owned target: `chown` it to the user who runs Claude Code. It is
 safe to re-run, rewrites `.stignore` each time from the ignore list built into
-claude-sync, and prints this device's ID. It fails, with Syncthing's message, if Syncthing cannot
-sync the folder, and fails too if Syncthing's API never answers.
+claude-sync and has Syncthing apply it at once, and prints this device's ID. It fails, with Syncthing's message, if Syncthing cannot
+sync the folder, and fails too if Syncthing's API never answers. It does not wait for
+Syncthing's first scan, which takes minutes on a large `~/.claude`: it says the scan goes
+on, and gives the web UI's address to follow it.
 
 In its own container, `setup` also prints the web UI port and the sync port: Syncthing's
 usual 8384 and 22000, or free ports Syncthing picks on the first run when another program,
@@ -95,6 +97,8 @@ With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninsta
 | `this device is private` | Give the other device's `--address` |
 | `has no files to join` | Nothing was discarded. On the device whose files to start from, rerun `pair` with `--keep`; if that is this device, rerun the command the message prints. If the other device stopped with this message too, rerun `pair` there without `--keep`. See [Joining](pairing.md#joining) |
 | `files here keep changing during the join` | Stop Claude Code on this device and rerun `pair` |
+| `this device's own changes are still not undone` | Syncthing's web UI, at the address the message gives, shows the files left and why; fix that, then rerun `pair`. Meanwhile this device gets the other devices' changes but sends none of its own |
+| `Syncthing cannot use the ignore list` | Syncthing's reason follows; if you edited claude-sync's ignore list, fix the pattern it names |
 | `cannot reach Syncthing` | Check that claude-sync's container (`docker ps`) or your own Syncthing is running, then rerun; a join picks up where it stopped |
 | `this device is still joining` | Finish the join with `pair`, then rerun `unpair` |
 | `cannot reach the Syncthing on this host` | Start your own Syncthing, as the user who runs claude-sync |

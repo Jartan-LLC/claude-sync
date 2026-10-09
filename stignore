@@ -1,22 +1,24 @@
 // Written by `claude-sync setup`, which replaces any local edits on each run.
 // Everything in ~/.claude syncs except what is meaningless or harmful on another machine.
+// (?d) lets Syncthing delete this machine's ignored files with the directory they are in,
+// when another device deletes it or a joining device discards its own: otherwise the
+// directory stays, and the join never finishes.
 
 // Login token: one per device.
 /.credentials.json
 
 // Named after a process ID on one machine.
-/sessions/*.json
-/sessions/*.key
+(?d)/sessions/*.json
+(?d)/sessions/*.key
 
-// Held by a process on one machine. (?d) lets a peer's delete of a task's folder remove
-// the leftover lock too; .in_use has no (?d), so a plugin a session is using stays put.
+// Held by a process on one machine.
 /.update.lock
-/ide/*.lock
+(?d)/ide/*.lock
 (?d)/tasks/*/.lock
-/plugins/cache/**/.in_use
+(?d)/plugins/cache/**/.in_use
 
 // Git clones each machine pulls on its own; syncing one .git between two pullers corrupts it.
-/plugins/marketplaces
+(?d)/plugins/marketplaces
 
 // This machine's daemon, session environments, shell snapshots and unsent telemetry.
 /daemon
@@ -27,5 +29,5 @@
 // Half-written files mid-save: Claude Code names them <file>.tmp.<8 hex> or
 // <file>.tmp.<pid>.<12 hex>. Hex digits are listed out because Syncthing's glob takes only
 // one range per [] class, and rejects the whole file on [0-9a-f].
-*.tmp.[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]
-*.tmp.[0-9]*.[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]
+(?d)*.tmp.[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]
+(?d)*.tmp.[0-9]*.[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]

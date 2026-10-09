@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A join no longer gets stuck when the joining device has directories of its own holding
+  files the ignore list skips, such as a plugin version's `.in_use` marker: Syncthing now
+  deletes those files with their directory, as it does when another device deletes one. A
+  device already stuck mid-join finishes once you upgrade, rerun `setup` and rerun `pair`.
+- A join no longer waits forever when the device joined through has deleted a directory
+  that holds files of the joining device's own.
+- `setup` applies a changed ignore list at once, not at Syncthing's next scan.
+- `setup` no longer waits for Syncthing's first scan, which takes minutes on a large
+  `~/.claude`; it says the scan goes on, and where to follow it.
+- Messages that point to Syncthing's web UI give its address, and a join that cannot undo
+  this device's changes says what that leaves.
+
 ## [0.1.0] - 2026-10-09
 
 ### Added
