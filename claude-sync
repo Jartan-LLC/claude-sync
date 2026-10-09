@@ -135,9 +135,9 @@ folder_status() {
 }
 
 # Dies with Syncthing's own message when it cannot run the folder, such as an ignore
-# pattern it rejects. Syncthing loads the ignore list before it scans or pulls, so any
-# other state means the folder runs; a scan or sync under way is not waited for. Dies too
-# when Syncthing's API never answers.
+# pattern it rejects. Syncthing loads the ignore list after starting and before it scans or
+# pulls, so any later state means the folder runs; a scan or sync under way is not waited
+# for. Dies too when Syncthing's API never answers.
 wait_folder_started() {
     local i status state reached=""
     for ((i = 0; i < 120; i++)); do
@@ -150,6 +150,7 @@ wait_folder_started() {
         state=$(field state <<<"$status")
         case $state in
             error) die "Syncthing cannot sync the folder: $(field error <<<"$status")" ;;
+            starting) ;;
             ?*) return 0 ;;
         esac
         sleep 1

@@ -41,7 +41,7 @@ export CLAUDE_SYNC_TEST_NET=$net CLAUDE_SYNC_TEST_LISTENER=$listener
 export STHOMEDIR=/nonexistent/${prefix}home
 unset STCONFDIR STDATADIR STGUIADDRESS STGUIAPIKEY
 
-for tool in docker jq cmp pgrep; do
+for tool in docker jq cmp ps; do
     command -v "$tool" >/dev/null || {
         echo "tests/integration.sh needs $tool" >&2
         exit 1
@@ -382,20 +382,26 @@ cleanup() {
     docker network rm "$net" >/dev/null 2>&1 || true
 }
 
-# This run's processes, deepest first.
+# This run's live processes, each before its children, leaving out the subshell that lists
+# them; a zombie is gone already, waiting only for its parent to collect it.
 descendants() {
-    local child
-    for child in $(pgrep -P "$1"); do
-        descendants "$child"
-        echo "$child"
-    done
+    local pid stat
+    while read -r pid stat; do
+        [[ $pid != "$BASHPID" && $stat != Z* ]] || continue
+        echo "$pid"
+        descendants "$pid"
+    done < <(ps -o pid=,stat= --ppid "$1")
 }
 
 on_exit() {
-    local status=$? node pid out
-    # All of them, not only the groups, so none creates an object after cleanup.
-    for pid in $(descendants $$); do
-        kill "$pid" 2>/dev/null || true
+    local status=$? node pids i out
+    # Parents first, so none starts another, and again until none is left: then nothing
+    # creates an object after cleanup. Bounded, so a process that will not die cannot hang it.
+    for ((i = 0; i < 50; i++)); do
+        mapfile -t pids < <(descendants $$)
+        ((${#pids[@]})) || break
+        kill "${pids[@]}" 2>/dev/null || true
+        sleep 0.2
     done
     wait 2>/dev/null || true
     if ((status != 0)); then
