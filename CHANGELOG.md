@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-09
+
 ### Fixed
 
 - `pair` no longer gets stuck joining when this device has directories of its own that the
@@ -52,5 +54,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Syncthing applies; a device using its own Syncthing applies it when claude-sync runs
   there.
 
-[Unreleased]: https://github.com/Jartan-LLC/claude-sync/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Jartan-LLC/claude-sync/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Jartan-LLC/claude-sync/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Jartan-LLC/claude-sync/releases/tag/v0.1.0
