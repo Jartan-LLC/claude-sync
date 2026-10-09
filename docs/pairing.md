@@ -49,9 +49,10 @@ discarding anything.
   the join": run the same command again. A join picks up where it stopped.
 - It says "Syncthing cannot sync the folder": Syncthing's reason follows; fix it, then
   rerun `pair`.
-- It says the other device "has no files to join": this device's files are the ones to
-  start from (see the refusal above), so rerun the command the message prints, which adds
-  `--keep`.
+- It says the other device "has no files to join": nothing was discarded. Rerun `pair`
+  with `--keep` on the device whose files to start from; for this device, the message
+  prints the command. If the other device stopped with the same message, rerun `pair`
+  there without `--keep`, so it joins.
 - It says "files here keep changing during the join": stop Claude Code on this device and
   rerun.
 - It says it "cannot reach Syncthing": check that claude-sync's container (or your own
