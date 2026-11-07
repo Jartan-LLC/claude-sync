@@ -848,18 +848,23 @@ EOF
     check "  in a whole archive" host_archive_has busy ./jobs/churn/tmp/big5
     on_host rm -r claude/jobs
     # GNU tar, archiving the folder, then exiting 1 with the lines in TAR_SAYS, as when files
-    # changed while it read them; and a tar that fails.
+    # changed while it read them; unless LC_ALL is C, it says so in German instead, as a GNU tar
+    # with translations would, which the fixture's is not. And a tar that fails.
     docker exec -i -u user "$h" sh -c 'mkdir -p /home/user/changing && cat >/home/user/changing/tar &&
         chmod +x /home/user/changing/tar' <<'EOF'
 #!/bin/sh
 /bin/tar "$@" || exit
-printf '%s\n' "$TAR_SAYS" >&2
+if [ "$LC_ALL" = C ]; then
+    printf '%s\n' "$TAR_SAYS" >&2
+else
+    echo 'tar: ./h-only.md: Datei hat sich beim Lesen geändert' >&2
+fi
 exit 1
 EOF
     docker exec -u user "$h" sh -c 'mkdir /home/user/failing && printf "#!/bin/sh\necho partial\nexit 2\n" \
         >/home/user/failing/tar && chmod +x /home/user/failing/tar'
-    check "backup passes GNU tar's status 1 for files that changed or went as it read them" \
-        on_host env PATH=/home/user/changing:/usr/bin:/bin TAR_SAYS="tar: ./h-only.md: file changed as we read it
+    check "backup passes GNU tar's status 1 for files that changed or went as it read them, in any locale" \
+        on_host env PATH=/home/user/changing:/usr/bin:/bin LC_ALL=de_DE.UTF-8 TAR_SAYS="tar: ./h-only.md: file changed as we read it
 tar: ./gone.md: File removed before we read it" /opt/claude-sync/claude-sync backup changed
     check "  as an archive" on_host sh -c 'tar -tzf changed/*.tar.gz >/dev/null'
     check "a file that shrank as tar read it fails backup" fails_with "tar could not archive" \

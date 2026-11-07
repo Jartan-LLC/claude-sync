@@ -108,13 +108,15 @@ Then `backup` removes this instance's older archives in the directory, keeping t
 archive of each of the last `--keep-weekly` weeks that have one, and of each of the last
 `--keep-monthly` months that have one (defaults in [Commands and
 flags](#commands-and-flags)); 0 turns a rule off, and the archive just written always
-stays. Weeks run from Monday to Sunday, in UTC. `backup` reads each archive's time from its
-name, so an archive written while this device's clock ran ahead counts as the newest week
-and month, in a place the rules would give another archive, until that time comes. It also
-removes the hidden temporary file that a backup stopped partway, by a kill or a power cut,
-left there over a day before, and leaves other files alone. Give each device a directory of
-its own: two devices backing up one instance name into one directory remove each other's
-archives.
+stays. Weeks run from Monday to Sunday, in UTC.
+
+- `backup` reads each archive's time from its name, so an archive written while this
+  device's clock ran ahead counts as the newest week and month, in a place the rules would
+  give another archive, until that time comes.
+- `backup` also removes the hidden temporary file that a backup stopped partway, by a kill
+  or a power cut, left there over a day before, and leaves other files alone.
+- Give each device a directory of its own: two devices backing up one instance name into one
+  directory remove each other's archives.
 
 ## restore
 
@@ -126,10 +128,11 @@ claude-sync restore ~/claude-backups/claude-sync-20261107T120000Z.tar.gz --path 
 Restores an archive from any device, on any device, whether or not claude-sync is set up
 there. `restore` reads the whole archive first, so it writes nothing from one it cannot
 read. It then extracts every file in the archive over the target, the files that do not
-sync included, and removes nothing: files made since the backup stay. A volume must exist
-and not be owned by root, as for `setup`; its owner gets the restored files. `--path` names
-a directory on this machine, created if needed, and restores it with this machine's `tar`,
-as you; it needs no Docker.
+sync included, and removes nothing: files made since the backup stay. GNU `tar` also gives
+the directory it restores into the mode and modification time that the synced folder had at
+backup. A volume must exist and not be owned by root, as for `setup`; its owner gets the
+restored files. `--path` names a directory on this machine, created if needed, and restores
+it with this machine's `tar`, as you; it needs no Docker.
 
 In a folder that syncs, the restored files reach every device. [Recovering
 files](recovering-files.md#from-a-backup) says what to do after a restore there, and how to
