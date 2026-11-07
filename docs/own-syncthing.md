@@ -37,7 +37,7 @@ only claude-sync's folder.
 
 ## Uninstall
 
-If you set up with `--use-host-syncthing`, `uninstall` removes only claude-sync's folder
-from your Syncthing, and the devices you paired stay, apart from those `unpair` removed
-that share no other folder with it.
+If you set up with `--use-host-syncthing`, `uninstall` removes claude-sync's folder from
+your Syncthing, and the daily backup if set up. The devices you paired stay, apart from
+those `unpair` removed that share no other folder with it.
 Syncthing deletes the folder's `.stfolder` itself.
