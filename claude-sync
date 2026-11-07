@@ -134,6 +134,14 @@ folder_status() {
     rest "/rest/db/status?folder=$folder_id"
 }
 
+# Whether COMMAND prints the line LINE. Not grep -q: it stops reading at the first match,
+# and the command, killed by SIGPIPE writing its next line, fails the pipeline under pipefail.
+prints_line() {
+    local line=$1
+    shift
+    "$@" | grep -xF -- "$line" >/dev/null
+}
+
 # Dies with Syncthing's own message when it cannot run the folder, such as an ignore
 # pattern it rejects. Syncthing loads the ignore list after starting and before it scans or
 # pulls, so any later state means the folder runs; a scan or sync under way is not waited
@@ -194,7 +202,7 @@ add_folder() {
 
 # Applies the ignore list just written to an existing folder, or adds the folder.
 ensure_folder() {
-    if st config folders list | grep -qxF "$folder_id"; then
+    if prints_line "$folder_id" st config folders list; then
         load_ignores
     else
         add_folder sendreceive
@@ -777,7 +785,7 @@ pair() {
     else
         st config devices "$id" introducer set true
     fi
-    st config folders "$folder_id" devices list | grep -qxF -- "$id" ||
+    prints_line "$id" st config folders "$folder_id" devices list ||
         st config folders "$folder_id" devices add --device-id "$id"
     if [[ -z $join ]]; then
         printf 'Paired with %s. If not done yet, run there: claude-sync pair %s%s\n' "$id" "$self" "$there"
@@ -815,7 +823,7 @@ shares_other_folder() {
     local f
     while IFS= read -r f; do
         [[ $f != "$folder_id" ]] || continue
-        st config folders "$f" devices list | grep -qxF -- "$1" && return 0
+        prints_line "$1" st config folders "$f" devices list && return 0
     done < <(st config folders list)
     return 1
 }
@@ -924,7 +932,7 @@ uninstall() {
     fi
     if [[ -z $container && $name == "$default_name" ]] && host_syncthing_configured; then
         use_host
-        if st config folders list | grep -qxF "$folder_id"; then
+        if prints_line "$folder_id" st config folders list; then
             folder_path=$(st config folders "$folder_id" path get)
             apply_unpaired
             st config folders "$folder_id" delete
