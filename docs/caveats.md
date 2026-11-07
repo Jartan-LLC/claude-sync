@@ -26,8 +26,9 @@ running Claude Code rewrites often.
   only.
 
 Either way, Claude Code copies the file to `backups/` in `~/.claude` (or in
-`CLAUDE_CONFIG_DIR`) when it rewrites it, and that directory syncs: each device holds the
-other devices' copies too.
+`CLAUDE_CONFIG_DIR`) when it rewrites it, and keeps only the five newest copies, as its
+[`.claude` directory page](https://code.claude.com/docs/en/claude-directory.md) says. That
+directory syncs: each device holds the other devices' copies too.
 
 ### What happens when it syncs
 
