@@ -66,33 +66,20 @@ installed: after installing it, run `setup` yourself.
 claude-sync upgrade
 ```
 
-`upgrade` replaces the installed claude-sync with the newest release that is not breaking,
-then has the new version run `setup`, with no target, for every running instance on this
-host whose recorded version is older, missing or `dev`: each instance under its
-`CLAUDE_SYNC_NAME`, and claude-sync's folder in your own Syncthing. Run again with nothing
-new to install, it applies only to instances an earlier run left behind.
+Installs the newest release that is not breaking, then runs `setup`, with no target, for
+each running instance on this host whose recorded version is older, missing or `dev`,
+claude-sync's folder in your own Syncthing included. Run again, it catches up only the
+instances an earlier run missed.
 
-- If your Syncthing is not running, `setup` cannot reach it and `upgrade` fails for that
-  folder: start your Syncthing and run `upgrade` again.
-- It names a stopped instance and leaves it stopped; `setup` under that instance's name
-  starts it with the new version.
-- It names an instance whose Syncthing state is left in its config volume with no
-  container; `setup` under that name, with `--volume` or `--path`, uses that state again.
-- It downloads the release's `claude-sync` from GitHub and checks it against the release's
-  `claude-sync.sha256`, then moves it over the installed file, so a command still running
-  the old file is unaffected. It does not run `gh attestation verify`; you can run that
-  yourself afterwards, as in [Install](../README.md#install).
-- claude-sync gives a breaking release a new major version, or a new minor version while
-  the major is 0. That is the project's reading of [Semantic
-  Versioning](https://semver.org/), which itself lets any release before 1.0.0 break.
-  `upgrade` tells from the version number whether a release is breaking, and does not
-  install one: it says the release is out and links its release notes, which say how to
-  upgrade to it by hand. A newer release that is not breaking is still installed.
-  Pre-releases are left out.
-- It refuses an RPM install, which `dnf` upgrades (see [Upgrade](../README.md#upgrade)),
-  and a claude-sync run from a checkout, whose version is `dev`.
-- It needs curl and sha256sum, and write access to the directory claude-sync is installed
-  in.
+- It does not install a breaking release: it says the release is out and links its notes,
+  which say how to upgrade by hand. A breaking release has a new major version, or a new
+  minor version while the major is 0. Pre-releases are left out.
+- Stopped instances, and instances with only their Syncthing state left, are listed and
+  left as they are.
+- It checks the download against the release's `claude-sync.sha256`. To check its
+  attestation too, run `gh attestation verify` afterwards, as in
+  [Install](../README.md#install).
+- An RPM install is upgraded with `dnf` (see [Upgrade](../README.md#upgrade)).
 
 ## Several instances on one host
 
