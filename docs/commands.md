@@ -56,9 +56,9 @@ port again.
 
 With no `--volume` or `--path`, `setup` applies this version to the instance already set
 up, with the target it syncs, as after an upgrade with `dnf`. Ports, `--private` and the
-daily backup stay as they are unless given again. With your own Syncthing, it applies to claude-sync's folder
-there. With no instance set up, it prints the usage, or, when Docker is installed but
-cannot be reached, says so.
+daily backup stay as they are unless given again. With your own Syncthing, it applies to
+claude-sync's folder there. With no instance set up, it prints the usage, or, when Docker
+is installed but cannot be reached, says so.
 
 Each instance records the version of claude-sync that last set it up. When that version
 is older than the one installed, `pair` and `unpair` say so, with the `setup` command to
@@ -115,9 +115,10 @@ claude-sync uninstall
 ```
 
 Removes the container and this device's Syncthing state, including its device ID, and the
-[daily backup](#daily-backups), whose archives stay. Your `~/.claude` is untouched; Syncthing's `.stignore`, `.stfolder` and `.stversions`, and
-claude-sync's `.claude-sync-unpaired`, stay in it and can be deleted, though deleting
-`.stversions` empties the trash can.
+[daily backup](#daily-backups), whose archives stay. Your `~/.claude` is untouched;
+Syncthing's `.stignore`, `.stfolder` and `.stversions`, and claude-sync's
+`.claude-sync-unpaired`, stay in it and can be deleted, though deleting `.stversions`
+empties the trash can.
 
 With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninstall).
 
@@ -156,12 +157,13 @@ claude-sync setup --backup-dir ~/claude-backups
 Runs `backup` into the directory every day through a systemd user timer, so it needs
 systemd. It keeps `backup`'s default `--keep-weekly` and `--keep-monthly`. The timer runs
 while you are logged in, and a day missed while you were logged out runs at your next
-login. Each instance has its own, `NAME-backup.timer`. Later runs of `setup` keep it;
-`setup --no-backup` and `uninstall` remove it.
+login. Each instance has a timer of its own, named after it: `claude-sync-backup.timer`
+for the default instance. Later runs of `setup` keep it; `setup --no-backup` and
+`uninstall` remove it.
 
 The timer runs `backup` in systemd's environment, which lacks what only your shell sets.
-If `backup` needs such a variable, such as `DOCKER_HOST` for rootless Docker, set it in
-`~/.config/environment.d/` as well.
+If `backup` needs such a variable, such as `DOCKER_HOST` for rootless Docker, or a `PATH`
+that finds your own Syncthing, set it in `~/.config/environment.d/` as well.
 
 ## restore
 

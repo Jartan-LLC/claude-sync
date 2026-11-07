@@ -1758,9 +1758,10 @@ EOF
     check "  and keeps Q's file that the archive lacks" in_target "$mount_q" "grep -qx newer /t/newer.md"
 }
 
-# The calls the stub systemctl got since the last reset.
+# The calls the stub systemctl got since the last reset, apart from is-system-running, which
+# changes nothing.
 systemctl_calls() {
-    cat -- "$SYSTEMCTL_CALLS" 2>/dev/null || true
+    grep -vx -- '--user is-system-running' "$SYSTEMCTL_CALLS" 2>/dev/null || true
 }
 
 # U, then the host fixture Y: the daily backup's units, with a stub systemctl that logs its
@@ -1774,17 +1775,34 @@ group_timer() {
     local service=$units/$u-backup.service timer=$units/$u-backup.timer
     # SYSTEMCTL_STATE is the user manager's, which is-system-running prints with the status
     # SYSTEMCTL_STATUS; offline fails every call, as a manager that cannot be reached does.
+    # SYSTEMCTL_FAIL names one command that fails.
     cat >"$tm/bin/systemctl" <<'EOF'
 #!/bin/sh
 echo "$*" >>"$SYSTEMCTL_CALLS"
 state=${SYSTEMCTL_STATE:-running}
 [ "$state" != offline ] || exit 1
+if [ "$2" = "${SYSTEMCTL_FAIL:-}" ]; then
+    echo "Failed to $2" >&2
+    exit 1
+fi
 if [ "$*" = "--user is-system-running" ]; then
     echo "$state"
     exit "${SYSTEMCTL_STATUS:-0}"
 fi
 EOF
     chmod +x "$tm/bin/systemctl"
+    # A docker that finds setup's probe in the container's synced folder, as for a DIR in it,
+    # which no directory here is.
+    mkdir "$tm/probe-bin"
+    cat >"$tm/probe-bin/docker" <<EOF
+#!/bin/sh
+if [ "\$1" = exec ] && [ "\$5" = find ]; then
+    echo "\$6/\$8"
+    exit 0
+fi
+exec "$(command -v docker)" "\$@"
+EOF
+    chmod +x "$tm/probe-bin/docker"
     # A DIR holding what systemd reads as escapes, specifiers and variables in a unit, and
     # how the unit quotes it.
     # shellcheck disable=SC2016 # the $ is part of the name
@@ -1806,6 +1824,16 @@ EOF
     claude_sync "$u" setup --volume "$vol_u" >/dev/null
     check "setup without --backup-dir writes no unit" [ ! -e "$units" ]
     check "  and calls no systemctl" [ -z "$(systemctl_calls)" ]
+    check "in a container, a DIR in the synced folder is refused" fails_with "is in the synced folder" \
+        env PATH="$tm/probe-bin:$PATH" CLAUDE_SYNC_NAME="$u" "$bin" setup --backup-dir "$tm/synced"
+    check "  writing no unit" [ ! -e "$units" ]
+    check "  and not making DIR" [ ! -e "$tm/synced" ]
+    docker exec -u "$owner_u" "$u" rm /var/syncthing/config/claude-sync-version
+    check "setup stops when systemd fails to enable the timer" \
+        fails_with "systemctl --user enable --now $u-backup.timer failed: Failed to enable" \
+        env SYSTEMCTL_FAIL=enable CLAUDE_SYNC_NAME="$u" "$bin" setup --backup-dir "$tm/backups"
+    check "  before recording its version, for upgrade to set it up again" fails stamp_of "$u"
+    rm -f -- "$SYSTEMCTL_CALLS"
 
     out=$(claude_sync "$u" setup --backup-dir "$odd")
     check "setup --backup-dir with no target installs the daily backup" \
@@ -1815,9 +1843,7 @@ EOF
     check "  daily" grep -qxF OnCalendar=daily "$timer"
     check "  catching up a day missed while logged out" grep -qxF Persistent=true "$timer"
     check "  once enabled" grep -qxF WantedBy=timers.target "$timer"
-    check "  which it is, after systemd reloads the units" [ "$(systemctl_calls)" = "--user is-system-running
---user is-system-running
---user daemon-reload
+    check "  which it is, after systemd reloads the units" [ "$(systemctl_calls)" = "--user daemon-reload
 --user enable --now $u-backup.timer" ]
     check "  making DIR" [ -d "$odd" ]
     check "  and saying where it backs up" grep -qF "Backs up to $odd daily" <<<"$out"
@@ -1832,6 +1858,10 @@ EOF
     check "  and reads DIR back, to say where it backs up" grep -qF "Backs up to $odd daily" <<<"$out"
     claude_sync "$u" setup --volume "$vol_u" >/dev/null
     check "setup with the target keeps it too" [ "$(cat "$service" "$timer")" = "$units_before" ]
+    out=$(env PATH="$tm/probe-bin:$PATH" CLAUDE_SYNC_NAME="$u" "$bin" setup 2>&1) && status=0 || status=$?
+    check "setup that finds the kept DIR in the synced folder goes on" [ "$status" = 0 ]
+    check "  warning that the daily backup fails" grep -qF "the daily backup into $odd fails each day" <<<"$out"
+    check "  and keeping it" [ "$(cat "$service" "$timer")" = "$units_before" ]
     cp "$bin" "$tm/other/claude-sync"
     [[ -n ${CLAUDE_SYNC_BIN:-} ]] || cp "$root"/compose*.yaml "$root/stignore" "$tm/other/"
     rm -f -- "$SYSTEMCTL_CALLS"
@@ -1839,8 +1869,7 @@ EOF
     check "setup by another claude-sync points the backup at it" \
         grep -qxF "ExecStart=\"$tm/other/claude-sync\" backup $odd_quoted" "$service"
     check "  reloading the units without enabling the timer again" \
-        [ "$(systemctl_calls)" = "--user is-system-running
---user daemon-reload" ]
+        [ "$(systemctl_calls)" = "--user daemon-reload" ]
     check "a degraded user manager runs the backup too" env SYSTEMCTL_STATE=degraded SYSTEMCTL_STATUS=1 \
         CLAUDE_SYNC_NAME="$u" "$bin" setup --backup-dir "$tm/backups"
     check "  moving it to the new DIR" grep -qxF "ExecStart=\"$real_bin\" backup \"$tm/backups\"" "$service"
@@ -1853,8 +1882,7 @@ EOF
     rm -f -- "$SYSTEMCTL_CALLS"
     out=$(claude_sync "$u" setup --no-backup)
     check "setup --no-backup removes the daily backup" [ -z "$(ls -A "$units")" ]
-    check "  disabling the timer, then reloading" [ "$(systemctl_calls)" = "--user is-system-running
---user disable --now $u-backup.timer
+    check "  disabling the timer, then reloading" [ "$(systemctl_calls)" = "--user disable --now $u-backup.timer
 --user daemon-reload" ]
     check "  saying so" grep -qF "Removed the daily backup to $tm/backups;" <<<"$out"
     rm -f -- "$SYSTEMCTL_CALLS"
@@ -1862,6 +1890,10 @@ EOF
     check "  and with none, does nothing" [ -z "$(systemctl_calls)" ]
     claude_sync "$u" setup --backup-dir "$tm/backups" >/dev/null
     claude_sync "$u" backup "$tm/backups" >/dev/null
+    check "uninstall without systemd's user manager says so" \
+        fails_with "cannot reach systemd's user manager to remove $u-backup.timer" \
+        env SYSTEMCTL_STATE=offline CLAUDE_SYNC_NAME="$u" "$bin" uninstall
+    check "  removing nothing" docker container inspect "$u"
     rm -f -- "$SYSTEMCTL_CALLS"
     claude_sync "$u" uninstall >/dev/null
     check "uninstall removes the daily backup" [ -z "$(ls -A "$units")" ]
