@@ -16,8 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   From 0.1.1 or earlier, download claude-sync once more as in the README's Install
   section, then run `claude-sync upgrade`.
 - `claude-sync setup` with no `--volume` or `--path` applies the installed version to the
-  instance already set up, keeping its target. After upgrading the RPM, run it for each
-  instance.
+  instance already set up, keeping its target. After upgrading the RPM, run
+  `CLAUDE_SYNC_NAME=NAME claude-sync setup` for each instance NAME.
 - Each instance records the version of claude-sync that set it up, and `pair` and `unpair`
   say when that version is older than the one installed.
 - `claude-sync backup DIR` writes a gzip tar archive of the whole synced folder to DIR,
@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `claude-sync restore ARCHIVE --volume NAME | --path DIR` extracts an archive over a
   Docker volume or a directory, on any device. In a folder that syncs, the restored files
   reach every device.
+- `claude-sync list` lists the host's instances: each one's name, whether it runs, and the
+  volume or directory it syncs, with the one commands act on marked.
+- `claude-sync use NAME` makes later commands act on instance NAME without
+  `CLAUDE_SYNC_NAME`, until `claude-sync use claude-sync` returns to the default or
+  `uninstall` removes that instance. `CLAUDE_SYNC_NAME`, when set, still wins.
+- `setup`, `pair`, `unpair`, `uninstall` and `backup` say on stderr which instance they act
+  on when it is not `claude-sync`.
 - `claude-sync setup --backup-dir DIR` runs `claude-sync backup DIR` for the instance every
   day, with a systemd user timer, while you are logged in; a day missed runs at your next
   login. Later runs of `setup` and `upgrade` keep it; `setup --no-backup` and `uninstall`

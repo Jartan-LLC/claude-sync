@@ -101,8 +101,7 @@ Two installs upgrade differently:
 - claude-sync 0.1.1 and earlier have no `upgrade`: download claude-sync again as in
   [Install](#install), then run `claude-sync upgrade`.
 - With the RPM, rerun the `dnf install` line from [Install](#install), then run
-  `claude-sync setup`, with no target, for each instance
-  (`CLAUDE_SYNC_NAME=NAME claude-sync setup` for one not named `claude-sync`).
+  `CLAUDE_SYNC_NAME=NAME claude-sync setup`, with no target, for each instance NAME.
 
 ## Uninstall
 

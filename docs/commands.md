@@ -17,6 +17,8 @@ leaves the fix out. `claude-sync help` prints the same commands and flags.
 | `backup DIR` | Writes an archive of the whole synced folder to DIR, then removes older ones there |
 | `restore ARCHIVE --volume NAME` | Extracts a backup over the Docker volume NAME |
 | `restore ARCHIVE --path DIR` | Extracts a backup over the directory DIR on this machine |
+| `list` | Lists this host's instances and marks the one commands act on |
+| `use NAME` | Makes later commands act on instance NAME |
 | `version` | Prints claude-sync's version |
 | `help` | Prints the commands and flags |
 
@@ -34,8 +36,8 @@ leaves the fix out. `claude-sync help` prints the same commands and flags.
 | `--keep-weekly N` | `backup` | Keeps the newest archive of each of the last N weeks that have one; default 4 |
 | `--keep-monthly N` | `backup` | Keeps the newest archive of each of the last N months that have one; default 6 |
 
-`CLAUDE_SYNC_NAME` names the instance a command acts on (see [Several instances on one
-host](#several-instances-on-one-host)).
+A command acts on the instance `CLAUDE_SYNC_NAME` names or, when it is unset, on the one
+selected with `use` (see [Several instances on one host](#several-instances-on-one-host)).
 
 ## setup
 
@@ -92,13 +94,21 @@ instances an earlier run missed.
 
 `CLAUDE_SYNC_NAME` names an instance: its container and the volume that holds its
 Syncthing state. Under different names, one host can sync several `~/.claude` volumes or
-directories, each as a device of its own. Give the same name to every command for that
-instance:
+directories, each as a device of its own:
 
 ```bash
 CLAUDE_SYNC_NAME=claude-work claude-sync setup --volume work-claude
-CLAUDE_SYNC_NAME=claude-work claude-sync pair OTHER-ID
+claude-sync use claude-work
+claude-sync pair OTHER-ID
 ```
+
+`claude-sync list` lists this host's instances and marks the one commands act on.
+`claude-sync use NAME` makes later commands act on NAME, in every shell, until
+`claude-sync use claude-sync` or `uninstall` of that instance. `CLAUDE_SYNC_NAME`, when
+set, wins over the selection.
+
+In `list`, `state only` is an instance whose container is gone but whose Syncthing state,
+with its device ID, is left; `setup` under its name uses it again.
 
 Each instance gets ports of its own, which `setup` prints, as long as the other instances
 are running when it first starts: Syncthing takes free ports only then. Each needs a
@@ -114,11 +124,10 @@ Syncthing itself.
 claude-sync uninstall
 ```
 
-Removes the container and this device's Syncthing state, including its device ID, and the
-[daily backup](#daily-backups), whose archives stay. Your `~/.claude` is untouched;
-Syncthing's `.stignore`, `.stfolder` and `.stversions`, and claude-sync's
-`.claude-sync-unpaired`, stay in it and can be deleted, though deleting `.stversions`
-empties the trash can.
+Removes the instance `claude-sync list` marks: its container, this device's Syncthing
+state, including its device ID, and its [daily backup](#daily-backups), whose archives
+stay. Your `~/.claude` is untouched; the files Syncthing and claude-sync keep in it stay
+([Caveats](caveats.md#syncthings-and-claude-syncs-files)).
 
 With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninstall).
 
@@ -223,7 +232,7 @@ restore with `tar` alone.
 | `does not match the release's SHA-256` or `is not version` | Nothing was changed; run `upgrade` again later, and report it if it keeps failing |
 | `setup failed for instance` | Fix what that instance's `setup` printed above, then rerun `upgrade` |
 | `docker cannot be reached` | Start Docker, and check that `docker ps` works as this user; then rerun `setup` |
-| `docker cannot list the instances in containers` | Start Docker, and check that `docker ps` works as this user; then rerun `upgrade` |
+| `docker cannot list the instances in containers` | Start Docker, and check that `docker ps` works as this user; then rerun the command |
 | `is in the synced folder` | Give `backup` or `setup --backup-dir` a directory outside the synced folder |
 | `needs systemd's user manager` | Run `setup` in a login session as that user, not from `su` or `sudo`; without systemd, as on macOS, schedule `backup` another way |
 | `cannot reach systemd's user manager` | Rerun the command in a login session as that user, not from `su`, `sudo` or cron |
@@ -231,3 +240,5 @@ restore with `tar` alone.
 | `tar could not archive the synced folder` | tar's message above names the file. If the folder's owner cannot read it, `chown` it; if it was being written at that moment, rerun `backup` |
 | `cannot read ARCHIVE as a backup` | The file is not a whole gzip tar archive, such as a copy cut short; copy it again |
 | `could not restore all of` | tar's message above says why, such as a full disk. The files restored so far stay; fix it and rerun `restore` |
+| `no instance named` | For a new instance, run `setup` with `CLAUDE_SYNC_NAME` set to its name first, then `use` |
+| `does not hold a valid instance name` | Run `claude-sync use NAME` with a name `claude-sync list` shows, or `claude-sync use claude-sync` for the default instance |
