@@ -549,15 +549,26 @@ setup_command() {
     echo "${prefix}claude-sync setup"
 }
 
+# The claude-sync that last set up the instance NAME, whose Syncthing runs in PLACE, then,
+# when it needs this version's setup, the command that applies it. Fails when it does not.
+set_up_by() {
+    local version text="an older claude-sync"
+    version=$(instance_version "$1" "$2") || version=""
+    [[ -z $version ]] || text="claude-sync $version"
+    if stale "$version"; then
+        echo "$text; run $(setup_command "$1") to apply $claude_sync_version"
+    else
+        echo "$text"
+        return 1
+    fi
+}
+
 # Tells when an older claude-sync set this instance up.
 warn_stale() {
-    local place=container version by="an older claude-sync"
+    local place=container text
     [[ $mode != host ]] || place=host
-    version=$(instance_version "$name" "$place") || version=""
-    stale "$version" || return 0
-    [[ -z $version ]] || by="claude-sync $version"
-    printf 'claude-sync: this instance was last set up by %s; run %s to apply %s\n' \
-        "$by" "$(setup_command "$name")" "$claude_sync_version" >&2
+    text=$(set_up_by "$name" "$place") || return 0
+    printf 'claude-sync: this instance was last set up by %s\n' "$text" >&2
 }
 
 # PATH with a leading ~ expanded where it stands for the home directory, alone or before a
@@ -1410,67 +1421,73 @@ show() {
 status() {
     (($# == 0)) || die "status takes no arguments"
     check_name
-    local instance=$name kind="" target="" host="" place="" syncthing syncs="" info="" devices="" conflicts=""
-    local id version text
+    local instance=$name place="" runs syncs="" id info="" set_up="" devices=""
     [[ $name == "$default_name" ]] || instance+=", $(name_source)"
+    locate_syncthing
+    if [[ -n $place ]]; then
+        { id=$(syncthing_run device-id) && info=$(instance_lines "$id") && devices=$(device_status "$id"); } ||
+            die "cannot reach Syncthing $where"
+        set_up=$(set_up_by "$name" "$place") || true
+    fi
+    show Instance "$instance"
+    show Syncthing "$runs"
+    [[ -z $syncs ]] || show Syncs "$syncs"
+    [[ -z $info ]] || printf '%s\n' "$info"
+    show Installed "claude-sync $claude_sync_version"
+    [[ -z $set_up ]] || show "Set up by" "$set_up"
+    release_status
+    [[ -z $devices ]] || printf '%s\n' "$devices"
+}
+
+# Where the instance's Syncthing runs, for status: sets RUNS, SYNCS when it is set up, and
+# PLACE, container or host, when its Syncthing runs there, pointing the helpers at it.
+locate_syncthing() {
+    local kind="" target="" host=""
     if ! current_setup; then
         if command -v docker >/dev/null && ! docker info >/dev/null 2>&1; then
             die "docker cannot be reached, so status cannot tell whether instance $name runs in a container; once docker works, rerun claude-sync status"
         fi
-        syncthing="not set up on this host; $(setup_command "$name") --volume NAME or --path DIR sets it up"
-    else
-        syncs="volume $target"
-        [[ $kind == volume ]] || syncs="directory $target"
-        if [[ -n $host ]]; then
-            if syncthing cli config gui apikey get >/dev/null 2>&1; then
-                use_host
-                folder_path=$target place=host syncthing="your own, on this host"
-            else
-                syncthing="your own, on this host, not running as $(id -un); start it"
-            fi
-        elif running; then
-            owner=$(container_owner "$name") || die "cannot inspect container $name"
-            place=container syncthing="in container $name"
+        runs="not set up on this host; $(setup_command "$name") --volume NAME or --path DIR sets it up"
+        return
+    fi
+    syncs="volume $target"
+    [[ $kind == volume ]] || syncs="directory $target"
+    if [[ -n $host ]]; then
+        if syncthing cli config gui apikey get >/dev/null 2>&1; then
+            use_host
+            folder_path=$target place=host runs="your own, on this host"
         else
-            syncthing="in container $name, stopped; $(setup_command "$name") starts it"
+            runs="your own, on this host, not running as $(id -un); start it"
         fi
-        if [[ -n $place ]]; then
-            { id=$(syncthing_run device-id) && info=$(instance_lines "$id") && devices=$(device_status "$id"); } ||
-                die "cannot reach Syncthing $where"
-            conflicts=$(conflict_copies) || conflicts="could not search the synced folder; the message above says why"
-        fi
+    elif running; then
+        owner=$(container_owner "$name") || die "cannot inspect container $name"
+        place=container runs="in container $name"
+    else
+        runs="in container $name, stopped; $(setup_command "$name") starts it"
     fi
-    show Instance "$instance"
-    show Syncthing "$syncthing"
-    [[ -z $syncs ]] || show Syncs "$syncs"
-    if [[ -n $place ]]; then
-        printf '%s\n' "$info"
-        show "Conflict copies" "$conflicts"
-    fi
-    show Installed "claude-sync $claude_sync_version"
-    if [[ -n $place ]]; then
-        version=$(instance_version "$name" "$place") || version=""
-        text="claude-sync $version"
-        [[ -n $version ]] || text="an older claude-sync"
-        ! stale "$version" || text+="; run $(setup_command "$name") to apply $claude_sync_version"
-        show "Set up by" "$text"
-    fi
-    release_status
-    [[ -z $place ]] || printf '%s\n' "$devices"
 }
 
-# Status lines that need the instance's Syncthing to answer, for this device's ID, short
-# of the devices and the conflict copies.
+# Status lines of a running instance, for this device's ID, short of the devices. Fails
+# when its Syncthing does not answer.
 instance_lines() {
-    local ui port network folder state
+    local ui port network folder state paused conflicts
     { ui=$(web_ui) && port=$(sync_port) && network=$(network_setting) && folder=$(folder_status); } || return
     state=$(field state <<<"$folder")
-    [[ $state != error ]] || state="error: $(field error <<<"$folder")"
+    if [[ $state == error ]]; then
+        state="error: $(field error <<<"$folder")"
+    elif [[ -z $state ]]; then
+        # Syncthing gives no state for a folder it does not run.
+        paused=$(st config folders "$folder_id" paused get) || return
+        state="not running"
+        [[ $paused != true ]] || state=paused
+    fi
+    conflicts=$(conflict_copies) || conflicts="could not search the synced folder; the message above says why"
     show "Web UI" "$ui"
     show "Device ID" "$1"
     show "Sync port" "$port"
     show Network "$network"
     show Folder "$state"
+    show "Conflict copies" "$conflicts"
 }
 
 # The number of conflict copies in the synced folder. Fails when find cannot search all of
@@ -1538,7 +1555,8 @@ device_line() {
         fi
         text="not connected, last seen $seen"
     fi
-    completion=$(rest "/rest/db/completion?folder=$folder_id&device=$1") || return
+    # Syncthing refuses it for a folder it does not run, such as a paused one.
+    completion=$(rest "/rest/db/completion?folder=$folder_id&device=$1" 2>/dev/null) || completion=""
     percent=$(field completion <<<"$completion")
     if [[ $(field remoteState <<<"$completion") == notSharing ]]; then
         text+="; does not share the folder"

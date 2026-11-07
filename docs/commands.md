@@ -96,10 +96,12 @@ claude-sync status
 ```
 
 Shows the instance `claude-sync list` marks, and changes nothing: a stopped container stays
-stopped. It exits 0 when the instance is stopped or not set up, and fails when docker or a
-running Syncthing does not answer. It asks GitHub whether a newer release is out, and says
-when it cannot check; run from a checkout, it does not ask. The conflict copies it counts
-are those outside the trash can ([Recovering files](recovering-files.md)).
+stopped. It exits 0 when the instance is stopped or not set up, or when it cannot count
+the conflict copies; your own Syncthing on this host counts as stopped when it does not
+answer. It fails when docker, or the Syncthing in a running container, does not answer. It
+asks GitHub whether a newer release is out, and says when it cannot check; run from a
+checkout, it does not ask. The conflict copies it counts are those outside the trash can
+([Recovering files](recovering-files.md)).
 
 ## Several instances on one host
 

@@ -2047,6 +2047,13 @@ EOF
     docker stop "$sy" >/dev/null
     check "status shows when a device it no longer reaches was last seen" wait_for status_says "$sx" \
         '^    not connected, last seen [0-9-]+T[0-9:]+Z; has 100% of the folder, as far as this device knows$'
+    st "$sx" "$owner_sx" config folders claude-sync paused set true
+    check "status of a paused folder says so" wait_for status_says "$sx" '^Folder: +paused$'
+    out=$(status_of "$sx" releases.json) && status=0 || status=$?
+    check "  with its devices' completion unknown" \
+        grep -qE '^    not connected, last seen [0-9-]+T[0-9:]+Z; completion unknown$' <<<"$out"
+    check "  succeeding" [ "$status" = 0 ]
+    st "$sx" "$owner_sx" config folders claude-sync paused set false
     docker exec -u 0 "$sx" sh -c 'mkdir /var/syncthing/claude/sealed && chmod 700 /var/syncthing/claude/sealed'
     out=$(status_of "$sx" releases.json 2>&1) && status=0 || status=$?
     check "status says when it cannot count the conflict copies" \
