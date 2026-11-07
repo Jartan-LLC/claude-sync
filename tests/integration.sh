@@ -292,6 +292,15 @@ host_idle() {
         jq -e '.state == "idle" and .needTotalItems == 0'
 }
 
+# Whether the host device has no connection to any of the given devices.
+host_disconnected() {
+    local conns x
+    conns=$(on_host syncthing cli show connections) || return 1
+    for x; do
+        jq -e --arg x "$x" '.connections[$x].connected == false' <<<"$conns" || return 1
+    done
+}
+
 # The files of the user's other folders.
 host_others() {
     on_host sh -c "find photos notes tilde -type f ! -path '*/.stfolder/*' -exec sha256sum {} + | sort"
@@ -813,12 +822,23 @@ EOF
     check "an invalid device ID is refused" fails_with "not a device ID" claude_sync "$a" unpair not-a-device-id
     # The host device pairs with D directly, so no introducer takes D away there, and also
     # shares another folder with it. It knows D by introduction so far, which pairing alone
-    # does not change.
+    # does not change, so D is deleted there first. The host device's other devices stay
+    # paused until pair has added D and shared the folder with it: meanwhile, a
+    # ClusterConfig from any that introduces D would add it back by introduction.
     check "the host device knows D" \
         wait_for on_host sh -c "syncthing cli config devices list | grep -qx $id_d"
+    mapfile -t others < <(on_host syncthing cli config devices list | grep -vxF -e "$id_h" -e "$id_d")
+    for x in "${others[@]}"; do
+        on_host syncthing cli config devices "$x" paused set true
+    done
+    # Pausing closes the connections only after it returns.
+    wait_for host_disconnected "${others[@]}"
     on_host syncthing cli config folders claude-sync devices "$id_d" delete
     on_host syncthing cli config devices "$id_d" delete
     host_sync pair "$id_d" --address "tcp://$d:22000" >/dev/null
+    for x in "${others[@]}"; do
+        on_host syncthing cli config devices "$x" paused set false
+    done
     pair_bounded "$d" "$id_h" --address "tcp://$h:22000" >/dev/null
     on_host syncthing cli config folders photos devices add --device-id "$id_d"
     check "the host device knows D directly" [ -z "$(on_host syncthing cli config devices "$id_d" dump-json | jq -r .introducedBy)" ]
