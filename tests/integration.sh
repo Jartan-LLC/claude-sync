@@ -15,17 +15,19 @@ readonly prefix
     exit 1
 }
 readonly net=${prefix}net a=${prefix}a b=${prefix}b c=${prefix}c d=${prefix}d e=${prefix}e g=${prefix}g k=${prefix}k
-readonly j=${prefix}j l=${prefix}l m=${prefix}m
+readonly j=${prefix}j l=${prefix}l m=${prefix}m n=${prefix}n p=${prefix}p hu=${prefix}hu
 readonly listener=${prefix}listener foreign=${prefix}foreign h=${prefix}h host_image=${prefix}host
 readonly vol_a=${prefix}a-data vol_b=${prefix}b-data vol_missing=${prefix}missing
 readonly vol_root=${prefix}root-data vol_c=${prefix}c-data vol_d=${prefix}d-data
 readonly vol_e=${prefix}e-data vol_g=${prefix}g-data vol_j=${prefix}j-data vol_l=${prefix}l-data
-readonly vol_m=${prefix}m-data
+readonly vol_m=${prefix}m-data vol_n=${prefix}n-data vol_p=${prefix}p-data
 # Not Syncthing's default 1000, so a match proves the owner was read from the target.
 readonly owner_a=1234:1234 owner_b=2345:2345 owner_c=3456:3456 owner_d=4567:4567
 readonly owner_e=6789:6789 owner_g=7890:7890 owner_j=8901:8901 owner_l=9012:9012 owner_m=5678:5678
+readonly owner_n=1357:1357 owner_p=2468:2468
 readonly mount_a=type=volume,src=$vol_a mount_b=type=volume,src=$vol_b mount_c=type=volume,src=$vol_c
 readonly mount_j=type=volume,src=$vol_j mount_l=type=volume,src=$vol_l mount_m=type=volume,src=$vol_m
+readonly mount_n=type=volume,src=$vol_n mount_p=type=volume,src=$vol_p
 image=$(sed -n 's/^ *image: *//p' "$root/compose.yaml")
 readonly image
 [[ -n $image ]] || {
@@ -258,7 +260,12 @@ trusts() {
 # A command as `user` on the host fixture, with Syncthing's defaults rather than the
 # image's settings.
 on_host() {
-    docker exec -u user -w /home/user "$h" env -u STHOMEDIR -u STGUIADDRESS HOME=/home/user "$@"
+    as_user "$h" "$@"
+}
+
+# A command as `user` on a host fixture CONTAINER.
+as_user() {
+    docker exec -u user -w /home/user "$1" env -u STHOMEDIR -u STGUIADDRESS HOME=/home/user "${@:2}"
 }
 
 host_sync() {
@@ -371,15 +378,16 @@ snapshot() {
 
 cleanup() {
     local x
-    for x in "$a" "$b" "$c" "$d" "$e" "$g" "$k" "$j" "$l" "$m" "$h" "$bad_name" "$listener" "$foreign"; do
+    for x in "$a" "$b" "$c" "$d" "$e" "$g" "$k" "$j" "$l" "$m" "$n" "$p" "$h" "$hu" "$bad_name" "$listener" "$foreign"; do
         guard "$x"
         docker rm --force -v "$x" >/dev/null 2>&1 || true
     done
     guard "$host_image"
     docker image rm "$host_image" >/dev/null 2>&1 || true
     for x in "$a-config" "$b-config" "$c-config" "$d-config" "$e-config" "$g-config" "$k-config" \
-        "$j-config" "$l-config" "$m-config" "$bad_name-config" "$foreign-config" "$vol_a" "$vol_b" \
-        "$vol_c" "$vol_d" "$vol_e" "$vol_g" "$vol_j" "$vol_l" "$vol_m" "$vol_missing" "$vol_root"; do
+        "$j-config" "$l-config" "$m-config" "$n-config" "$p-config" "$bad_name-config" "$foreign-config" \
+        "$vol_a" "$vol_b" "$vol_c" "$vol_d" "$vol_e" "$vol_g" "$vol_j" "$vol_l" "$vol_m" "$vol_n" "$vol_p" \
+        "$vol_missing" "$vol_root"; do
         guard "$x"
         docker volume rm "$x" >/dev/null 2>&1 || true
     done
@@ -414,7 +422,7 @@ on_exit() {
     fi
     wait 2>/dev/null || true
     if ((status != 0)); then
-        for node in "$a" "$b" "$c" "$d" "$e" "$g" "$j" "$l" "$m" "$h"; do
+        for node in "$a" "$b" "$c" "$d" "$e" "$g" "$j" "$l" "$m" "$n" "$p" "$h" "$hu"; do
             docker logs --tail 30 "$node" 2>&1 | sed "s/^/[$node] /" || true
         done
         for out in "$scratch"/join-*.out; do
@@ -458,11 +466,18 @@ docker volume create "$vol_g" >/dev/null
 docker volume create "$vol_j" >/dev/null
 docker volume create "$vol_l" >/dev/null
 docker volume create "$vol_m" >/dev/null
+docker volume create "$vol_n" >/dev/null
+docker volume create "$vol_p" >/dev/null
+# For the groups that run a host fixture.
+docker build -q -t "$host_image" --build-arg IMAGE="$image" -f "$root/tests/host.Dockerfile" \
+    "$root/tests" >/dev/null
 in_target "type=volume,src=$vol_e" "echo e >/t/e-only.md && chown -R $owner_e /t"
 in_target "type=volume,src=$vol_g" "echo 'g claude.json' >/t/claude.json && chown -R $owner_g /t"
 in_target "$mount_l" "echo 'l claude.json' >/t/claude.json && chown -R $owner_l /t"
 in_target "$mount_m" "chown $owner_m /t"
 in_target "$mount_c" "chown $owner_c /t"
+in_target "$mount_n" "chown $owner_n /t"
+in_target "$mount_p" "chown $owner_p /t"
 fixture="cd /t"
 for f in "${synced[@]}" "${ignored[@]}"; do
     fixture+=" && mkdir -p \"\$(dirname '$f')\" && echo 'fixture $f' >'$f'"
@@ -691,8 +706,6 @@ group_chain() {
     check "  and C" wait_for in_target "$mount_c" '[ -e /t/from-d.md ]'
 
     echo "# setup --use-host-syncthing"
-    docker build -q -t "$host_image" --build-arg IMAGE="$image" -f "$root/tests/host.Dockerfile" \
-        "$root/tests" >/dev/null
     docker run -d --name "$h" --network "$net" --user user --entrypoint env "$host_image" \
         -u STHOMEDIR -u STGUIADDRESS HOME=/home/user syncthing serve --no-browser >/dev/null
     docker exec -u 0 "$h" mkdir /opt/claude-sync
@@ -1114,10 +1127,176 @@ EOF
     check "  and survives" docker volume inspect "$foreign-config"
 }
 
+# A function of the claude-sync under test, run with its arguments.
+calls() {
+    # shellcheck disable=SC2016 # expanded by the inner bash
+    bash -c 'source "$1" help >/dev/null && "${@:2}"' _ "$bin" "$@"
+}
+
+# The version an instance's container was last set up by.
+stamp_of() {
+    docker exec "$1" cat /var/syncthing/config/claude-sync-version
+}
+
+# A fake release list in the shape of GitHub's API, under BASE: v0.4.1 is the only release
+# with files, and SUMS, if given, is where its SHA-256 is.
+releases_json() {
+    local base=$1 sums=${2:-$1}
+    cat <<EOF
+[
+  {"html_url": "$base/tag/v0.5.0", "tag_name": "v0.5.0", "prerelease": false, "assets": []},
+  {"html_url": "$base/tag/v0.4.2-rc.1", "tag_name": "v0.4.2-rc.1", "prerelease": true, "assets": []},
+  {"html_url": "$base/tag/v0.4.1", "tag_name": "v0.4.1", "prerelease": false, "assets": [
+    {"browser_download_url": "$base/download/v0.4.1/claude-sync"},
+    {"browser_download_url": "$sums/download/v0.4.1/claude-sync.sha256"}
+  ]},
+  {"html_url": "$base/tag/v0.4.0", "tag_name": "v0.4.0", "prerelease": false, "assets": []}
+]
+EOF
+}
+
+# CMD with the fake releases in LIST. Upgrade acts on every instance on the Docker daemon,
+# which may hold real ones besides this run's, so it runs with the shim for docker.
+with_releases() {
+    env PATH="$up/shim:$PATH" CLAUDE_SYNC_RELEASES_API="file://$up/releases/$1" \
+        timeout 600 "${@:2}"
+}
+
+# upgrade as installed in $up/install, with the fake releases in LIST.
+upgrade_here() {
+    with_releases "$1" "$up/install/claude-sync" upgrade
+}
+
+# N, P and the host fixture HU: instances set up by one build, reapplied by a newer one.
+group_upgrade() {
+    echo "# upgrade"
+    # This group's files, apart from the other groups' in $scratch; the helpers above use it.
+    up=$scratch/upgrade
+    # 0.4.0, the build installed: a copy whose ignore list and compose file differ from this
+    # checkout's, so the reapply shows. 0.4.1, the release: this checkout.
+    mkdir -p "$up/old-src/packaging" "$up/old" "$up/install" "$up/shim" "$up/rpm" \
+        "$up/releases/download/v0.4.1" "$up/releases/bad/download/v0.4.1"
+    cp "$root/claude-sync" "$root"/compose*.yaml "$root/stignore" "$up/old-src"
+    cp "$root/packaging/build.sh" "$up/old-src/packaging"
+    echo '// the old ignore list' >>"$up/old-src/stignore"
+    sed -i 's/^    restart: unless-stopped$/&\n    labels: [claude-sync-test-old=1]/' "$up/old-src/compose.yaml"
+    "$up/old-src/packaging/build.sh" 0.4.0 "$up/old/claude-sync"
+    "$root/packaging/build.sh" 0.4.1 "$up/releases/download/v0.4.1/claude-sync"
+    (cd "$up/releases/download/v0.4.1" && sha256sum claude-sync >claude-sync.sha256)
+    echo "0000000000000000000000000000000000000000000000000000000000000000  claude-sync" \
+        >"$up/releases/bad/download/v0.4.1/claude-sync.sha256"
+    releases_json "file://$up/releases" >"$up/releases/releases.json"
+    releases_json "file://$up/releases" "file://$up/releases/bad" >"$up/releases/bad.json"
+    readonly new=$up/releases/download/v0.4.1/claude-sync
+    cp "$up/old/claude-sync" "$up/install/claude-sync"
+    # A second name for the installed file: a rewrite in place would show through it.
+    ln "$up/install/claude-sync" "$up/held"
+    # Lists only this run's volumes. Under another instance's name, it lets through only
+    # reads and commands run in this run's containers.
+    cat >"$up/shim/docker" <<EOF
+#!/usr/bin/env bash
+real=$(command -v docker) prefix=$prefix
+EOF
+    cat >>"$up/shim/docker" <<'EOF'
+if [[ $1 == volume && $2 == ls ]]; then
+    "$real" "$@" | grep "^$prefix" || true
+    exit
+fi
+case ${CLAUDE_SYNC_NAME:-} in "$prefix"*) exec "$real" "$@" ;; esac
+[[ $1 == inspect || $1 == ps || ($1 =~ ^(container|volume|image)$ && $2 == inspect) ]] && exec "$real" "$@"
+[[ $1 == exec && $2 == "$prefix"* ]] && exec "$real" "$@"
+echo "docker shim: refusing docker $* under CLAUDE_SYNC_NAME=${CLAUDE_SYNC_NAME:-}" >&2
+exit 97
+EOF
+    # shellcheck disable=SC2016 # expanded by the fake rpm
+    printf '#!/bin/sh\n[ "$1" = -qf ] && echo claude-sync-0.4.0-1.noarch\n' >"$up/rpm/rpm"
+    chmod +x "$up/shim/docker" "$up/rpm/rpm"
+
+    check "a new minor version while the major is 0 is breaking" calls version_breaking 0.4.0 0.5.0
+    check "  a new patch version is not" fails calls version_breaking 0.4.0 0.4.9
+    check "  nor a new minor version from 1" fails calls version_breaking 1.4.0 1.9.0
+    check "  but a new major version is" calls version_breaking 1.4.0 2.0.0
+    check "versions compare by number" calls version_older 0.9.0 0.10.0
+    check "  a pre-release before its release" calls version_older 0.4.0-rc.1 0.4.0
+    check "  also as an RPM writes it" calls version_older 0.4.0~rc.1 0.4.0
+    check "  and a version not before itself" fails calls version_older 0.4.0 0.4.0
+
+    # With no release list, so a refusal that fails cannot go further.
+    check "upgrade from a checkout is refused" fails_with "runs from a checkout" \
+        with_releases missing.json "$root/claude-sync" upgrade
+    check "upgrade of a file an RPM installed is refused" fails_with "upgrade it with dnf" \
+        with_releases missing.json env PATH="$up/rpm:$up/shim:$PATH" "$up/install/claude-sync" upgrade
+    check "a download that fails its SHA-256 check is refused" fails_with "SHA-256" upgrade_here bad.json
+    check "  leaving the installed file as it was" cmp -s "$up/install/claude-sync" "$up/old/claude-sync"
+
+    CLAUDE_SYNC_NAME=$n "$up/old/claude-sync" setup --volume "$vol_n" --private >/dev/null
+    CLAUDE_SYNC_NAME=$p "$up/old/claude-sync" setup --volume "$vol_p" --gui-port 8484 --sync-port 22100 >/dev/null
+    id_n=$(docker exec -u "$owner_n" "$n" syncthing device-id)
+    check "setup stamps the instance with its version" [ "$(stamp_of "$n")" = 0.4.0 ]
+    check "a newer claude-sync says the instance needs its setup" \
+        fails_with "last set up by claude-sync 0.4.0; run CLAUDE_SYNC_NAME=$n claude-sync setup" \
+        env CLAUDE_SYNC_NAME="$n" "$new" pair not-a-device-id
+    check "setup with no target reapplies to the instance's own" env CLAUDE_SYNC_NAME="$n" "$up/old/claude-sync" setup
+    CLAUDE_SYNC_NAME=$hu "$new" setup >/dev/null 2>&1 && status=0 || status=$?
+    check "  and where there is none, prints usage" [ "$status" = 2 ]
+
+    # A failed upgrade goes on to the checks, which say what it left undone.
+    out=$(upgrade_here releases.json) || true
+    check "upgrade says a newer breaking release is out" grep -qF "claude-sync 0.5.0 is out" <<<"$out"
+    check "  with its release notes" grep -qF "file://$up/releases/tag/v0.5.0" <<<"$out"
+    check "  and installs the newest that is not breaking" \
+        [ "$("$up/install/claude-sync" version)" = "claude-sync 0.4.1" ]
+    check "  a new file in place of the old, never rewriting it" cmp -s "$up/held" "$up/old/claude-sync"
+    check "  leaving no download behind" [ "$(ls -A "$up/install")" = claude-sync ]
+    check "the new version reapplies itself to each instance" [ "$(stamp_of "$n")" = 0.4.1 ]
+    check "  and the other" [ "$(stamp_of "$p")" = 0.4.1 ]
+    check "  with its ignore list" stignore_installed "$mount_n"
+    check "  and its compose file" [ -z "$(docker inspect -f '{{index .Config.Labels "claude-sync-test-old"}}' "$n")" ]
+    check "  keeping the device ID" [ "$(docker exec -u "$owner_n" "$n" syncthing device-id)" = "$id_n" ]
+    check "  a private instance private" [ "$(network_options "$n" "$owner_n")" = '[false,false,false]' ]
+    check "  and the ports given to setup" listens "$p" 8484
+    check "  both" [ "$(sync_port "$p" "$owner_p")" = 22100 ]
+
+    docker exec -u "$owner_n" "$n" sh -c 'echo 0.4.0 >/var/syncthing/config/claude-sync-version'
+    docker stop "$p" >/dev/null
+    out=$(upgrade_here releases.json) || true
+    check "upgrade again reapplies an instance an older version set up" [ "$(stamp_of "$n")" = 0.4.1 ]
+    check "  naming it" grep -qF "to instance $n" <<<"$out"
+    check "  says it leaves a stopped instance be" grep -qF "$p is stopped" <<<"$out"
+    check "  and does" [ "$(docker inspect -f '{{.State.Running}}' "$p")" = false ]
+    out=$(upgrade_here releases.json) || true
+    check "upgrade with nothing to do reapplies nothing" fails grep -qF "to instance" <<<"$out"
+
+    echo "# upgrade, on the host's Syncthing"
+    docker run -d --name "$hu" --network "$net" --user user --entrypoint env "$host_image" \
+        -u STHOMEDIR -u STGUIADDRESS HOME=/home/user syncthing serve --no-browser >/dev/null
+    docker exec -u 0 "$hu" mkdir -p /opt/releases /home/user/bin
+    docker exec -u 0 "$hu" chown user /home/user/bin
+    docker cp -q "$up/releases/download" "$hu:/opt/releases/"
+    releases_json file:///opt/releases | docker exec -i -u 0 "$hu" sh -c 'cat >/opt/releases/releases.json'
+    docker cp -q "$up/old/claude-sync" "$hu:/home/user/bin/"
+    docker exec -u 0 "$hu" chown user /home/user/bin/claude-sync
+    docker cp -q "$root/stignore" "$hu:/opt/stignore"
+    wait_for as_user "$hu" syncthing cli show version
+    as_user "$hu" mkdir claude
+    as_user "$hu" bin/claude-sync setup --path claude --use-host-syncthing >/dev/null
+    check "setup stamps the host's Syncthing too" \
+        [ "$(as_user "$hu" cat .local/state/syncthing/claude-sync-version)" = 0.4.0 ]
+    check "upgrade there" as_user "$hu" env CLAUDE_SYNC_RELEASES_API=file:///opt/releases/releases.json \
+        timeout 300 bin/claude-sync upgrade
+    check "  installs the release" [ "$(as_user "$hu" bin/claude-sync version)" = "claude-sync 0.4.1" ]
+    check "  and reapplies it to the folder" as_user "$hu" cmp -s claude/.stignore /opt/stignore
+    check "  stamping it" [ "$(as_user "$hu" cat .local/state/syncthing/claude-sync-version)" = 0.4.1 ]
+    check "setup with no target reapplies there too" as_user "$hu" timeout 300 bin/claude-sync setup
+    as_user "$hu" bin/claude-sync uninstall >/dev/null
+    check "uninstall removes the stamp" fails as_user "$hu" test -e .local/state/syncthing/claude-sync-version
+}
+
 run_group chain
 run_group instances
 run_group stuck
 run_group refusals
+run_group upgrade
 # Each group's output as it ends.
 while ((${#group_of[@]})); do
     wait -n -p done_pid || true
