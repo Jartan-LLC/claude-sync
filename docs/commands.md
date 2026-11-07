@@ -9,6 +9,8 @@ leaves the fix out. `claude-sync help` prints the same commands and flags.
 |---|---|
 | `setup --volume NAME` | Syncs the Docker volume NAME that holds `~/.claude` |
 | `setup --path DIR` | Syncs the directory DIR on this host |
+| `setup` | Applies this version to the instance already set up, keeping its target |
+| `upgrade` | Installs the newest release that is not breaking and applies it to every running instance on this host |
 | `pair DEVICE-ID` | Syncs with the device DEVICE-ID; run on both devices |
 | `unpair DEVICE-ID` | Removes the device DEVICE-ID from every device; run it on any device |
 | `uninstall` | Removes claude-sync's container and Syncthing state, or its folder from your own Syncthing |
@@ -49,6 +51,40 @@ instead, and later runs keep them. Swapping the two ports with each other leaves
 port down for about a minute, until Syncthing retries it. If another program later takes
 the web UI port, Syncthing cannot start its web UI and `setup` cannot move it: free that
 port again.
+
+With no `--volume` or `--path`, `setup` applies this version to the instance already set
+up, with the target it syncs, as after an upgrade with `dnf`. Ports and `--private` stay as
+they are unless given again. With your own Syncthing, it applies to claude-sync's folder
+there. With no instance set up, it prints the usage, or, when Docker is installed but
+cannot be reached, says so.
+
+Each instance records the version of claude-sync that last set it up. When that version
+is older than the one installed, `pair` and `unpair` say so, with the `setup` command to
+run. They also do when the instance has no record, as one set up by 0.1.1 or earlier, or
+records `dev`, as one set up from a checkout. They do not when one pre-release of a
+version, such as 0.5.0-rc.1, set up the instance and another, such as 0.5.0-rc.2, is
+installed: after installing it, run `setup` yourself.
+
+## upgrade
+
+```bash
+claude-sync upgrade
+```
+
+Installs the newest release that is not breaking, then runs `setup`, with no target, for
+each running instance on this host whose recorded version is older, missing or `dev`,
+claude-sync's folder in your own Syncthing included. Run again, it catches up only the
+instances an earlier run missed.
+
+- It does not install a breaking release: it says the release is out and links its notes,
+  which say how to upgrade by hand. A breaking release has a new major version, or a new
+  minor version while the major is 0. Pre-releases are left out.
+- Stopped instances, and instances with only their Syncthing state left, are listed and
+  left as they are.
+- It checks the download against the release's `claude-sync.sha256`. To check its
+  attestation too, run `gh attestation verify` afterwards, as in
+  [Install](../README.md#install).
+- An RPM install is upgraded with `dnf` (see [Upgrade](../README.md#upgrade)).
 
 ## Several instances on one host
 
@@ -159,6 +195,15 @@ restore with `tar` alone.
 | `container NAME already syncs` | Give this instance another target, or remove container NAME, which `docker ps -a` lists even when stopped; for a claude-sync instance, `CLAUDE_SYNC_NAME=NAME claude-sync uninstall` removes it |
 | `paths containing a comma` or `a newline are not supported` | Choose or rename a directory without one |
 | `is on the list of unpaired devices` | Run `pair` for that device on a device that already syncs, then rerun `pair` here |
+| `this instance was last set up by` | Run the `setup` command the message gives, to apply the installed version |
+| `runs from a checkout` | Update the checkout with git, then run `setup` to apply it |
+| `belongs to the RPM package` | Upgrade with `dnf` as in [Upgrade](../README.md#upgrade) |
+| `cannot get the list of claude-sync's releases` | Check that this host reaches `api.github.com`; GitHub also [limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api) how many such requests one address can make without a login |
+| `cannot write to` ... `where claude-sync is` | Run `upgrade` as the user who owns that directory |
+| `does not match the release's SHA-256` or `is not version` | Nothing was changed; run `upgrade` again later, and report it if it keeps failing |
+| `setup failed for instance` | Fix what that instance's `setup` printed above, then rerun `upgrade` |
+| `docker cannot be reached` | Start Docker, and check that `docker ps` works as this user; then rerun `setup` |
+| `docker cannot list the instances in containers` | Start Docker, and check that `docker ps` works as this user; then rerun `upgrade` |
 | `is in the synced folder` | Give `backup` a directory outside the synced folder |
 | `could not search the synced folder` | find's message above names the directory. If the folder's owner cannot read it, `chown` it |
 | `tar could not archive the synced folder` | tar's message above names the file. If the folder's owner cannot read it, `chown` it; if it was being written at that moment, rerun `backup` |

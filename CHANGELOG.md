@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `claude-sync upgrade` installs the newest release that is not breaking, then applies it
+  to every running instance on the host, keeping each one's target, ports and settings. It
+  links a breaking release's notes instead of installing it, and refuses an RPM install,
+  which you upgrade with `dnf` as before; the README's Upgrade section has the details.
+  From 0.1.1 or earlier, download claude-sync once more as in the README's Install
+  section, then run `claude-sync upgrade`.
+- `claude-sync setup` with no `--volume` or `--path` applies the installed version to the
+  instance already set up, keeping its target. After upgrading the RPM, run it for each
+  instance.
+- Each instance records the version of claude-sync that set it up, and `pair` and `unpair`
+  say when that version is older than the one installed.
 - `claude-sync backup DIR` writes a gzip tar archive of the whole synced folder to DIR,
   including the files that do not sync, such as this device's login, and the trash can. It
   then removes the instance's older archives there, keeping the newest of each of the last
@@ -24,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kept. Rerun `setup` on each device to get the new ignore list. Each device keeps the copies
   it already has: delete them by hand while no background job runs. The job's records beside
   them, `state.json` and `timeline.jsonl`, still sync.
+- On a Syncthing already on the host (`--use-host-syncthing`) that syncs other folders too,
+  claude-sync sometimes misread whether a folder or device was in Syncthing's list. Since
+  0.1.0 this could make a repeated `setup` fail with `folder "claude-sync": folder has
+  duplicate ID`, `uninstall` leave claude-sync's folder in place, and `pair` set a device
+  that shares other folders as introducer. These no longer happen.
 
 ## [0.1.1] - 2026-10-09
 
