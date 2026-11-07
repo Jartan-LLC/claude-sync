@@ -1970,8 +1970,9 @@ group_status() {
     check "  the sync port" grep -qE '^Sync port: +22000$' <<<"$out"
     check "  that it is private" grep -qE '^Network: +private$' <<<"$out"
     check "  the conflict copies, leaving out the trash can" grep -qE '^Conflict copies: +1$' <<<"$out"
-    check "  that a checkout set it up, with the setup that applies this version" grep -qE \
-        "^Set up by: +claude-sync dev; run CLAUDE_SYNC_NAME=$sx claude-sync setup to apply 0\.4\.0\$" <<<"$out"
+    local set_up_by=${CLAUDE_SYNC_BIN_VERSION:-dev}
+    check "  which claude-sync set it up, with the setup that applies this version" grep -qE \
+        "^Set up by: +claude-sync ${set_up_by//./\\.}; run CLAUDE_SYNC_NAME=$sx claude-sync setup to apply 0\.4\.0\$" <<<"$out"
     check "  and the paired device by its ID" grep -qE "^  (.* )?$id_sy\$" <<<"$out"
     check "  changing nothing in Syncthing" [ "$(st "$sx" "$owner_sx" config dump-json)" = "$config_sx" ]
     check "status shows the folder's state" wait_for status_says "$sx" '^Folder: +idle$'
@@ -1986,7 +1987,8 @@ group_status() {
         grep -qE '^Newer release: +claude-sync 0\.4\.1; upgrade it with dnf' \
         <<<"$(env PATH="$sdir/rpm:$PATH" CLAUDE_SYNC_RELEASES_API="file://$sdir/releases.json" \
             CLAUDE_SYNC_NAME="$sx" "$sdir/claude-sync" status)"
-    out=$(CLAUDE_SYNC_RELEASES_API="file://$sdir/releases.json" claude_sync "$sx" status)
+    # The checkout's own script, whatever claude-sync the suite tests.
+    out=$(CLAUDE_SYNC_RELEASES_API="file://$sdir/releases.json" CLAUDE_SYNC_NAME="$sx" "$root/claude-sync" status)
     check "status from a checkout leaves out the release check" fails grep -qE '^Newer release:' <<<"$out"
     check "status fails when the Syncthing in a running container does not answer" \
         fails_with "cannot reach Syncthing in container $sx" \
