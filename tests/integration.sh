@@ -1983,12 +1983,76 @@ group_status() {
         grep -qE '^Newer release: +claude-sync 0\.4\.1; upgrade it with dnf' \
         <<<"$(env PATH="$sdir/rpm:$PATH" CLAUDE_SYNC_RELEASES_API="file://$sdir/releases.json" \
             CLAUDE_SYNC_NAME="$sx" "$sdir/claude-sync" status)"
-    check "a relayed connection reads as one" [ "$(calls connection_kind relay-client)" = "through a relay" ]
-    check "  and a direct one as direct" [ "$(calls connection_kind tcp-server)" = directly ]
+    out=$(CLAUDE_SYNC_RELEASES_API="file://$sdir/releases.json" claude_sync "$sx" status)
+    check "status from a checkout leaves out the release check" fails grep -qE '^Newer release:' <<<"$out"
+
+    # Syncthing's replies for three devices: one through a relay, one that does not share
+    # the folder, and one whose completion does not parse.
+    cat >"$sdir/replies.sh" <<'EOF'
+st() {
+    case $* in
+        "config folders claude-sync devices list") printf '%s\n' SELF-ID RELAYED-ID UNSHARED-ID ODD-ID ;;
+        "config devices RELAYED-ID name get") echo laptop ;;
+        *) echo ;;
+    esac
+}
+rest() {
+    case $1 in
+        /rest/system/connections) cat <<'JSON' ;;
+{
+  "connections": {
+    "ODD-ID": {
+      "address": "192.0.2.3:22000",
+      "connected": true,
+      "type": "tcp-client"
+    },
+    "RELAYED-ID": {
+      "address": "192.0.2.1:22067",
+      "at": "2026-11-07T12:00:00Z",
+      "connected": true,
+      "paused": false,
+      "type": "relay-client"
+    },
+    "UNSHARED-ID": {
+      "address": "192.0.2.2:22000",
+      "connected": true,
+      "type": "tcp-server"
+    }
+  },
+  "total": {
+    "at": "2026-11-07T12:00:00Z",
+    "inBytesTotal": 0
+  }
+}
+JSON
+        /rest/stats/device) echo '{}' ;;
+        *UNSHARED-ID) printf '{\n  "completion": 0,\n  "remoteState": "notSharing"\n}\n' ;;
+        *ODD-ID) printf '{\n  "completion": null,\n  "remoteState": "valid"\n}\n' ;;
+        *) printf '{\n  "completion": 100,\n  "remoteState": "valid"\n}\n' ;;
+    esac
+}
+EOF
+    out=$(calls eval ". $(printf %q "$sdir/replies.sh") && device_status SELF-ID")
+    check "status shows a device reached through a relay, by its name" grep -qx '  laptop RELAYED-ID' <<<"$out"
+    check "  how" grep -qx '    connected through a relay at 192.0.2.1:22067; has 100% of the folder' <<<"$out"
+    check "  one that does not share the folder" \
+        grep -qx '    connected directly at 192.0.2.2:22000; does not share the folder' <<<"$out"
+    check "  and one whose completion it cannot read" \
+        grep -qx '    connected directly at 192.0.2.3:22000; completion unknown' <<<"$out"
+    # shellcheck disable=SC2016 # expanded by the inner bash
+    check "status shows a network setting other than public or private option by option" \
+        [ "$(calls eval 'st() { if [ "$3" = relays-enabled ]; then echo false; else echo true; fi; }; network_setting')" \
+        = "global discovery on, relays off, NAT traversal on" ]
 
     docker stop "$sy" >/dev/null
     check "status shows when a device it no longer reaches was last seen" wait_for status_says "$sx" \
         '^    not connected, last seen [0-9-]+T[0-9:]+Z; has 100% of the folder, as far as this device knows$'
+    docker exec -u 0 "$sx" sh -c 'mkdir /var/syncthing/claude/sealed && chmod 700 /var/syncthing/claude/sealed'
+    out=$(status_of "$sx" releases.json 2>&1) && status=0 || status=$?
+    check "status says when it cannot count the conflict copies" \
+        grep -qE '^Conflict copies: +could not search the synced folder; the message above says why$' <<<"$out"
+    check "  with find's message" grep -qF "Permission denied" <<<"$out"
+    check "  succeeding" [ "$status" = 0 ]
     out=$(status_of "$sy" releases.json) && status=0 || status=$?
     check "status of a stopped instance says how to start it" grep -qE \
         "^Syncthing: +in container $sy, stopped; CLAUDE_SYNC_NAME=$sy claude-sync setup starts it\$" <<<"$out"
@@ -2013,10 +2077,26 @@ group_status() {
     check "  its web UI" grep -qE '^Web UI: +http://127\.0\.0\.1:8384$' <<<"$out"
     check "  that it is public" grep -qE '^Network: +public$' <<<"$out"
     check "  the version that set it up" grep -qE '^Set up by: +claude-sync 0\.4\.0$' <<<"$out"
+    check "  and no devices" grep -qE '^Devices: +none$' <<<"$out"
     check "  and leaves the unpaired list unapplied" as_user "$sz" sh -c \
         "syncthing cli config devices list | grep -x $id_sy"
+    as_user "$sz" syncthing cli config folders claude-sync devices add --device-id "$id_sy"
+    out=$(as_user "$sz" env CLAUDE_SYNC_RELEASES_API=file:///nonexistent ./claude-sync status)
+    check "status shows a device never seen, leaving out how much of the folder it has" \
+        grep -qx '    not connected, never seen' <<<"$out"
+    # The host's Syncthing as it is when not running: its config is there, its cli gets no
+    # answer.
+    # shellcheck disable=SC2016 # expanded by the shim
+    printf '#!/bin/sh\n[ "$1" = cli ] && exit 1\nexec %s "$@"\n' "$(as_user "$sz" sh -c 'command -v syncthing')" |
+        docker exec -i -u user -w /home/user "$sz" sh -c 'mkdir down && cat >down/syncthing && chmod +x down/syncthing'
+    # shellcheck disable=SC2016 # expanded by the fixture's shell
+    out=$(as_user "$sz" sh -c 'PATH=$HOME/down:$PATH CLAUDE_SYNC_RELEASES_API=file:///nonexistent ./claude-sync status') &&
+        status=0 || status=$?
+    check "status of the host's Syncthing when it is not running says to start it" \
+        grep -qE '^Syncthing: +your own, on this host, not running as user; start it$' <<<"$out"
+    check "  with what it syncs" grep -qE '^Syncs: +directory /home/user/claude$' <<<"$out"
+    check "  succeeding" [ "$status" = 0 ]
 }
-
 
 run_group chain
 run_group instances

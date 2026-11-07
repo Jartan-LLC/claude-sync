@@ -96,9 +96,10 @@ claude-sync status
 ```
 
 Shows the instance `claude-sync list` marks, and changes nothing: a stopped container stays
-stopped. It asks GitHub whether a newer release is out, and says so when it cannot. The
-conflict copies it counts are those outside the trash can ([Recovering
-files](recovering-files.md)).
+stopped. It exits 0 when the instance is stopped or not set up, and fails when docker or a
+running Syncthing does not answer. It asks GitHub whether a newer release is out, and says
+when it cannot check; run from a checkout, it does not ask. The conflict copies it counts
+are those outside the trash can ([Recovering files](recovering-files.md)).
 
 ## Several instances on one host
 
@@ -120,13 +121,13 @@ set, wins over the selection.
 In `list`, `state only` is an instance whose container is gone but whose Syncthing state,
 with its device ID, is left; `setup` under its name uses it again.
 
-Each instance gets ports of its own, which `setup` and `status` print, as long as the other instances
-are running when it first starts: Syncthing takes free ports only then. Each needs a
-target of its own too: `setup` refuses a volume or directory that another Syncthing
-container mounts, running or stopped. A name other than the default, `claude-sync`, can't
-be combined with `--use-host-syncthing`, since your own Syncthing holds one claude-sync
-folder; neither can `--gui-port` or `--sync-port`, since you set that Syncthing's ports in
-Syncthing itself.
+Each instance gets ports of its own, which `setup` and `status` print, as long as the
+other instances are running when it first starts: Syncthing takes free ports only then.
+Each needs a target of its own too: `setup` refuses a volume or directory that another
+Syncthing container mounts, running or stopped. A name other than the default,
+`claude-sync`, can't be combined with `--use-host-syncthing`, since your own Syncthing
+holds one claude-sync folder; neither can `--gui-port` or `--sync-port`, since you set
+that Syncthing's ports in Syncthing itself.
 
 ## uninstall
 
@@ -225,6 +226,7 @@ restore with `tar` alone.
 | `setup failed for instance` | Fix what that instance's `setup` printed above, then rerun `upgrade` |
 | `docker cannot be reached` | Start Docker, and check that `docker ps` works as this user; then rerun the command |
 | `docker cannot list the instances in containers` | Start Docker, and check that `docker ps` works as this user; then rerun the command |
+| `cannot inspect container` | Check that `docker ps` works as this user, then rerun `status` |
 | `is in the synced folder` | Give `backup` a directory outside the synced folder |
 | `could not search the synced folder` | find's message above names the directory. If the folder's owner cannot read it, `chown` it |
 | `tar could not archive the synced folder` | tar's message above names the file. If the folder's owner cannot read it, `chown` it; if it was being written at that moment, rerun `backup` |

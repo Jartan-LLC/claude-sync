@@ -62,7 +62,6 @@ readonly label=claude-sync=config
 readonly stamp=claude-sync-version
 # GitHub's list of releases; the tests point it at a file.
 readonly releases_api=${CLAUDE_SYNC_RELEASES_API:-https://api.github.com/repos/Jartan-LLC/claude-sync/releases?per_page=100}
-# How to upgrade an RPM install, for messages.
 readonly rpm_upgrade="upgrade it with dnf as you installed it, then run CLAUDE_SYNC_NAME=NAME claude-sync setup for each running instance NAME that claude-sync list shows"
 owner=""
 compose_files=()
@@ -1400,14 +1399,19 @@ rpm_package() {
     command -v rpm >/dev/null && rpm -qf -- "$1" 2>/dev/null
 }
 
+# Prints LABEL and VALUE as a line of status.
+show() {
+    printf '%-17s%s\n' "$1:" "$2"
+}
+
 # Shows how the instance is set up, how it syncs, and whether a newer release is out. It
 # only reads, so it never starts a stopped container, and does not use detect_mode, which
 # applies the unpaired list to the Syncthing on this host.
 status() {
     (($# == 0)) || die "status takes no arguments"
     check_name
-    local instance=$name kind="" target="" host="" place="" syncthing syncs="" info="" devices=""
-    local version text
+    local instance=$name kind="" target="" host="" place="" syncthing syncs="" info="" devices="" conflicts=""
+    local id version text
     [[ $name == "$default_name" ]] || instance+=", $(name_source)"
     if ! current_setup; then
         if command -v docker >/dev/null && ! docker info >/dev/null 2>&1; then
@@ -1418,8 +1422,12 @@ status() {
         syncs="volume $target"
         [[ $kind == volume ]] || syncs="directory $target"
         if [[ -n $host ]]; then
-            use_host
-            folder_path=$target place=host syncthing="your own, on this host"
+            if syncthing cli config gui apikey get >/dev/null 2>&1; then
+                use_host
+                folder_path=$target place=host syncthing="your own, on this host"
+            else
+                syncthing="your own, on this host, not running as $(id -un); start it"
+            fi
         elif running; then
             owner=$(container_owner "$name") || die "cannot inspect container $name"
             place=container syncthing="in container $name"
@@ -1427,13 +1435,18 @@ status() {
             syncthing="in container $name, stopped; $(setup_command "$name") starts it"
         fi
         if [[ -n $place ]]; then
-            { info=$(syncthing_status) && devices=$(device_status); } || die "cannot reach Syncthing $where"
+            { id=$(syncthing_run device-id) && info=$(instance_lines "$id") && devices=$(device_status "$id"); } ||
+                die "cannot reach Syncthing $where"
+            conflicts=$(conflict_copies) || conflicts="could not search the synced folder; the message above says why"
         fi
     fi
     show Instance "$instance"
     show Syncthing "$syncthing"
     [[ -z $syncs ]] || show Syncs "$syncs"
-    [[ -z $info ]] || printf '%s\n' "$info"
+    if [[ -n $place ]]; then
+        printf '%s\n' "$info"
+        show "Conflict copies" "$conflicts"
+    fi
     show Installed "claude-sync $claude_sync_version"
     if [[ -n $place ]]; then
         version=$(instance_version "$name" "$place") || version=""
@@ -1446,28 +1459,29 @@ status() {
     [[ -z $place ]] || printf '%s\n' "$devices"
 }
 
-# Prints LABEL and VALUE as a line of status.
-show() {
-    printf '%-17s%s\n' "$1:" "$2"
-}
-
-# Status lines that need the instance's Syncthing to answer, short of the devices.
-syncthing_status() {
-    local ui id port network folder state conflicts
-    { ui=$(web_ui) && id=$(syncthing_run device-id) && port=$(sync_port) && network=$(network_setting) &&
-        folder=$(folder_status); } || return
+# Status lines that need the instance's Syncthing to answer, for this device's ID, short
+# of the devices and the conflict copies.
+instance_lines() {
+    local ui port network folder state
+    { ui=$(web_ui) && port=$(sync_port) && network=$(network_setting) && folder=$(folder_status); } || return
     state=$(field state <<<"$folder")
     [[ $state != error ]] || state="error: $(field error <<<"$folder")"
-    # Trash can copies left out: they are old versions, not conflicts left to resolve.
-    # shellcheck disable=SC2016 # expanded by sh
-    conflicts=$(in_folder 'cd "$1" && find . -path ./.stversions -prune -o -name "*.sync-conflict-*" -print | wc -l' \
-        sh "$folder_path") || return
     show "Web UI" "$ui"
-    show "Device ID" "$id"
+    show "Device ID" "$1"
     show "Sync port" "$port"
     show Network "$network"
     show Folder "$state"
-    show "Conflict copies" "$((conflicts))"
+}
+
+# The number of conflict copies in the synced folder. Fails when find cannot search all of
+# it, so a count is never short.
+conflict_copies() {
+    local list
+    # Trash can copies left out: they are old versions, not conflicts left to resolve.
+    # shellcheck disable=SC2016 # expanded by sh
+    list=$(in_folder 'cd "$1" && find . -path ./.stversions -prune -o -name "*.sync-conflict-*" -print' \
+        sh "$folder_path") || return
+    if [[ -z $list ]]; then echo 0; else grep -c '' <<<"$list"; fi
 }
 
 # public or private, as setup's --public and --private set them, or each option as it is.
@@ -1487,15 +1501,13 @@ on_off() {
     if [[ $1 == true ]]; then echo on; else echo off; fi
 }
 
-# The devices the folder is shared with: each one's name and ID, how this device reaches
-# it, and how much of the folder it has.
+# The devices the folder is shared with, short of this device, whose ID is SELF.
 device_status() {
-    local self list connections stats id device_name connection seen completion state percent text known
-    { self=$(syncthing_run device-id) && list=$(st config folders "$folder_id" devices list) &&
-        connections=$(rest /rest/system/connections) && stats=$(rest /rest/stats/device); } || return
-    local ids=()
+    local list connections stats id ids=()
+    { list=$(st config folders "$folder_id" devices list) && connections=$(rest /rest/system/connections) &&
+        stats=$(rest /rest/stats/device); } || return
     while IFS= read -r id; do
-        [[ -z $id || $id == "$self" ]] || ids+=("$id")
+        [[ -z $id || $id == "$1" ]] || ids+=("$id")
     done <<<"$list"
     if ((${#ids[@]} == 0)); then
         show Devices none
@@ -1503,36 +1515,42 @@ device_status() {
     fi
     echo "Devices:"
     for id in "${ids[@]}"; do
-        device_name=$(st config devices "$id" name get) || return
-        connection=$(object "$id" <<<"$connections")
-        seen="" known=1
-        if [[ $(field connected <<<"$connection") == true ]]; then
-            text="connected $(connection_kind "$(field type <<<"$connection")") at $(field address <<<"$connection")"
-        else
-            seen=$(object "$id" <<<"$stats" | field lastSeen)
-            # Syncthing's time for never: 1970-01-01, or the last day of 1969 in a time zone
-            # west of UTC.
-            if [[ -z $seen || $seen == 1970-* || $seen == 1969-* ]]; then
-                text="not connected, never seen" known=""
-            else
-                text="not connected, last seen $seen"
-            fi
-        fi
-        if [[ -n $known ]]; then
-            completion=$(rest "/rest/db/completion?folder=$folder_id&device=$id") || return
-            state=$(field remoteState <<<"$completion")
-            percent=$(field completion <<<"$completion")
-            [[ $percent =~ ^[0-9]+(\.[0-9]+)?$ ]] || percent=0
-            if [[ $state == notSharing ]]; then
-                text+="; does not share the folder"
-            elif [[ -n $seen ]]; then
-                text+="; has ${percent%.*}% of the folder, as far as this device knows"
-            else
-                text+="; has ${percent%.*}% of the folder"
-            fi
-        fi
-        printf '  %s\n    %s\n' "${device_name:+$device_name }$id" "$text"
+        device_line "$id" "$connections" "$stats" || return
     done
+}
+
+# Device ID's name and ID, how this device reaches it, and how much of the folder it has,
+# from Syncthing's CONNECTIONS and device STATS.
+device_line() {
+    local device_name connection seen="" text completion percent
+    device_name=$(st config devices "$1" name get) || return
+    printf '  %s\n' "${device_name:+$device_name }$1"
+    connection=$(object "$1" <<<"$2")
+    if [[ $(field connected <<<"$connection") == true ]]; then
+        text="connected $(connection_kind "$(field type <<<"$connection")") at $(field address <<<"$connection")"
+    else
+        seen=$(object "$1" <<<"$3" | field lastSeen)
+        # Syncthing's time for never: 1970-01-01, or the last day of 1969 in a time zone
+        # west of UTC. Its completion for such a device is 0, which would mislead.
+        if [[ -z $seen || $seen == 1970-* || $seen == 1969-* ]]; then
+            echo "    not connected, never seen"
+            return
+        fi
+        text="not connected, last seen $seen"
+    fi
+    completion=$(rest "/rest/db/completion?folder=$folder_id&device=$1") || return
+    percent=$(field completion <<<"$completion")
+    if [[ $(field remoteState <<<"$completion") == notSharing ]]; then
+        text+="; does not share the folder"
+    elif [[ ! $percent =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+        text+="; completion unknown"
+    else
+        text+="; has ${percent%.*}% of the folder"
+        # A device not connected: measured from its last index, against the folder as it
+        # is now.
+        [[ -z $seen ]] || text+=", as far as this device knows"
+    fi
+    echo "    $text"
 }
 
 # How a connection of Syncthing's TYPE, such as tcp-client or relay-server, reaches the
