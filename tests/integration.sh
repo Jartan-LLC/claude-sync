@@ -826,6 +826,8 @@ EOF
     check "restore expands a quoted ~ in the archive and the directory" \
         host_sync restore "~/$host_archive" --path '~/tilde-restored'
     check "  into the home directory" on_host test -f tilde-restored/h-only.md
+    check "  but not a ~ that starts a name" host_sync restore "$host_archive" --path '~restored'
+    check "  which stays a name in the working directory" on_host test -f '~restored/h-only.md'
     # A directory that user can neither write in nor chmod.
     docker exec -u 0 "$h" mkdir /home/user/root-owned
     check "a restore that tar cannot finish fails" fails_with "could not restore all of" \
