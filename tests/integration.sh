@@ -815,8 +815,9 @@ EOF
     # shares another folder with it. It knows D by introduction so far, which pairing alone
     # does not change, so D is deleted there first. Until pair has added D and shared the
     # folder with it, the host device does not trust its other introducers: a ClusterConfig
-    # from one of them would add D back by introduction. Their connections stay up, since
-    # a reconnection would have the host device introduce D to A again after A's unpair.
+    # from one of them would add D back by introduction. Their connections stay up: a
+    # reconnection here would have the host device introduce D to A again just after A's
+    # unpair, before the test checks that the unpair removed it.
     check "the host device knows D" \
         wait_for on_host sh -c "syncthing cli config devices list | grep -qx $id_d"
     ids=$(on_host syncthing cli config dump-json |
