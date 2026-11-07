@@ -981,6 +981,8 @@ setup_host() {
         fi
     done < <(st config folders list)
     folder_path=$target
+    # Here as well as in schedule_backup, so that a refused DIR leaves the folder unadded.
+    [[ $backup != /* ]] || check_outside_synced_folder "$backup"
 
     # Before the folder is added, as in setup.
     asset stignore >"$target/.stignore"
@@ -1698,17 +1700,24 @@ WantedBy=timers.target"
         user_systemd ||
             die "cannot reach systemd's user manager to update $unit.timer; run $(setup_command "$name") again in a login session as $(id -un)"
         mkdir -p -- "${path%/*}"
-        # The units this replaces, put back when systemd fails below: units it never loaded or
-        # enabled would pass for installed, and the next setup would find nothing to change.
+        # The units this replaces, put back when writing them or systemd fails below: units it
+        # never loaded or enabled would pass for installed, and the next setup would find
+        # nothing to change.
         saved=$(mktemp -d -t claude-sync.XXXXXX)
         for ext in service timer; do
-            [[ ! -e $path.$ext ]] || cp -p -- "$path.$ext" "$saved/"
+            [[ ! -e $path.$ext ]] || cp -p -- "$path.$ext" "$saved/" || {
+                rm -rf -- "$saved"
+                exit 1
+            }
         done
-        printf '%s\n' "$service" >"$path.service"
-        printf '%s\n' "$timer" >"$path.timer"
     fi
     if ! (
-        [[ -z $saved ]] || user_systemctl daemon-reload
+        # set -e is off in an if's condition, so each failure exits by hand.
+        [[ -z $saved ]] || {
+            printf '%s\n' "$service" >"$path.service" &&
+                printf '%s\n' "$timer" >"$path.timer" &&
+                user_systemctl daemon-reload
+        } || exit 1
         # Only when asked: a timer the user disabled stays so through setup and upgrade.
         [[ -z $asked ]] || user_systemctl enable --now "$unit.timer"
     ); then

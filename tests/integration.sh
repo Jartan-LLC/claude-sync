@@ -1836,6 +1836,12 @@ EOF
     check "  removing the units it wrote" [ -z "$(ls -A "$units")" ]
     out=$(claude_sync "$u" setup)
     check "  so that setup after it does not say it backs up" fails grep -qF "Backs up to" <<<"$out"
+    mkdir "$tm/tmp"
+    ln -s "$tm/missing/timer" "$timer"
+    check "setup stops when it cannot write the units" fails_with "No such file or directory" \
+        env TMPDIR="$tm/tmp" CLAUDE_SYNC_NAME="$u" "$bin" setup --backup-dir "$tm/backups"
+    check "  removing those it wrote" [ -z "$(ls -A "$units")" ]
+    check "  and its temporary directory" [ -z "$(ls -A "$tm/tmp")" ]
     rm -f -- "$SYSTEMCTL_CALLS"
 
     out=$(claude_sync "$u" setup --backup-dir "$odd")
@@ -1854,6 +1860,14 @@ EOF
     echo "# setup again"
     local units_before
     units_before=$(cat "$service" "$timer")
+    rm -f -- "$SYSTEMCTL_CALLS"
+    check "setup --backup-dir stops when systemd fails to enable the timer for a new DIR" \
+        fails_with "systemctl --user enable --now $u-backup.timer failed" \
+        env SYSTEMCTL_FAIL=enable CLAUDE_SYNC_NAME="$u" "$bin" setup --backup-dir "$tm/elsewhere"
+    check "  putting back the units it replaced" [ "$(cat "$service" "$timer")" = "$units_before" ]
+    check "  and reloading them" [ "$(systemctl_calls)" = "--user daemon-reload
+--user enable --now $u-backup.timer
+--user daemon-reload" ]
     rm -f -- "$SYSTEMCTL_CALLS"
     out=$(claude_sync "$u" setup)
     check "setup with no target keeps the daily backup" [ "$(cat "$service" "$timer")" = "$units_before" ]
@@ -1934,6 +1948,7 @@ EOF
     check "a DIR in the synced folder is refused" fails_with "is in the synced folder" \
         y_sync setup --path claude --use-host-syncthing --backup-dir claude/backups
     check "  writing no unit" fails as_user "$y" test -e .config/systemd/user/claude-sync-backup.service
+    check "  or adding the folder" fails grep -qx claude-sync <<<"$(as_user "$y" syncthing cli config folders list)"
     y_sync setup --path claude --use-host-syncthing --backup-dir backups >/dev/null
     check "setup --use-host-syncthing --backup-dir installs the daily backup, DIR made absolute" \
         as_user "$y" grep -qxF 'ExecStart="/opt/claude-sync/claude-sync" backup "/home/user/backups"' \
