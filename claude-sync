@@ -518,7 +518,8 @@ nearest_dir() {
 planned_path() {
     local path base
     path=$(expand_home "$1")
-    # So that a relative path starts with the . that nearest_dir may give, which is cut off.
+    # So that cutting nearest_dir's . off the front never takes the dot of a hidden name such
+    # as .cache.
     [[ $path == /* ]] || path=./$path
     base=$(nearest_dir "$path")
     clean_path "$(real_path "$base")/${path#"$base"}"
@@ -1368,11 +1369,14 @@ backup() {
 # Writes a gzip tar of the synced folder to FILE, or dies.
 write_archive() {
     local errors status=0
+    # FILE is opened under noclobber: its name can be guessed, so in a DIR that others can
+    # write, a file planted at it, or a symlink to one, stops the backup instead of being
+    # overwritten.
     if [[ $mode == host ]]; then
         # In English, which only_files_that_changed reads.
-        errors=$(LC_ALL=C tar -C "$folder_path" -czf - . 2>&1 >"$1") || status=$?
+        errors=$(set -C; LC_ALL=C tar -C "$folder_path" -czf - . 2>&1 >"$1") || status=$?
     else
-        errors=$(docker exec -u "$owner" "$name" tar -C "$folder_path" -czf - . 2>&1 >"$1") || status=$?
+        errors=$(set -C; docker exec -u "$owner" "$name" tar -C "$folder_path" -czf - . 2>&1 >"$1") || status=$?
     fi
     [[ -z $errors ]] || printf '%s\n' "$errors" >&2
     if ((status == 1)) && only_files_that_changed "$errors"; then
@@ -1391,8 +1395,12 @@ check_outside_synced_folder() {
         # existing directory is looked for from inside the container instead.
         local probe out errors status=0
         probe=$(nearest_dir "$1")/.$name-probe.$$
-        # Not writable: then backup cannot make DIR or write in it either, and fails there.
-        : 2>/dev/null >"$probe" || return 0
+        # Made under noclobber, as write_archive makes the archive.
+        if ! (set -C; : >"$probe") 2>/dev/null; then
+            # Not writable: then backup cannot make DIR or write in it either, and fails there.
+            [[ -e $probe || -L $probe ]] || return 0
+            die "$probe is in the way; remove it and rerun"
+        fi
         # In a subshell, so this EXIT trap leaves the caller's in place.
         out=$(
             # shellcheck disable=SC2064 # expanded now: probe is local

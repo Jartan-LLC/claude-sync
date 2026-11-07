@@ -60,6 +60,7 @@ tar -xzf claude-sync-20261107T120000Z.tar.gz -C ~/.claude ./settings.json
 For a Docker volume, run `tar` in a container that mounts it, as the volume's owner:
 
 ```bash
-docker run --rm -i --user 1000:1000 -v claude-data:/claude busybox \
-    tar -xzf - -C /claude <claude-sync-20261107T120000Z.tar.gz
+docker volume inspect claude-data >/dev/null &&
+    docker run --rm -i --user 1000:1000 -v claude-data:/claude busybox \
+        tar -xzf - -C /claude <claude-sync-20261107T120000Z.tar.gz
 ```
