@@ -821,6 +821,17 @@ EOF
         '/opt/claude-sync/claude-sync restore /home/user/backups/*.tar.gz --path /root/restored'
     check "  gives root the files, not the archive's owner" \
         [ "$(docker exec -u 0 "$h" stat -c %u /root/restored/h-only.md)" = 0 ]
+    host_archive=$(on_host sh -c 'ls backups/*.tar.gz')
+    # shellcheck disable=SC2088 # given to claude-sync unexpanded, as when quoted
+    check "restore expands a quoted ~ in the archive and the directory" \
+        host_sync restore "~/$host_archive" --path '~/tilde-restored'
+    check "  into the home directory" on_host test -f tilde-restored/h-only.md
+    # A directory that user can neither write in nor chmod.
+    docker exec -u 0 "$h" mkdir /home/user/root-owned
+    check "a restore that tar cannot finish fails" fails_with "could not restore all of" \
+        host_sync restore "$host_archive" --path root-owned
+    check "a restore into a volume needs Docker" fails_with "Docker is required" \
+        host_sync restore "$host_archive" --volume "$vol_r"
     # Files that come and go as GNU tar reads the folder, set up as in group_backups.
     churn=/home/user/claude/jobs/churn/tmp
     on_host sh -c "mkdir -p $churn && touch /tmp/churning &&

@@ -97,6 +97,7 @@ ordinary file with your default permissions, which you can copy to any device an
 there. Syncthing and Claude Code keep running meanwhile, so a file written while `backup`
 reads it may go in partly written, and a file removed meanwhile is left out; if `tar`
 reports an error, rerun `backup`. With your own Syncthing, `backup` uses this host's `tar`.
+It expects GNU or BusyBox `tar`; with another, a backup taken while files come and go fails.
 
 `backup` refuses a directory in the synced folder: there, the archives would sync to every
 device, and each would hold the ones before it. With claude-sync's container, it checks

@@ -1179,6 +1179,10 @@ restore() {
         usage >&2
         exit 2
     fi
+    # A quoted ~, as backup takes one: left as it is, --path would make ./~ here and restore
+    # into it.
+    archive=${archive/#\~/$HOME}
+    [[ $kind == volume ]] || target=${target/#\~/$HOME}
     [[ -f $archive ]] || die "no file $archive"
     # A volume is written in a container, as the volume's owner; a directory here, with this
     # machine's tar, as the user running claude-sync.
