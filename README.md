@@ -112,6 +112,7 @@ Everything in `~/.claude` except what is meaningless or harmful on another machi
 | `.update.lock`, `ide/*.lock`, `tasks/*/.lock`, `plugins/cache/**/.in_use` | Held by a process on one machine |
 | `plugins/marketplaces/` | Git clones each machine pulls on its own |
 | `daemon/`, `session-env/`, `shell-snapshots/`, `telemetry/` | This machine's daemon, session environments, shell snapshots and unsent telemetry |
+| `jobs/*/tmp/` | A background job's scratch space on this machine |
 | `*.tmp.<8 hex>`, `*.tmp.<pid>.<12 hex>` | Half-written files mid-save |
 
 A directory deleted on another device is deleted here too, with any of these files in it.

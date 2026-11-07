@@ -62,8 +62,9 @@ out=$(docker run --rm --entrypoint sh "$image" -c 'sleep 1; echo ok')
 }
 
 # Synthetic ~/.claude: real filename shapes, no real data. The look-alikes in `synced`
-# (lockfiles, .tmp-like names, nested daemon/ and ide/) must not be caught by ignore rules.
+# (lockfiles, .tmp-like names, nested daemon/, ide/ and jobs/) must not be caught by ignore rules.
 readonly task=tasks/3570ff36-0222-44b7-8023-47d964bf700c
+readonly job=jobs/5d1c8e2a
 readonly synced=(
     settings.json
     claude.json
@@ -79,6 +80,9 @@ readonly synced=(
     skills/demo/ide/4242.lock
     sessions/0b6c1f9e-demo-session.tmp
     "$task/.highwatermark"
+    "$job/state.json"
+    "$job/timeline.jsonl"
+    skills/demo/jobs/1/tmp/notes.md
 )
 readonly ignored=(
     .credentials.json
@@ -96,6 +100,7 @@ readonly ignored=(
     telemetry/1p_failed_events.0b6c1f9e.json
     settings.json.tmp.ab12cd34
     history.jsonl.tmp.4242.0123456789ab
+    "$job/tmp/notes.md"
 )
 
 failures=0
@@ -593,12 +598,12 @@ group_chain() {
     own="cd /t"
     for f in "${ignored[@]}" plugins/cache/market/demo/1.0.0/plugin.json.tmp.ab12cd34; do
         case $f in
-            plugins/* | ide/* | sessions/*) own+=" && mkdir -p \"\$(dirname '$f')\" && echo b >'$f'" ;;
+            plugins/* | ide/* | sessions/* | jobs/*) own+=" && mkdir -p \"\$(dirname '$f')\" && echo b >'$f'" ;;
         esac
     done
-    in_target "$mount_b" "$own && chown -R $owner_b plugins ide sessions"
-    in_target "$mount_a" "rm -r /t/plugins /t/ide /t/sessions"
-    for dir in plugins ide sessions; do
+    in_target "$mount_b" "$own && chown -R $owner_b plugins ide sessions jobs"
+    in_target "$mount_a" "rm -r /t/plugins /t/ide /t/sessions /t/jobs"
+    for dir in plugins ide sessions jobs; do
         check "$dir/ deleted on A goes on B despite B's own ignored files in it" \
             wait_for in_target "$mount_b" "[ ! -e /t/$dir ]"
     done
