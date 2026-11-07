@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A background job's scratch space, `jobs/<id>/tmp/` in `~/.claude`, no longer syncs. It can
+  hold gigabytes in tens of thousands of directories, which every other device copied and
+  kept. Rerun `setup` on each device to get the new ignore list. Each device keeps the copies
+  it already has: delete them by hand while no background job runs. The job's records beside
+  them, `state.json` and `timeline.jsonl`, still sync.
+
 ## [0.1.1] - 2026-10-09
 
 ### Fixed

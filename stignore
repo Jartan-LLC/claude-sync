@@ -27,6 +27,9 @@
 /shell-snapshots
 /telemetry
 
+// A background job's scratch space on this machine; the job's records beside it sync.
+(?d)/jobs/*/tmp
+
 // Half-written files mid-save: Claude Code names them <file>.tmp.<8 hex> or
 // <file>.tmp.<pid>.<12 hex>. Hex digits are listed out because Syncthing's glob takes only
 // one range per [] class, and rejects the whole file on [0-9a-f].
