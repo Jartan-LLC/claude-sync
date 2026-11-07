@@ -15,17 +15,20 @@ readonly prefix
     exit 1
 }
 readonly net=${prefix}net a=${prefix}a b=${prefix}b c=${prefix}c d=${prefix}d e=${prefix}e g=${prefix}g k=${prefix}k
-readonly j=${prefix}j l=${prefix}l m=${prefix}m
+readonly j=${prefix}j l=${prefix}l m=${prefix}m n=${prefix}n p=${prefix}p
 readonly listener=${prefix}listener foreign=${prefix}foreign h=${prefix}h host_image=${prefix}host
 readonly vol_a=${prefix}a-data vol_b=${prefix}b-data vol_missing=${prefix}missing
 readonly vol_root=${prefix}root-data vol_c=${prefix}c-data vol_d=${prefix}d-data
 readonly vol_e=${prefix}e-data vol_g=${prefix}g-data vol_j=${prefix}j-data vol_l=${prefix}l-data
-readonly vol_m=${prefix}m-data
+readonly vol_m=${prefix}m-data vol_n=${prefix}n-data vol_p=${prefix}p-data vol_r=${prefix}r-data
+readonly vol_n_missing=${prefix}n-missing
 # Not Syncthing's default 1000, so a match proves the owner was read from the target.
 readonly owner_a=1234:1234 owner_b=2345:2345 owner_c=3456:3456 owner_d=4567:4567
 readonly owner_e=6789:6789 owner_g=7890:7890 owner_j=8901:8901 owner_l=9012:9012 owner_m=5678:5678
+readonly owner_n=1357:1357 owner_p=2468:2468 owner_r=3579:3579
 readonly mount_a=type=volume,src=$vol_a mount_b=type=volume,src=$vol_b mount_c=type=volume,src=$vol_c
 readonly mount_j=type=volume,src=$vol_j mount_l=type=volume,src=$vol_l mount_m=type=volume,src=$vol_m
+readonly mount_n=type=volume,src=$vol_n mount_p=type=volume,src=$vol_p mount_r=type=volume,src=$vol_r
 image=$(sed -n 's/^ *image: *//p' "$root/compose.yaml")
 readonly image
 [[ -n $image ]] || {
@@ -41,7 +44,7 @@ export CLAUDE_SYNC_TEST_NET=$net CLAUDE_SYNC_TEST_LISTENER=$listener
 export STHOMEDIR=/nonexistent/${prefix}home
 unset STCONFDIR STDATADIR STGUIADDRESS STGUIAPIKEY
 
-for tool in docker jq cmp ps; do
+for tool in docker jq cmp ps tar; do
     command -v "$tool" >/dev/null || {
         echo "tests/integration.sh needs $tool" >&2
         exit 1
@@ -269,6 +272,10 @@ host_introducer() {
     on_host syncthing cli config devices "$1" introducer get
 }
 
+host_archive_has() {
+    on_host sh -c 'tar -tzf backups/*.tar.gz' | grep -qxF -- "$1"
+}
+
 host_has_folder() {
     on_host syncthing cli config folders list | grep -qx claude-sync
 }
@@ -369,17 +376,51 @@ snapshot() {
     in_target "$1" 'cd /t && find . | sort && find . -type f -exec sha256sum {} + | sort'
 }
 
+# A directory tree as a restore must give it back: each entry's type, mode and path, and each
+# file's mtime and contents. Not owners, which come from the target. The same commands run
+# on a volume, in the image, and on a directory here.
+# shellcheck disable=SC2016 # expanded by sh
+readonly tree='cd "$1" && find . -exec stat -c "%A %n" {} + | LC_ALL=C sort &&
+    find . -type f -exec stat -c "%Y %n" {} + | LC_ALL=C sort &&
+    find . -type f -exec sha256sum {} + | LC_ALL=C sort'
+
+volume_tree() {
+    docker run --rm --entrypoint sh --mount "$1,dst=/t" "$image" -c "$tree" sh /t
+}
+
+dir_tree() {
+    sh -c "$tree" sh "$1"
+}
+
+in_archive() {
+    tar -tzf "$1" | grep -qxF -- "$2"
+}
+
+# The NAMES still in DIR.
+left_of() {
+    local dir=$1 name
+    shift
+    for name; do
+        [[ ! -e $dir/$name ]] || echo "$name"
+    done
+}
+
+files_in() {
+    find "$1" -mindepth 1 -maxdepth 1 | wc -l
+}
+
 cleanup() {
     local x
-    for x in "$a" "$b" "$c" "$d" "$e" "$g" "$k" "$j" "$l" "$m" "$h" "$bad_name" "$listener" "$foreign"; do
+    for x in "$a" "$b" "$c" "$d" "$e" "$g" "$k" "$j" "$l" "$m" "$n" "$p" "$h" "$bad_name" "$listener" "$foreign"; do
         guard "$x"
         docker rm --force -v "$x" >/dev/null 2>&1 || true
     done
     guard "$host_image"
     docker image rm "$host_image" >/dev/null 2>&1 || true
     for x in "$a-config" "$b-config" "$c-config" "$d-config" "$e-config" "$g-config" "$k-config" \
-        "$j-config" "$l-config" "$m-config" "$bad_name-config" "$foreign-config" "$vol_a" "$vol_b" \
-        "$vol_c" "$vol_d" "$vol_e" "$vol_g" "$vol_j" "$vol_l" "$vol_m" "$vol_missing" "$vol_root"; do
+        "$j-config" "$l-config" "$m-config" "$n-config" "$p-config" "$bad_name-config" "$foreign-config" \
+        "$vol_a" "$vol_b" "$vol_c" "$vol_d" "$vol_e" "$vol_g" "$vol_j" "$vol_l" "$vol_m" "$vol_n" "$vol_p" \
+        "$vol_r" "$vol_n_missing" "$vol_missing" "$vol_root"; do
         guard "$x"
         docker volume rm "$x" >/dev/null 2>&1 || true
     done
@@ -414,7 +455,7 @@ on_exit() {
     fi
     wait 2>/dev/null || true
     if ((status != 0)); then
-        for node in "$a" "$b" "$c" "$d" "$e" "$g" "$j" "$l" "$m" "$h"; do
+        for node in "$a" "$b" "$c" "$d" "$e" "$g" "$j" "$l" "$m" "$n" "$p" "$h"; do
             docker logs --tail 30 "$node" 2>&1 | sed "s/^/[$node] /" || true
         done
         for out in "$scratch"/join-*.out; do
@@ -458,6 +499,9 @@ docker volume create "$vol_g" >/dev/null
 docker volume create "$vol_j" >/dev/null
 docker volume create "$vol_l" >/dev/null
 docker volume create "$vol_m" >/dev/null
+docker volume create "$vol_n" >/dev/null
+docker volume create "$vol_p" >/dev/null
+docker volume create "$vol_r" >/dev/null
 in_target "type=volume,src=$vol_e" "echo e >/t/e-only.md && chown -R $owner_e /t"
 in_target "type=volume,src=$vol_g" "echo 'g claude.json' >/t/claude.json && chown -R $owner_g /t"
 in_target "$mount_l" "echo 'l claude.json' >/t/claude.json && chown -R $owner_l /t"
@@ -468,6 +512,14 @@ for f in "${synced[@]}" "${ignored[@]}"; do
     fixture+=" && mkdir -p \"\$(dirname '$f')\" && echo 'fixture $f' >'$f'"
 done
 in_target "$mount_a" "$fixture && chown -R $owner_a /t"
+# N's fixture adds what an archive must carry as it is: a login only its owner reads, a
+# symlink, a path too long for tar's basic header, and a file in the trash can.
+long=projects/-work-$(printf '%060d' 0 | tr 0 x)/memory/a-note-whose-path-is-longer-than-a-tar-header.md
+readonly long
+in_target "$mount_n" "$fixture && chmod 600 .credentials.json && ln -s settings.json link.json &&
+    mkdir -p .stversions \"\$(dirname '$long')\" && echo old >.stversions/settings.json && echo long >'$long' &&
+    chown -R $owner_n /t"
+in_target "$mount_r" "chown $owner_r /t"
 in_target "$mount_b" "chown $owner_b /t"
 in_target "type=volume,src=$vol_d" "chown $owner_d /t"
 
@@ -757,6 +809,25 @@ EOF
         [ "$(on_host syncthing cli config folders claude-sync path get)" = /home/user/claude ]
     check ".stignore is the repo's stignore" on_host cmp -s claude/.stignore /opt/stignore
     check "trash can versioning, 14 days" host_trash_can_14_days
+
+    echo "# backup, on the host's Syncthing"
+    check "backup archives the folder with this host's tar" host_sync backup backups
+    check "  all of it" host_archive_has ./h-only.md
+    # GNU tar, exiting 1 as when a file changed or went while it read it, and a tar that fails.
+    docker exec -i -u user "$h" sh -c 'mkdir -p /home/user/changing && cat >/home/user/changing/tar &&
+        chmod +x /home/user/changing/tar' <<'EOF'
+#!/bin/sh
+/bin/tar "$@" || exit
+[ "$1" = --version ] || exit 1
+EOF
+    docker exec -u user "$h" sh -c 'mkdir /home/user/failing && printf "#!/bin/sh\necho partial\nexit 2\n" \
+        >/home/user/failing/tar && chmod +x /home/user/failing/tar'
+    check "  taking GNU tar's status for a file that changed as it read it" \
+        on_host env PATH=/home/user/changing:/usr/bin:/bin /opt/claude-sync/claude-sync backup changed
+    check "  as an archive" on_host sh -c 'tar -tzf changed/*.tar.gz >/dev/null'
+    check "a tar that fails fails backup" fails \
+        on_host env PATH=/home/user/failing:/usr/bin:/bin /opt/claude-sync/claude-sync backup failed
+    check "  leaving no partial archive" [ -z "$(on_host ls -A failed)" ]
     check "setup again, naming the directory another way" host_sync setup --path ./claude/ --use-host-syncthing
     # A curl that never reaches the API, while `syncthing cli` still does.
     docker exec -u user "$h" sh -c 'mkdir /home/user/nocurl && printf "#!/bin/sh\nexit 7\n" >/home/user/nocurl/curl &&
@@ -1114,10 +1185,102 @@ EOF
     check "  and survives" docker volume inspect "$foreign-config"
 }
 
+# N: backup and restore of a folder with every kind of file, then restore on N once it is
+# paired with P.
+group_backups() {
+    # Restored modes are the archive's less the umask, as with any tar.
+    umask 022
+    echo "# backup"
+    check "backup before setup is refused" fails_with "run setup first" \
+        claude_sync "$n" backup "$scratch/backups"
+    claude_sync "$n" setup --volume "$vol_n" --private >/dev/null
+    wait_for owned_by "$mount_n" .stfolder "$owner_n"
+    original=$(volume_tree "$mount_n")
+    # Another umask than the group's, so a mode set by claude-sync cannot match it by chance.
+    out=$(umask 027 && claude_sync "$n" backup "$scratch/backups")
+    archive=$(find "$scratch/backups" -name '*.tar.gz')
+    check "backup writes an archive named after the instance and the time" \
+        grep -qxE "$n-[0-9]{8}T[0-9]{6}Z\.tar\.gz" <<<"${archive##*/}"
+    check "  and says where" grep -qF "$archive" <<<"$out"
+    check "  and nothing else" [ "$(files_in "$scratch/backups")" = 1 ]
+    check "  with the umask's default mode" [ "$(stat -c %a "$archive")" = 640 ]
+    check "the archive holds the login" in_archive "$archive" ./.credentials.json
+    check "  and the trash can" in_archive "$archive" ./.stversions/settings.json
+    check "backup leaves the folder as it was" [ "$(volume_tree "$mount_n")" = "$original" ]
+
+    echo "# restore"
+    # Run as P, which is not set up yet: restore needs no instance.
+    check "restore into a fresh volume" claude_sync "$p" restore "$archive" --volume "$vol_r"
+    check "  gives back the folder as it was" [ "$(volume_tree "$mount_r")" = "$original" ]
+    check "  owned by the volume's owner" owned_by "$mount_r" settings.json "$owner_r"
+    check "restore into a fresh directory" claude_sync "$p" restore "$archive" --path "$scratch/restored"
+    check "  gives back the folder as it was" [ "$(dir_tree "$scratch/restored")" = "$original" ]
+    check "a missing archive is refused" fails_with "no file $scratch/none.tar.gz" \
+        claude_sync "$p" restore "$scratch/none.tar.gz" --path "$scratch/restored"
+    head -c "$(($(stat -c %s "$archive") / 2))" "$archive" >"$scratch/truncated.tar.gz"
+    mkdir "$scratch/untouched"
+    check "a truncated archive is refused" fails_with "cannot read $scratch/truncated.tar.gz" \
+        claude_sync "$p" restore "$scratch/truncated.tar.gz" --path "$scratch/untouched"
+    check "  before writing anything" [ "$(files_in "$scratch/untouched")" = 0 ]
+    check "a missing volume is refused" fails_with "no Docker volume named $vol_n_missing" \
+        claude_sync "$p" restore "$archive" --volume "$vol_n_missing"
+    check "  and is not created" fails docker volume inspect "$vol_n_missing"
+    check "a root-owned volume is refused" fails_with "owned by root" \
+        claude_sync "$p" restore "$archive" --volume "$vol_p"
+    check "a restore with no target is refused" fails claude_sync "$p" restore "$archive"
+
+    echo "# backup retention"
+    # Empty stand-ins, as backup reads only the names. In 2025, before any run of this test.
+    # The 9th of March is a Sunday, the 10th a Monday.
+    old=("$n-20250115T120000Z.tar.gz" "$n-20250228T120000Z.tar.gz" "$n-20250309T235959Z.tar.gz"
+        "$n-20250310T000000Z.tar.gz" "$n-20250312T120000Z.tar.gz")
+    others=("$p-20250101T000000Z.tar.gz" "$n-20250101.tar.gz" notes.txt)
+    mkdir "$scratch/keep-3-3"
+    (cd "$scratch/keep-3-3" && touch -- "${old[@]}" "${others[@]}")
+    out=$(claude_sync "$n" backup "$scratch/keep-3-3" --keep-weekly 3 --keep-monthly 3)
+    check "--keep-weekly 3 --keep-monthly 3 keeps the newest archive of the last 3 weeks and months" \
+        [ "$(left_of "$scratch/keep-3-3" "${old[@]}")" = "$(printf '%s\n' "${old[1]}" "${old[2]}" "${old[4]}")" ]
+    check "  beside the new one" [ "$(files_in "$scratch/keep-3-3")" = 7 ]
+    check "  and says which it removed" grep -qF "$scratch/keep-3-3/${old[3]}" <<<"$out"
+    check "  leaving other files alone" [ "$(left_of "$scratch/keep-3-3" "${others[@]}")" = "$(printf '%s\n' "${others[@]}")" ]
+    old=("$n-20250115T120000Z.tar.gz" "$n-20250215T120000Z.tar.gz" "$n-20250315T120000Z.tar.gz"
+        "$n-20250415T120000Z.tar.gz" "$n-20250515T120000Z.tar.gz" "$n-20250615T120000Z.tar.gz"
+        "$n-20250702T120000Z.tar.gz" "$n-20250709T120000Z.tar.gz" "$n-20250716T120000Z.tar.gz"
+        "$n-20250723T120000Z.tar.gz")
+    mkdir "$scratch/keep-default"
+    (cd "$scratch/keep-default" && touch -- "${old[@]}")
+    claude_sync "$n" backup "$scratch/keep-default" >/dev/null
+    check "by default it keeps 4 weeks and 6 months" \
+        [ "$(left_of "$scratch/keep-default" "${old[@]}")" = "$(printf '%s\n' "${old[@]:2:4}" "${old[@]:7}")" ]
+    mkdir "$scratch/keep-0-0"
+    touch "$scratch/keep-0-0/${old[9]}"
+    claude_sync "$n" backup "$scratch/keep-0-0" --keep-weekly 0 --keep-monthly 0 >/dev/null
+    check "--keep-weekly 0 --keep-monthly 0 removes every older archive" [ ! -e "$scratch/keep-0-0/${old[9]}" ]
+    check "  and keeps the new one" [ "$(files_in "$scratch/keep-0-0")" = 1 ]
+    check "a count that is not a number is refused" fails_with "--keep-weekly takes" \
+        claude_sync "$n" backup "$scratch/keep-0-0" --keep-weekly x
+
+    echo "# restore, on a paired device"
+    in_target "$mount_p" "chown $owner_p /t"
+    claude_sync "$p" setup --volume "$vol_p" --private >/dev/null
+    id_n=$(docker exec -u "$owner_n" "$n" syncthing device-id)
+    id_p=$(docker exec -u "$owner_p" "$p" syncthing device-id)
+    pair_bounded "$n" "$id_p" --address "tcp://$p:22000" --keep >/dev/null
+    check "P joins N" pair_bounded "$p" "$id_n" --address "tcp://$n:22000"
+    in_target "$mount_n" "echo changed >/t/settings.json && rm /t/claude.json"
+    check "a change and a delete on N reach P" \
+        wait_for in_target "$mount_p" '[ ! -e /t/claude.json ] && grep -qx changed /t/settings.json'
+    check "restore over N's live folder" claude_sync "$n" restore "$archive" --volume "$vol_n"
+    check "  gives P the changed file back" \
+        wait_for in_target "$mount_p" "grep -qx 'fixture settings.json' /t/settings.json"
+    check "  and the deleted one" wait_for in_target "$mount_p" "grep -qx 'fixture claude.json' /t/claude.json"
+}
+
 run_group chain
 run_group instances
 run_group stuck
 run_group refusals
+run_group backups
 # Each group's output as it ends.
 while ((${#group_of[@]})); do
     wait -n -p done_pid || true
