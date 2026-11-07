@@ -63,7 +63,9 @@ To add a rule:
    look-alike it must not match to `synced`.
 5. Add the rule to the README's [What syncs](README.md#what-syncs) table.
 
-A device picks up the new list when `setup` runs there again.
+Each release of claude-sync carries its own copy of `stignore`, so a device picks up the
+new list when it runs `setup` from a claude-sync that has it (see the README's
+[Upgrade](README.md#upgrade) section).
 
 ## Releasing
 

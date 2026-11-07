@@ -4,8 +4,8 @@ The limits of sharing one `~/.claude` between devices, and what to do about each
 [README](../README.md) lists what syncs; [Recovering files](recovering-files.md) covers
 getting a file back.
 
-What this page says Claude Code does was checked on Claude Code 2.1.319, on Linux; later
-versions may behave differently.
+What this page says Claude Code does was observed on Claude Code 2.1.319, on Linux, except
+where it says it was read from Claude Code's code. Later versions may behave differently.
 
 ## Claude Code on two devices at once
 
@@ -33,10 +33,11 @@ other devices' copies too.
 
 With Claude Code running on two devices, both rewrite `.claude.json` between syncs, so
 Syncthing keeps the newer version and saves the other as a conflict copy, for nearly every
-write. Claude Code reads the file again just before each write
-and adds its own change to what it reads, so a change that has already arrived from
-another device survives, unless the same setting changed on both. A change that arrives
-between that read and the write is lost, with no conflict copy.
+write. Going by its code (this was not watched in a running session), Claude Code reads
+the file again just before each write and adds its own change to what it reads. So a
+change that has already arrived from another device survives, unless the same setting
+changed on both, and a change that arrives between that read and the write is lost, with
+no conflict copy.
 
 A conflict copy of the file is named `.claude.sync-conflict-DATE-TIME-DEVICE.json` (or
 `claude.sync-conflict-…` for a file named `claude.json`). Most hold only usage counters,
@@ -62,12 +63,6 @@ the synced folder, as it is by default.
 
 ## Plugins
 
-`plugins/installed_plugins.json` and `plugins/known_marketplaces.json` hold paths under the
-home directory of the device that wrote them. Claude Code loads plugins from this device's
-own `~/.claude/plugins` whatever path the records give, so a device whose home differs,
-such as `/home/vscode` in a dev container against your user's home on the host, still
-loads them.
-
 Marketplaces do not sync: each device clones its own into `plugins/marketplaces/`. On a
 device without the clone, such as a new one, `claude plugin list` shows the marketplace's
 plugins as failed to load, with `Marketplace NAME failed to load: cache-miss`. Clone it:
@@ -76,12 +71,29 @@ plugins as failed to load, with `Marketplace NAME failed to load: cache-miss`. C
 claude plugin marketplace update NAME
 ```
 
-That command also writes this device's path into `known_marketplaces.json`, which syncs.
-On a device whose home differs, Claude Code then fails to refresh the marketplace when it
-installs a plugin: it says the marketplace `has a corrupted installLocation` and installs
-from the catalog it already has, which may be out of date. Before installing or updating a
-plugin there, run `claude plugin marketplace update NAME`. It writes that device's path
-back, and the other devices then see the same until they run it. Devices with the same home path do not see this.
+`plugins/installed_plugins.json` and `plugins/known_marketplaces.json` hold paths under the
+home directory of the device that wrote them. Once the marketplace is cloned, a device
+whose home differs, such as `/home/vscode` in a dev container against your user's home on
+the host, still loads the plugins: Claude Code loads them from its own `~/.claude/plugins`
+whatever path the records give.
+
+`known_marketplaces.json` gives the full path of each marketplace's clone, and it syncs.
+When Claude Code refreshes a marketplace, as it does when you install or update a plugin,
+and the path another device recorded does not exist on this one, it updates the clone in
+its own `plugins/marketplaces/`, cloning it there if it is missing, and records its own
+path, with no message. The record then syncs to the other devices, which handle it the
+same way. Devices with the same home path record the same path, so nothing changes between
+them.
+
+When a clone exists at the other device's path on this one, Claude Code leaves the record
+alone. Installing or updating a plugin then warns that the marketplace `has a corrupted
+installLocation` and uses the catalog it already has, which may be out of date, and
+`claude plugin marketplace update NAME` fails with the same message. Do not follow the
+message's advice to remove the marketplace and add it back: removing it also uninstalls
+its plugins, and the changed `installed_plugins.json` and `settings.json` sync to the other
+devices. Instead, set the marketplace's `installLocation` in `known_marketplaces.json` to
+the directory the failed `claude plugin marketplace update NAME` says it expected, followed
+by `/NAME`, and run that command again.
 
 `plugins/cache/` syncs, so every device has the plugin versions any of them installed.
 
