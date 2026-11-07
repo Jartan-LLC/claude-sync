@@ -1917,13 +1917,16 @@ group_status() {
     echo "# status"
     # This group's files; the helpers above use it.
     sdir=$scratch/status
-    mkdir -p "$sdir/rpm" "$sdir/down"
+    mkdir -p "$sdir/rpm" "$sdir/down" "$sdir/no-exec"
     "$root/packaging/build.sh" 0.4.0 "$sdir/claude-sync"
     releases_json "file://$sdir" >"$sdir/releases.json"
     # shellcheck disable=SC2016 # expanded by the fake rpm
     printf '#!/bin/sh\n[ "$1" = -qf ] && echo claude-sync-0.4.0-1.noarch\n' >"$sdir/rpm/rpm"
     printf '#!/bin/sh\nexit 1\n' >"$sdir/down/docker"
-    chmod +x "$sdir/rpm/rpm" "$sdir/down/docker"
+    # docker as it is when the container answers inspect but not exec.
+    # shellcheck disable=SC2016 # expanded by the shim
+    printf '#!/bin/sh\n[ "$1" = exec ] && exit 1\nexec %s "$@"\n' "$(command -v docker)" >"$sdir/no-exec/docker"
+    chmod +x "$sdir/rpm/rpm" "$sdir/down/docker" "$sdir/no-exec/docker"
 
     out=$(status_of "$sx" releases.json) && status=0 || status=$?
     check "status of an instance not set up says how to set it up" grep -qF \
@@ -1985,6 +1988,10 @@ group_status() {
             CLAUDE_SYNC_NAME="$sx" "$sdir/claude-sync" status)"
     out=$(CLAUDE_SYNC_RELEASES_API="file://$sdir/releases.json" claude_sync "$sx" status)
     check "status from a checkout leaves out the release check" fails grep -qE '^Newer release:' <<<"$out"
+    check "status fails when the Syncthing in a running container does not answer" \
+        fails_with "cannot reach Syncthing in container $sx" \
+        env PATH="$sdir/no-exec:$PATH" CLAUDE_SYNC_RELEASES_API="file://$sdir/releases.json" \
+        CLAUDE_SYNC_NAME="$sx" "$sdir/claude-sync" status
 
     # Syncthing's replies for a device through a relay, one that does not share the folder,
     # and one whose completion does not parse.
