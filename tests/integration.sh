@@ -128,11 +128,17 @@ cut_off() {
     (($? == 124))
 }
 
+# On a failed check, the command's exit status and output go to stderr, which check leaves
+# shown: they come just above the FAIL line.
 fails_with() {
-    local message=$1 out
+    local message=$1 out status=0 lines
     shift
-    out=$("$@" 2>&1) && return 1
-    grep -qF -- "$message" <<<"$out"
+    out=$("$@" 2>&1) || status=$?
+    ((status != 0)) && grep -qF -- "$message" <<<"$out" && return
+    mapfile -t lines <<<"$out"
+    printf '     exited %s, saying:\n' "$status" >&2
+    printf '     | %s\n' "${lines[@]}" >&2
+    return 1
 }
 
 wait_for() {
