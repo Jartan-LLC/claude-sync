@@ -89,34 +89,30 @@ With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninsta
 claude-sync backup ~/claude-backups
 ```
 
-Writes `claude-sync-YYYYMMDDTHHMMSSZ.tar.gz`, named after the instance's `CLAUDE_SYNC_NAME`
-and the time in UTC, to the directory, which it creates if needed. The archive is a gzip
-tar of the whole synced folder: it also holds the files that do not sync, this device's
-login in `.credentials.json` among them, and Syncthing's trash can, `.stversions`. It is an
-ordinary file with your default permissions, which you can copy to any device and restore
-there. Syncthing and Claude Code keep running meanwhile, so a file written while `backup`
-reads it may go in partly written, and a file removed meanwhile is left out; if `tar`
-reports an error, rerun `backup`. With your own Syncthing, `backup` uses this host's `tar`.
-It expects GNU or BusyBox `tar`; with another, a backup taken while files come and go fails.
+Writes the whole synced folder to an archive in the directory, which it creates if needed,
+then removes older archives there. The archive, such as
+`claude-sync-20261107T120000Z.tar.gz`, is named after the instance and the time in UTC. It
+is an ordinary file: copy it to any device and restore it there.
 
-`backup` refuses a directory in the synced folder: there, the archives would sync to every
-device, and each would hold the ones before it. With claude-sync's container, it checks
-by making a hidden empty file in the directory, or in its nearest existing parent, and
-looking for it from inside the container, then removes the file.
+- The archive holds everything in the folder, the files that do not sync included: this
+  device's login in `.credentials.json`, and the trash can, `.stversions`.
+- Syncthing and Claude Code keep running during the backup, so a file written meanwhile
+  may go in partly written. If `tar` reports an error, rerun `backup`.
+- The directory can't be inside the synced folder, or the archives would sync to every
+  device.
+- With your own Syncthing, `backup` uses this host's `tar`. GNU or BusyBox `tar` copes with
+  files that come and go during the backup; with another, such a backup fails.
 
-Then `backup` removes this instance's older archives in the directory, keeping the newest
-archive of each of the last `--keep-weekly` weeks that have one, and of each of the last
-`--keep-monthly` months that have one (defaults in [Commands and
-flags](#commands-and-flags)); 0 turns a rule off, and the archive just written always
-stays. Weeks run from Monday to Sunday, in UTC.
+### Which archives it keeps
 
-- `backup` reads each archive's time from its name, so an archive written while this
-  device's clock ran ahead counts as the newest week and month, in a place the rules would
-  give another archive, until that time comes.
-- `backup` also removes the hidden temporary file that a backup stopped partway, by a kill
-  or a power cut, left there over a day before, and leaves other files alone.
-- Give each device a directory of its own: two devices backing up one instance name into one
-  directory remove each other's archives.
+Of this instance's archives in the directory, `backup` keeps the one it just wrote, the
+newest of each of the last `--keep-weekly` weeks that have one (default 4, weeks running
+Monday to Sunday in UTC), and the newest of each of the last `--keep-monthly` months that
+have one (default 6). 0 turns a rule off. It removes the other archives, and a partial
+archive an interrupted backup left over a day before, and nothing else.
+
+Give each device a directory of its own: two devices backing up the same instance name into
+one directory remove each other's archives.
 
 ## restore
 
@@ -125,14 +121,16 @@ claude-sync restore ~/claude-backups/claude-sync-20261107T120000Z.tar.gz --volum
 claude-sync restore ~/claude-backups/claude-sync-20261107T120000Z.tar.gz --path ~/.claude
 ```
 
-Restores an archive from any device, on any device, whether or not claude-sync is set up
-there. `restore` reads the whole archive first, so it writes nothing from one it cannot
-read. It then extracts every file in the archive over the target, the files that do not
-sync included, and removes nothing: files made since the backup stay. GNU `tar` also gives
-the directory it restores into the mode and modification time that the synced folder had at
-backup. A volume must exist and not be owned by root, as for `setup`; its owner gets the
-restored files. `--path` names a directory on this machine, created if needed, and restores
-it with this machine's `tar`, as you; it needs no Docker.
+Extracts an archive over the target, on any device, whether or not claude-sync is set up
+there.
+
+- It reads the whole archive first and writes nothing if it can't.
+- It overwrites the files the archive holds, those that do not sync included, and removes
+  nothing: files made since the backup stay.
+- `--volume`: the volume must exist and not be owned by root, as for `setup`. Its owner gets
+  the restored files.
+- `--path`: a directory on this machine, created if needed. `restore` uses this machine's
+  `tar`, runs as you and needs no Docker.
 
 In a folder that syncs, the restored files reach every device. [Recovering
 files](recovering-files.md#from-a-backup) says what to do after a restore there, and how to
