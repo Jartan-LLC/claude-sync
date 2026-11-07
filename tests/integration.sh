@@ -941,12 +941,26 @@ tar: ./big: File shrank by 10 bytes; padding with zeros" /opt/claude-sync/claude
     check "an invalid device ID is refused" fails_with "not a device ID" claude_sync "$a" unpair not-a-device-id
     # The host device pairs with D directly, so no introducer takes D away there, and also
     # shares another folder with it. It knows D by introduction so far, which pairing alone
-    # does not change.
+    # does not change, so D is deleted there first. Until pair has added D and shared the
+    # folder with it, the host device does not trust its other introducers: a ClusterConfig
+    # from one of them would add D back by introduction. Their connections stay up: a
+    # reconnection here would have the host device introduce D to A again just after A's
+    # unpair, before the test checks that the unpair removed it.
     check "the host device knows D" \
         wait_for on_host sh -c "syncthing cli config devices list | grep -qx $id_d"
+    ids=$(on_host syncthing cli config dump-json |
+        jq -r --arg d "$id_d" '.devices[] | select(.introducer and .deviceID != $d) | .deviceID')
+    introducers=()
+    [[ -z $ids ]] || mapfile -t introducers <<<"$ids"
+    for x in "${introducers[@]}"; do
+        on_host syncthing cli config devices "$x" introducer set false
+    done
     on_host syncthing cli config folders claude-sync devices "$id_d" delete
     on_host syncthing cli config devices "$id_d" delete
     host_sync pair "$id_d" --address "tcp://$d:22000" >/dev/null
+    for x in "${introducers[@]}"; do
+        on_host syncthing cli config devices "$x" introducer set true
+    done
     pair_bounded "$d" "$id_h" --address "tcp://$h:22000" >/dev/null
     on_host syncthing cli config folders photos devices add --device-id "$id_d"
     check "the host device knows D directly" [ -z "$(on_host syncthing cli config devices "$id_d" dump-json | jq -r .introducedBy)" ]
