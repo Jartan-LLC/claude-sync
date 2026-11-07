@@ -12,6 +12,9 @@ leaves the fix out. `claude-sync help` prints the same commands and flags.
 | `pair DEVICE-ID` | Syncs with the device DEVICE-ID; run on both devices |
 | `unpair DEVICE-ID` | Removes the device DEVICE-ID from every device; run it on any device |
 | `uninstall` | Removes claude-sync's container and Syncthing state, or its folder from your own Syncthing |
+| `backup DIR` | Writes an archive of the whole synced folder to DIR, then removes older ones there |
+| `restore ARCHIVE --volume NAME` | Extracts a backup over the Docker volume NAME |
+| `restore ARCHIVE --path DIR` | Extracts a backup over the directory DIR on this machine |
 | `version` | Prints claude-sync's version |
 | `help` | Prints the commands and flags |
 
@@ -24,6 +27,8 @@ leaves the fix out. `claude-sync help` prints the same commands and flags.
 | `--sync-port PORT` | `setup`, not with `--use-host-syncthing` | Fixes the sync port, from 1024 to 65535 |
 | `--keep` | `pair` | Keeps this device's files instead of joining ([Joining](pairing.md#joining)) |
 | `--address tcp://HOST:PORT` | `pair` | Where to reach the other device; required when global discovery is off here (a `--private` device, or your own Syncthing with it off) |
+| `--keep-weekly N` | `backup` | Keeps the newest archive of each of the last N weeks that have one; default 4 |
+| `--keep-monthly N` | `backup` | Keeps the newest archive of each of the last N months that have one; default 6 |
 
 `CLAUDE_SYNC_NAME` names the instance a command acts on (see [Several instances on one
 host](#several-instances-on-one-host)).
@@ -78,6 +83,50 @@ claude-sync's `.claude-sync-unpaired`, stay in it and can be deleted, though del
 
 With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninstall).
 
+## backup
+
+```bash
+claude-sync backup ~/claude-backups
+```
+
+Writes `claude-sync-YYYYMMDDTHHMMSSZ.tar.gz`, named after the instance's `CLAUDE_SYNC_NAME`
+and the time in UTC, to the directory, which it creates if needed. The archive is a gzip
+tar of the whole synced folder: it also holds the files that do not sync, this device's
+login in `.credentials.json` among them, and Syncthing's trash can, `.stversions`. It is an
+ordinary file with your default permissions, which you can copy to any device and restore
+there. Syncthing and Claude Code keep running meanwhile, so a file being written as `backup`
+reads it goes in as it was at that moment. With your own Syncthing, `backup` uses this
+host's `tar`.
+
+Keep the directory outside the synced folder: there, the archives would sync to every
+device, and each would hold the ones before it.
+
+Then `backup` removes this instance's older archives in the directory, keeping the newest
+archive of each of the last 4 weeks that have one, and of each of the last 6 months that
+have one. `--keep-weekly` and `--keep-monthly` change those counts, and 0 turns a rule off;
+the archive just written always stays. Weeks run from Monday to Sunday, in UTC. `backup`
+reads each archive's time from its name and leaves other files alone. Give each device a
+directory of its own: two devices backing up one instance name into one directory remove
+each other's archives.
+
+## restore
+
+```bash
+claude-sync restore ~/claude-backups/claude-sync-20261107T120000Z.tar.gz --volume claude-data
+claude-sync restore ~/claude-backups/claude-sync-20261107T120000Z.tar.gz --path ~/.claude
+```
+
+Restores an archive from any device, on any device, whether or not claude-sync is set up
+there. `restore` reads the whole archive first, so it writes nothing from one it cannot
+read. It then extracts every file in the archive over the target and removes nothing:
+files made since the backup stay. A volume must exist and not be owned by root, as for
+`setup`; its owner gets the restored files. `--path` names a directory on this machine,
+created if needed, and restores it with this machine's `tar`, as you; it needs no Docker.
+
+In a folder that syncs, the restored files reach every device. [Recovering
+files](recovering-files.md#from-a-backup) says what to do after a restore there, and how to
+restore with `tar` alone.
+
 ## Errors
 
 | The message says | What to do |
@@ -109,3 +158,6 @@ With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninsta
 | `container NAME already syncs` | Give this instance another target, or remove container NAME, which `docker ps -a` lists even when stopped; for a claude-sync instance, `CLAUDE_SYNC_NAME=NAME claude-sync uninstall` removes it |
 | `paths containing a comma` or `a newline are not supported` | Choose or rename a directory without one |
 | `is on the list of unpaired devices` | Run `pair` for that device on a device that already syncs, then rerun `pair` here |
+| `tar could not archive the synced folder` | tar's message above names the file. If the folder's owner cannot read it, `chown` it; if it was being written at that moment, rerun `backup` |
+| `cannot read ARCHIVE as a backup` | The file is not a whole gzip tar archive, such as a copy cut short; copy it again |
+| `could not restore all of` | tar's message above says why, such as a full disk. The files restored so far stay; fix it and rerun `restore` |

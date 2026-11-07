@@ -123,7 +123,8 @@ A directory deleted on another device is deleted here too, with any of these fil
   private networks
 - [Commands](docs/commands.md): every command and flag, ports, several instances on one
   host, error messages
-- [Recovering files](docs/recovering-files.md): the trash can and conflict copies
+- [Recovering files](docs/recovering-files.md): the trash can, conflict copies and
+  backups
 - [Using your own Syncthing](docs/own-syncthing.md): `--use-host-syncthing`
 
 ## Development
