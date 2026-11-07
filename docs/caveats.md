@@ -123,10 +123,12 @@ Syncthing never syncs the first three; each device has its own.
 
 ## What a first join does
 
-A device that joins with a `~/.claude` of its own keeps only the other devices' files. Its
-own files, such as plugin versions the others lack, go to its trash can for 14 days (see
-[Joining](pairing.md#joining)). Its `.credentials.json` and other files claude-sync does
-not sync stay, except those inside a directory the join discards, which go with it.
+A device that joins with a `~/.claude` of its own keeps only the other devices' files,
+unless it pairs with `--keep` (see [Joining](pairing.md#joining)). Its own files, such as
+plugin versions the others lack, go to its trash can (see
+[Recovering files](recovering-files.md)). Its `.credentials.json` and other files
+claude-sync does not sync stay, except those inside a directory the join discards, which go
+with it.
 
 The first `setup` on a large `~/.claude` returns while Syncthing's first scan carries on,
 for minutes (see [setup](commands.md#setup)).
