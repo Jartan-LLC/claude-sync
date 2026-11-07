@@ -273,7 +273,7 @@ host_introducer() {
 }
 
 host_archive_has() {
-    on_host sh -c 'tar -tzf backups/*.tar.gz' | grep -qxF -- "$1"
+    on_host sh -c 'tar -tzf backups/*.tar.gz' | grep -xF -- "$1" >/dev/null
 }
 
 host_has_folder() {
@@ -392,8 +392,10 @@ dir_tree() {
     sh -c "$tree" sh "$1"
 }
 
+# grep reads all of the listing: -q would stop at the match, and tar, still listing, would
+# die of SIGPIPE and fail the pipeline.
 in_archive() {
-    tar -tzf "$1" | grep -qxF -- "$2"
+    tar -tzf "$1" | grep -xF -- "$2" >/dev/null
 }
 
 # The NAMES still in DIR.
