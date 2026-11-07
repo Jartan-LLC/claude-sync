@@ -1234,13 +1234,14 @@ group_backups() {
     # The 9th of March is a Sunday, the 10th a Monday.
     old=("$n-20250115T120000Z.tar.gz" "$n-20250228T120000Z.tar.gz" "$n-20250309T235959Z.tar.gz"
         "$n-20250310T000000Z.tar.gz" "$n-20250312T120000Z.tar.gz")
-    others=("$p-20250101T000000Z.tar.gz" "$n-20250101.tar.gz" notes.txt)
+    # Another instance's, one whose name starts with this one's, and files of other shapes.
+    others=("$p-20250101T000000Z.tar.gz" "$n-work-20250101T000000Z.tar.gz" "$n-20250101.tar.gz" notes.txt)
     mkdir "$scratch/keep-3-3"
     (cd "$scratch/keep-3-3" && touch -- "${old[@]}" "${others[@]}")
     out=$(claude_sync "$n" backup "$scratch/keep-3-3" --keep-weekly 3 --keep-monthly 3)
     check "--keep-weekly 3 --keep-monthly 3 keeps the newest archive of the last 3 weeks and months" \
         [ "$(left_of "$scratch/keep-3-3" "${old[@]}")" = "$(printf '%s\n' "${old[1]}" "${old[2]}" "${old[4]}")" ]
-    check "  beside the new one" [ "$(files_in "$scratch/keep-3-3")" = 7 ]
+    check "  beside the new one" [ "$(files_in "$scratch/keep-3-3")" = 8 ]
     check "  and says which it removed" grep -qF "$scratch/keep-3-3/${old[3]}" <<<"$out"
     check "  leaving other files alone" [ "$(left_of "$scratch/keep-3-3" "${others[@]}")" = "$(printf '%s\n' "${others[@]}")" ]
     old=("$n-20250115T120000Z.tar.gz" "$n-20250215T120000Z.tar.gz" "$n-20250315T120000Z.tar.gz"
