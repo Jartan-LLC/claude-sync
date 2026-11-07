@@ -95,13 +95,28 @@ instances an earlier run missed.
 claude-sync status
 ```
 
-Shows the instance `claude-sync list` marks, and changes nothing: a stopped container stays
-stopped. It exits 0 when the instance is stopped or not set up, or when it cannot count
-the conflict copies; your own Syncthing on this host counts as stopped when it does not
-answer. It fails when docker, or the Syncthing in a running container, does not answer. It
-asks GitHub whether a newer release is out, and says when it cannot check; run from a
-checkout, it does not ask. The conflict copies it counts are those outside the trash can
-([Recovering files](recovering-files.md)).
+Shows the instance `claude-sync list` marks, without changing anything:
+
+```text
+Instance:        claude-sync
+Syncthing:       in container claude-sync
+Syncs:           volume claude-data
+Web UI:          http://127.0.0.1:8384
+Device ID:       THIS-DEVICE-ID
+Sync port:       22000
+Network:         public
+Folder:          idle
+Conflict copies: 2
+Installed:       claude-sync 0.4.0
+Newer release:   none
+Devices:
+  laptop LAPTOP-DEVICE-ID
+    connected directly at tcp://192.168.1.20:22000; has 100% of the folder
+  desktop DESKTOP-DEVICE-ID
+    not connected, last seen 2026-11-06T18:02:11Z; has 97% of the folder, as far as this device knows
+```
+
+Conflict copies are explained in [Recovering files](recovering-files.md).
 
 ## Several instances on one host
 
