@@ -124,6 +124,8 @@ A directory deleted on another device is deleted here too, with any of these fil
 - [Commands](docs/commands.md): every command and flag, ports, several instances on one
   host, error messages
 - [Recovering files](docs/recovering-files.md): the trash can and conflict copies
+- [Caveats](docs/caveats.md): Claude Code on two devices at once, plugins across home
+  paths, and what else to expect from sharing one `~/.claude`
 - [Using your own Syncthing](docs/own-syncthing.md): `--use-host-syncthing`
 
 ## Development
