@@ -804,8 +804,10 @@ EOF
     check "  but never its discarded file" in_target "$mount_a" '[ ! -e /t/h-only.md ]'
     check "  nor conflict files" no_conflict_files "$mount_a"
     check "the user's other folders and options are untouched" [ "$(host_config)" = "$host_before" ]
-    # Turning on TLS restarts the web UI too, so this call may not get its answer either.
+    # Turning on TLS restarts the web UI, so this call may not get its answer. The web UI
+    # takes HTTPS with TLS off too, so only reading the setting back shows it took.
     on_host syncthing cli config gui raw-use-tls set true 2>/dev/null || true
+    wait_for on_host sh -c 'syncthing cli config gui raw-use-tls get | grep -qx true'
     wait_for on_host curl -kfs https://127.0.0.1:8384/rest/noauth/health
     check "pair reaches a web UI that uses TLS" \
         host_sync pair "$id_a" --address "tcp://$a:22000"
