@@ -717,7 +717,9 @@ group_chain() {
     for option in global-ann-enabled relays-enabled natenabled; do
         on_host syncthing cli config options "$option" set false
     done
-    on_host syncthing cli config gui raw-address set :8384
+    # Syncthing restarts its web UI at once, so this call may not get its answer.
+    on_host syncthing cli config gui raw-address set :8384 2>/dev/null || true
+    wait_for on_host sh -c 'syncthing cli config gui raw-address get | grep -qx :8384'
     host_before=$(host_config)
     others_before=$(host_others)
     check "--volume is refused" fails_with "only with --path" \
@@ -802,7 +804,8 @@ EOF
     check "  but never its discarded file" in_target "$mount_a" '[ ! -e /t/h-only.md ]'
     check "  nor conflict files" no_conflict_files "$mount_a"
     check "the user's other folders and options are untouched" [ "$(host_config)" = "$host_before" ]
-    on_host syncthing cli config gui raw-use-tls set true
+    # Turning on TLS restarts the web UI too, so this call may not get its answer either.
+    on_host syncthing cli config gui raw-use-tls set true 2>/dev/null || true
     wait_for on_host curl -kfs https://127.0.0.1:8384/rest/noauth/health
     check "pair reaches a web UI that uses TLS" \
         host_sync pair "$id_a" --address "tcp://$a:22000"
