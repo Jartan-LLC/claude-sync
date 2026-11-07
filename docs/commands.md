@@ -103,13 +103,16 @@ device, and each would hold the ones before it. With your own Syncthing, `backup
 a directory in the folder.
 
 Then `backup` removes this instance's older archives in the directory, keeping the newest
-archive of each of the last 4 weeks that have one, and of each of the last 6 months that
-have one. `--keep-weekly` and `--keep-monthly` change those counts, and 0 turns a rule off;
-the archive just written always stays. Weeks run from Monday to Sunday, in UTC. `backup`
-reads each archive's time from its name. It also removes the hidden temporary file that a
-backup stopped partway, by a kill or a power cut, left there over a day before, and leaves
-other files alone. Give each device a directory of its own: two devices backing up one
-instance name into one directory remove each other's archives.
+archive of each of the last `--keep-weekly` weeks that have one, and of each of the last
+`--keep-monthly` months that have one (defaults in [Commands and
+flags](#commands-and-flags)); 0 turns a rule off, and the archive just written always
+stays. Weeks run from Monday to Sunday, in UTC. `backup` reads each archive's time from its
+name, so an archive written while this device's clock ran ahead counts as the newest week
+and month, in a place the rules would give another archive, until that time comes. It also
+removes the hidden temporary file that a backup stopped partway, by a kill or a power cut,
+left there over a day before, and leaves other files alone. Give each device a directory of
+its own: two devices backing up one instance name into one directory remove each other's
+archives.
 
 ## restore
 

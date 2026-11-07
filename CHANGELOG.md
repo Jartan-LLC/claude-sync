@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   4 weeks and 6 months; `--keep-weekly N` and `--keep-monthly N` change the counts.
 - `claude-sync restore ARCHIVE --volume NAME | --path DIR` extracts an archive over a
   Docker volume or a directory, on any device. In a folder that syncs, the restored files
-  reach every device. `docs/recovering-files.md` also shows how to restore with `tar` alone.
+  reach every device.
 
 ### Fixed
 

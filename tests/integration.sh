@@ -272,8 +272,9 @@ host_introducer() {
     on_host syncthing cli config devices "$1" introducer get
 }
 
+# Whether the archive in the host's DIR holds MEMBER.
 host_archive_has() {
-    on_host sh -c 'tar -tzf backups/*.tar.gz' | grep -xF -- "$1" >/dev/null
+    on_host sh -c "tar -tzf $1/*.tar.gz" | grep -xF -- "$2" >/dev/null
 }
 
 host_has_folder() {
@@ -813,12 +814,28 @@ EOF
     check "trash can versioning, 14 days" host_trash_can_14_days
 
     echo "# backup, on the host's Syncthing"
+    check "the host's tar is GNU tar" on_host sh -c 'tar --version | grep -q "GNU tar"'
     check "backup archives the folder with this host's tar" host_sync backup backups
-    check "  all of it" host_archive_has ./h-only.md
+    check "  all of it" host_archive_has backups ./h-only.md
     check "restore run by root" docker exec -u 0 "$h" sh -c \
         '/opt/claude-sync/claude-sync restore /home/user/backups/*.tar.gz --path /root/restored'
     check "  gives root the files, not the archive's owner" \
         [ "$(docker exec -u 0 "$h" stat -c %u /root/restored/h-only.md)" = 0 ]
+    # Files that come and go as GNU tar reads the folder, set up as in group_backups.
+    churn=/home/user/claude/jobs/churn/tmp
+    on_host sh -c "mkdir -p $churn && touch /tmp/churning &&
+        for i in 1 2 3 4 5; do head -c 5000000 /dev/urandom >$churn/big\$i; done"
+    on_host sh -c "i=0; while [ -e /tmp/churning ]; do
+        i=\$((i + 1)); echo x >$churn/t\$i; rm -f $churn/t\$((i - 20)); done" &
+    churning=$!
+    wait_for on_host sh -c "ls $churn | grep -q '^t[0-9]\{3\}'"
+    if host_sync backup busy >/dev/null 2>"$scratch/host-busy.err"; then busy=ok; else busy=failed; fi
+    on_host rm /tmp/churning
+    wait "$churning" || true
+    check "backup takes files that go as GNU tar reads the folder" [ "$busy" = ok ]
+    check "  after tar found some gone" grep -qF "File removed before we read it" "$scratch/host-busy.err"
+    check "  in a whole archive" host_archive_has busy ./jobs/churn/tmp/big5
+    on_host rm -r claude/jobs
     # GNU tar, archiving the folder, then exiting 1 with the lines in TAR_SAYS, as when files
     # changed while it read them; and a tar that fails.
     docker exec -i -u user "$h" sh -c 'mkdir -p /home/user/changing && cat >/home/user/changing/tar &&

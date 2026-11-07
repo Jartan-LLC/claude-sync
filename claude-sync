@@ -549,7 +549,7 @@ setup() {
 
     local image
     image=$(compose_image)
-    read_owner "$image" "$mount" "$target"
+    owner=$(read_owner "$image" "$mount" "$target")
 
     local created_config=""
     if docker volume inspect "$name-config" >/dev/null 2>&1; then
@@ -653,13 +653,15 @@ compose_image() {
     echo "$image"
 }
 
-# Takes IMAGE, the MOUNT that puts a target at /target, and TARGET, the target's name in
-# messages. Sets the global owner to the target's owner.
+# Prints the UID:GID that owns a target. Takes IMAGE, the MOUNT that puts the target at
+# /target, and TARGET, the target's name in messages.
 read_owner() {
+    local owner
     owner=$(docker run --rm --entrypoint stat --mount "$2" "$1" -c %u:%g /target) ||
         die "cannot read $3"
     # Files written as root are files Claude Code cannot change.
     [[ ${owner%:*} != 0 ]] || die "$3 is owned by root; chown it to the user who runs Claude Code"
+    echo "$owner"
 }
 
 # Moves the sync port to PORT, if given and new.
@@ -1039,15 +1041,20 @@ backup() {
     mv -- "$tmp" "$archive"
     trap - EXIT
     echo "Backed up to $archive."
-    # A backup stopped before its EXIT trap ran, by a kill or a power cut, leaves its
-    # temporary file behind. One untouched for a day is no longer being written.
+    remove_stopped_backups "$dir"
+    prune "$dir" "$archive" "$weekly" "$monthly"
+}
+
+# Removes the temporary files that this instance's backups into DIR left there when stopped
+# before their EXIT trap ran, by a kill or a power cut. One untouched for a day is no longer
+# being written.
+remove_stopped_backups() {
     local stopped
     while IFS= read -r stopped; do
         rm -f -- "$stopped"
         echo "Removed $stopped."
-    done < <(find "$dir" -maxdepth 1 -type f -mmin +1440 \
+    done < <(find "$1" -maxdepth 1 -type f -mmin +1440 \
         -name ".$name-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z.tar.gz.*")
-    prune "$dir" "$archive" "$weekly" "$monthly"
 }
 
 # Whether each line tar printed, given as ERRORS, says only that a file changed or went while
@@ -1141,7 +1148,7 @@ restore() {
         check_volume "$target"
         local image mount="type=volume,src=$target,dst=/target"
         image=$(compose_image)
-        read_owner "$image" "$mount" "$target"
+        owner=$(read_owner "$image" "$mount" "$target")
         untar=(docker run --rm -i --user "$owner" --mount "$mount" --entrypoint tar "$image")
         dest=/target
     fi
