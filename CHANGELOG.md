@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instance.
 - Each instance records the version of claude-sync that set it up, and `pair` and `unpair`
   say when that version is older than the one installed.
+- `claude-sync list` lists the host's instances: each one's name, whether it runs, and the
+  volume or directory it syncs, with the one commands act on marked.
+- `claude-sync use NAME` makes later commands act on instance NAME without
+  `CLAUDE_SYNC_NAME`, until `claude-sync use claude-sync` returns to the default.
+  `CLAUDE_SYNC_NAME`, when set, still wins. `setup`, `pair`, `unpair` and `uninstall` now
+  say on stderr which instance they act on when it is not `claude-sync`.
 
 ### Fixed
 

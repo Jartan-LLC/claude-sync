@@ -14,6 +14,8 @@ leaves the fix out. `claude-sync help` prints the same commands and flags.
 | `pair DEVICE-ID` | Syncs with the device DEVICE-ID; run on both devices |
 | `unpair DEVICE-ID` | Removes the device DEVICE-ID from every device; run it on any device |
 | `uninstall` | Removes claude-sync's container and Syncthing state, or its folder from your own Syncthing |
+| `list` | Lists this host's instances and marks the one commands act on |
+| `use NAME` | Makes later commands act on instance NAME |
 | `version` | Prints claude-sync's version |
 | `help` | Prints the commands and flags |
 
@@ -27,8 +29,8 @@ leaves the fix out. `claude-sync help` prints the same commands and flags.
 | `--keep` | `pair` | Keeps this device's files instead of joining ([Joining](pairing.md#joining)) |
 | `--address tcp://HOST:PORT` | `pair` | Where to reach the other device; required when global discovery is off here (a `--private` device, or your own Syncthing with it off) |
 
-`CLAUDE_SYNC_NAME` names the instance a command acts on (see [Several instances on one
-host](#several-instances-on-one-host)).
+`CLAUDE_SYNC_NAME`, or when it is unset the instance selected with `use`, names the
+instance a command acts on (see [Several instances on one host](#several-instances-on-one-host)).
 
 ## setup
 
@@ -85,13 +87,22 @@ instances an earlier run missed.
 
 `CLAUDE_SYNC_NAME` names an instance: its container and the volume that holds its
 Syncthing state. Under different names, one host can sync several `~/.claude` volumes or
-directories, each as a device of its own. Give the same name to every command for that
-instance:
+directories, each as a device of its own:
 
 ```bash
 CLAUDE_SYNC_NAME=claude-work claude-sync setup --volume work-claude
-CLAUDE_SYNC_NAME=claude-work claude-sync pair OTHER-ID
+claude-sync use claude-work
+claude-sync pair OTHER-ID
 ```
+
+`claude-sync list` lists this host's instances. `claude-sync use NAME` makes later
+commands act on instance NAME, in every shell of this user, until `claude-sync use
+claude-sync` returns to the default. It keeps the name in `~/.config/claude-sync/instance`,
+or under `$XDG_CONFIG_HOME` when that is set. `CLAUDE_SYNC_NAME`, when set, wins over the
+selection, so a script that sets it acts on the instance it names. In `list`, `state only`
+marks an instance whose container is gone but whose Syncthing state, with its device ID, is
+left: `setup` with `--volume` or `--path` under its name uses that state again, and
+`uninstall` removes it.
 
 Each instance gets ports of its own, which `setup` prints, as long as the other instances
 are running when it first starts: Syncthing takes free ports only then. Each needs a
@@ -153,4 +164,5 @@ With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninsta
 | `does not match the release's SHA-256` or `is not version` | Nothing was changed; run `upgrade` again later, and report it if it keeps failing |
 | `setup failed for instance` | Fix what that instance's `setup` printed above, then rerun `upgrade` |
 | `docker cannot be reached` | Start Docker, and check that `docker ps` works as this user; then rerun `setup` |
-| `docker cannot list the instances in containers` | Start Docker, and check that `docker ps` works as this user; then rerun `upgrade` |
+| `docker cannot list the instances in containers` | Start Docker, and check that `docker ps` works as this user; then rerun the command |
+| `no instance named` | For a new instance, run `setup` with `CLAUDE_SYNC_NAME` set to its name first, then `use` |
