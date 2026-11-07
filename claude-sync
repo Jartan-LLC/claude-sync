@@ -1339,7 +1339,7 @@ backup() {
         usage >&2
         exit 2
     fi
-    # A quoted ~, which the guard's path comparison expands, so mkdir and the archive must too.
+    # A quoted ~: left as it is, mkdir would make ./~ here and write the archive into it.
     dir=$(expand_home "$dir")
     check_name
     detect_mode
@@ -1420,7 +1420,7 @@ check_outside_synced_folder() {
 }
 
 # Removes the temporary files that this instance's backups into DIR left there when stopped
-# before their EXIT trap ran, by a kill or a power cut. One untouched for a day is no longer
+# before their EXIT trap ran, by SIGKILL or a power cut. One untouched for a day is no longer
 # being written.
 remove_stopped_backups() {
     local stopped
