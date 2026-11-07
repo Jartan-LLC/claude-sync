@@ -1026,7 +1026,8 @@ backup() {
     # shellcheck disable=SC2064 # expanded now: tmp is local
     trap "rm -f -- $(printf %q "$tmp")" EXIT
     if [[ $mode == host ]]; then
-        errors=$(tar -C "$folder_path" -czf - . 2>&1 >"$tmp") || status=$?
+        # In English, which only_files_that_changed reads.
+        errors=$(LC_ALL=C tar -C "$folder_path" -czf - . 2>&1 >"$tmp") || status=$?
     else
         errors=$(docker exec -u "$owner" "$name" tar -C "$folder_path" -czf - . 2>&1 >"$tmp") || status=$?
     fi
