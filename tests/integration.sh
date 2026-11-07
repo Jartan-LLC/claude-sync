@@ -829,7 +829,6 @@ EOF
     # takes HTTPS with TLS off too, so only reading the setting back shows it took.
     on_host syncthing cli config gui raw-use-tls set true 2>/dev/null || true
     wait_for on_host sh -c 'syncthing cli config gui raw-use-tls get | grep -qx true'
-    wait_for on_host curl -kfs https://127.0.0.1:8384/rest/noauth/health
     check "pair reaches a web UI that uses TLS" \
         host_sync pair "$id_a" --address "tcp://$a:22000"
     host_before=$(host_config)
