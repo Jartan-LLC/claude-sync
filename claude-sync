@@ -179,9 +179,9 @@ version_breaking() {
     ((10#${a[0]} != 10#${b[0]} || (10#${a[0]} == 0 && 10#${a[1]} != 10#${b[1]})))
 }
 
-# Sets release_safe to the newest release after this version that is not breaking, and
-# release_breaking to the newest that is, each a tag or empty, from the list in
-# releases. Pre-releases are left out.
+# Fetches the list of releases into releases, which release_url reads, then sets
+# release_safe to the newest release after this version that is not breaking, and
+# release_breaking to the newest that is, each a tag or empty. Pre-releases are left out.
 check_releases() {
     local tag
     release_safe="" release_breaking=""
@@ -1156,7 +1156,7 @@ install_release() {
 # Runs FILE's setup, with no target, for every running instance that an older version set
 # up, carrying on past one that fails.
 apply_everywhere() {
-    local file=$1 instance kind version found="" applied="" failed=()
+    local file=$1 instance kind version found="" running="" applied="" failed=()
     while IFS=$'\t' read -r instance kind; do
         found=1
         case $kind in
@@ -1171,6 +1171,7 @@ apply_everywhere() {
                 continue
                 ;;
         esac
+        running=1
         version=$(instance_version "$instance" "$kind") || version=""
         stale "$version" || continue
         applied=1
@@ -1180,11 +1181,14 @@ apply_everywhere() {
     done < <(instances)
     if [[ -z $found ]]; then
         echo "claude-sync $claude_sync_version is installed; no instance is set up on this host yet."
-    elif [[ -z $applied ]]; then
+    elif [[ -n $running && -z $applied ]]; then
         echo "Every running instance already runs claude-sync $claude_sync_version."
     fi
-    ((${#failed[@]} == 0)) ||
-        die "setup failed for instance ${failed[*]}; fix what it says, then rerun claude-sync upgrade"
+    case ${#failed[@]} in
+        0) ;;
+        1) die "setup failed for instance ${failed[0]}; fix what it says, then rerun claude-sync upgrade" ;;
+        *) die "setup failed for instances ${failed[*]}; fix what each says, then rerun claude-sync upgrade" ;;
+    esac
 }
 
 case ${1:-help} in

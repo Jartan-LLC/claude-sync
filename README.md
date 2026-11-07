@@ -86,7 +86,10 @@ to do when `pair` stops.
 
 ## Upgrade
 
-On each device:
+claude-sync 0.1.1 and earlier have no `upgrade`. On a device that runs one of those,
+download claude-sync again as in [Install](#install) first.
+
+Then, on each device:
 
 ```bash
 claude-sync upgrade
@@ -99,9 +102,6 @@ notes, which say how to upgrade by hand (see [Commands](docs/commands.md#upgrade
 
 If you installed the RPM, rerun the `dnf install` line from [Install](#install) instead,
 then run `claude-sync setup`, with no target, for each instance.
-
-claude-sync 0.1.1 and earlier have no `upgrade`: download claude-sync again as in
-[Install](#install), then run `claude-sync upgrade` once to apply it.
 
 ## Uninstall
 
