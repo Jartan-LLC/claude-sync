@@ -12,7 +12,8 @@ machine, and it is there on the others.
   `~/.claude`, whether it is a directory or a Docker volume mounted into dev containers.
 - The container restarts with Docker, so sync survives reboots.
 - Syncthing runs as the owner of your `~/.claude`. Its web UI has no password and
-  listens only on `127.0.0.1` of the host running Docker, on the port `setup` prints;
+  listens only on `127.0.0.1` of the host running Docker, at the address
+  `claude-sync status` prints while it runs;
   reach it from another machine through an SSH tunnel (`ssh -L 8384:127.0.0.1:8384 HOST`
   for the usual port 8384).
 - If you already run Syncthing on the host, claude-sync can add its folder to that

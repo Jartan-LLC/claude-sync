@@ -17,6 +17,7 @@ leaves the fix out. `claude-sync help` prints the same commands and flags.
 | `backup DIR` | Writes an archive of the whole synced folder to DIR, then removes older ones there |
 | `restore ARCHIVE --volume NAME` | Extracts a backup over the Docker volume NAME |
 | `restore ARCHIVE --path DIR` | Extracts a backup over the directory DIR on this machine |
+| `status` | Shows how the instance is set up and syncs, its devices, and whether a newer release is out |
 | `list` | Lists this host's instances and marks the one commands act on |
 | `use NAME` | Makes later commands act on instance NAME |
 | `version` | Prints claude-sync's version |
@@ -90,6 +91,35 @@ instances an earlier run missed.
   [Install](../README.md#install).
 - An RPM install is upgraded with `dnf` (see [Upgrade](../README.md#upgrade)).
 
+## status
+
+```bash
+claude-sync status
+```
+
+Shows the instance `claude-sync list` marks, without changing anything:
+
+```text
+Instance:        claude-sync
+Syncthing:       in container claude-sync
+Syncs:           volume claude-data
+Web UI:          http://127.0.0.1:8384
+Device ID:       THIS-DEVICE-ID
+Sync port:       22000
+Network:         public
+Folder:          idle
+Conflict copies: 2
+Installed:       claude-sync 0.4.0
+Newer release:   none
+Devices:
+  laptop LAPTOP-DEVICE-ID
+    connected directly at tcp://192.168.1.20:22000; has 100% of the folder
+  desktop DESKTOP-DEVICE-ID
+    not connected, last seen 2026-11-06T18:02:11Z; has 97% of the folder, as far as this device knows
+```
+
+Conflict copies are explained in [Recovering files](recovering-files.md).
+
 ## Several instances on one host
 
 `CLAUDE_SYNC_NAME` names an instance: its container and the volume that holds its
@@ -110,13 +140,13 @@ set, wins over the selection.
 In `list`, `state only` is an instance whose container is gone but whose Syncthing state,
 with its device ID, is left; `setup` under its name uses it again.
 
-Each instance gets ports of its own, which `setup` prints, as long as the other instances
-are running when it first starts: Syncthing takes free ports only then. Each needs a
-target of its own too: `setup` refuses a volume or directory that another Syncthing
-container mounts, running or stopped. A name other than the default, `claude-sync`, can't
-be combined with `--use-host-syncthing`, since your own Syncthing holds one claude-sync
-folder; neither can `--gui-port` or `--sync-port`, since you set that Syncthing's ports in
-Syncthing itself.
+Each instance gets ports of its own, which `setup` and `status` print, as long as the
+other instances are running when it first starts: Syncthing takes free ports only then.
+Each needs a target of its own too: `setup` refuses a volume or directory that another
+Syncthing container mounts, running or stopped. A name other than the default,
+`claude-sync`, can't be combined with `--use-host-syncthing`, since your own Syncthing
+holds one claude-sync folder; neither can `--gui-port` or `--sync-port`, since you set
+that Syncthing's ports in Syncthing itself.
 
 ## uninstall
 
@@ -233,8 +263,9 @@ restore with `tar` alone.
 | `cannot write to` ... `where claude-sync is` | Run `upgrade` as the user who owns that directory |
 | `does not match the release's SHA-256` or `is not version` | Nothing was changed; run `upgrade` again later, and report it if it keeps failing |
 | `setup failed for instance` | Fix what that instance's `setup` printed above, then rerun `upgrade` |
-| `docker cannot be reached` | Start Docker, and check that `docker ps` works as this user; then rerun `setup` |
+| `docker cannot be reached` | Start Docker, and check that `docker ps` works as this user; then rerun the command |
 | `docker cannot list the instances in containers` | Start Docker, and check that `docker ps` works as this user; then rerun the command |
+| `cannot inspect container` | Check that `docker ps` works as this user, then rerun `status` |
 | `is in the synced folder` | Give `backup` or `setup --backup-dir` a directory outside the synced folder |
 | `needs systemd's user manager` | Run `setup` in a login session as that user, not from `su` or `sudo`; without systemd, as on macOS, schedule `backup` another way |
 | `cannot reach systemd's user manager` | Rerun the command in a login session as that user, not from `su`, `sudo` or cron |

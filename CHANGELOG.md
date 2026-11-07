@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `claude-sync restore ARCHIVE --volume NAME | --path DIR` extracts an archive over a
   Docker volume or a directory, on any device. In a folder that syncs, the restored files
   reach every device.
+- `claude-sync status` shows how the instance commands act on is set up and how it syncs:
+  where its Syncthing runs and what it syncs, the web UI's address, the device ID, the sync
+  port, whether it is private or public, the folder's state, the number of conflict
+  copies, the version that set it up, and whether a newer release is out. It lists the
+  devices the folder is shared with: whether each is connected, directly or through a
+  relay, when it was last seen, and how much of the folder it has. It changes nothing.
 - `claude-sync list` lists the host's instances: each one's name, whether it runs, and the
   volume or directory it syncs, with the one commands act on marked.
 - `claude-sync use NAME` makes later commands act on instance NAME without
