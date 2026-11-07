@@ -304,10 +304,32 @@ real_path() {
     (cd -- "$path" 2>/dev/null && pwd -P) || echo "${path%/}"
 }
 
+# PATH as real_path gives it, for a directory that may not exist yet: its nearest existing
+# ancestor resolved, and the rest, which mkdir -p would make, cleaned.
+planned_path() {
+    local path=${1/#\~/$HOME} rest=""
+    while [[ ! -d $path ]]; do
+        rest=/${path##*/}$rest
+        if [[ $path == */* ]]; then
+            path=${path%/*}
+            path=${path:-/}
+        else
+            path=.
+        fi
+    done
+    clean_path "$(real_path "$path")$rest"
+}
+
+# Whether resolved PATH is DIR or inside it. The slash is dropped before adding one, so a DIR
+# at / holds every path.
+path_within() {
+    [[ $1 == "$2" || $1 == "${2%/}"/* ]]
+}
+
 # Whether one of two resolved paths is the other or inside it, so both would sync the same
-# files. The slash is dropped before adding one, so a folder at / covers every path.
+# files.
 paths_overlap() {
-    [[ $1 == "$2" || $1 == "${2%/}"/* || $2 == "${1%/}"/* ]]
+    path_within "$1" "$2" || path_within "$2" "$1"
 }
 
 # PATH made absolute and cleaned as Docker cleans a bind mount's path: no ".", ".." or
@@ -986,18 +1008,14 @@ backup() {
     fi
     check_name
     detect_mode
-    mkdir -p -- "$dir"
-    if [[ $mode == host ]]; then
-        local real_dir real_folder
-        real_dir=$(real_path "$dir")
-        real_folder=$(real_path "$folder_path")
-        # Each archive would sync to every device and hold the ones before it: writing through
-        # a pipe to gzip, tar cannot tell its own archive from the folder's files. Not checked
-        # in a container, whose folder is a volume or a path on the Docker host, which may not
-        # be this machine.
-        [[ $real_dir != "$real_folder" && $real_dir != "${real_folder%/}"/* ]] ||
-            die "$dir is in the synced folder; give backup a directory outside it"
+    # Each archive would sync to every device and hold the ones before it: writing through a
+    # pipe to gzip, tar cannot tell its own archive from the folder's files. Checked before
+    # mkdir, whose directory would sync too. Not checked in a container, whose folder is a
+    # volume or a path on the Docker host, which may not be this machine.
+    if [[ $mode == host ]] && path_within "$(planned_path "$dir")" "$(real_path "$folder_path")"; then
+        die "$dir is in the synced folder; give backup a directory outside it"
     fi
+    mkdir -p -- "$dir"
     local archive tmp errors status=0
     archive=$dir/$name-$(date -u +%Y%m%dT%H%M%SZ).tar.gz
     [[ ! -e $archive ]] || die "$archive already exists; rerun in a second"
@@ -1008,29 +1026,41 @@ backup() {
     # shellcheck disable=SC2064 # expanded now: tmp is local
     trap "rm -f -- $(printf %q "$tmp")" EXIT
     if [[ $mode == host ]]; then
-        tar -C "$folder_path" -czf - . >"$tmp" || status=$?
-        # GNU tar exits 1 when a file changed or went while it read it, as a running Claude
-        # Code's transcripts do; the archive is still whole.
-        if ((status == 1)) && [[ $(tar --version 2>/dev/null) == *"GNU tar"* ]]; then
-            status=0
-        fi
+        errors=$(tar -C "$folder_path" -czf - . 2>&1 >"$tmp") || status=$?
     else
         errors=$(docker exec -u "$owner" "$name" tar -C "$folder_path" -czf - . 2>&1 >"$tmp") || status=$?
-        [[ -z $errors ]] || printf '%s\n' "$errors" >&2
-        # BusyBox tar exits 1 when a file went between listing its directory and opening it,
-        # as Claude Code's and Syncthing's temporary files do, and archives the rest. Any
-        # other message, such as "short read" for a file that shrank as tar read it, means
-        # the archive is cut short.
-        local went="^tar: (\./.*|can't open '\./.*'): No such file or directory\$"
-        if ((status == 1)) && ! grep -qvE -e "$went" -e '^tar: error exit delayed from previous errors$' <<<"$errors"; then
-            status=0
-        fi
+    fi
+    [[ -z $errors ]] || printf '%s\n' "$errors" >&2
+    if ((status == 1)) && only_files_that_changed "$errors"; then
+        status=0
     fi
     ((status == 0)) || die "tar could not archive the synced folder; its message is above"
     mv -- "$tmp" "$archive"
     trap - EXIT
     echo "Backed up to $archive."
+    # A backup stopped before its EXIT trap ran, by a kill or a power cut, leaves its
+    # temporary file behind. One untouched for a day is no longer being written.
+    local stopped
+    while IFS= read -r stopped; do
+        rm -f -- "$stopped"
+        echo "Removed $stopped."
+    done < <(find "$dir" -maxdepth 1 -type f -mmin +1440 \
+        -name ".$name-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z.tar.gz.*")
     prune "$dir" "$archive" "$weekly" "$monthly"
+}
+
+# Whether each line tar printed, given as ERRORS, says only that a file changed or went while
+# tar read the folder, as Claude Code's and Syncthing's temporary files do. tar exits 1 then
+# and still archives the rest of the folder whole. GNU tar says "file changed as we read it"
+# or "File removed before we read it"; BusyBox names the file with "No such file or
+# directory", then adds "error exit delayed from previous errors". Any other line fails the
+# backup, among them GNU's "File shrank", for a file it pads with zeros, and BusyBox's "short
+# read", for an archive it cuts short.
+only_files_that_changed() {
+    ! grep -qvE \
+        -e '^tar: \.(/.*)?: (file changed as we read it|File removed before we read it)$' \
+        -e "^tar: (\./.*|can't open '\./.*'): No such file or directory\$" \
+        -e '^tar: error exit delayed from previous errors$' <<<"$1"
 }
 
 # Removes this instance's archives in DIR that neither rule keeps: the newest archive of each
@@ -1117,7 +1147,11 @@ restore() {
     # Read through first, so a damaged archive writes nothing.
     "${untar[@]}" -tzf - <"$archive" >/dev/null || die "cannot read $archive as a backup; nothing was restored"
     [[ $kind == volume ]] || mkdir -p -- "$target"
-    "${untar[@]}" -xzf - -C "$dest" <"$archive" ||
+    # tar run by root keeps the archive's owners unless told not to. A volume's tar runs as
+    # its owner.
+    local own=()
+    [[ $kind == volume ]] || own=(--no-same-owner)
+    "${untar[@]}" -xzf - -C "$dest" "${own[@]}" <"$archive" ||
         die "could not restore all of $archive to $target; tar's message is above"
     echo "Restored $archive to $target."
 }

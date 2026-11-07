@@ -815,18 +815,29 @@ EOF
     echo "# backup, on the host's Syncthing"
     check "backup archives the folder with this host's tar" host_sync backup backups
     check "  all of it" host_archive_has ./h-only.md
-    # GNU tar, exiting 1 as when a file changed or went while it read it, and a tar that fails.
+    check "restore run by root" docker exec -u 0 "$h" sh -c \
+        '/opt/claude-sync/claude-sync restore /home/user/backups/*.tar.gz --path /root/restored'
+    check "  gives root the files, not the archive's owner" \
+        [ "$(docker exec -u 0 "$h" stat -c %u /root/restored/h-only.md)" = 0 ]
+    # GNU tar, archiving the folder, then exiting 1 with the lines in TAR_SAYS, as when files
+    # changed while it read them; and a tar that fails.
     docker exec -i -u user "$h" sh -c 'mkdir -p /home/user/changing && cat >/home/user/changing/tar &&
         chmod +x /home/user/changing/tar' <<'EOF'
 #!/bin/sh
 /bin/tar "$@" || exit
-[ "$1" = --version ] || exit 1
+printf '%s\n' "$TAR_SAYS" >&2
+exit 1
 EOF
     docker exec -u user "$h" sh -c 'mkdir /home/user/failing && printf "#!/bin/sh\necho partial\nexit 2\n" \
         >/home/user/failing/tar && chmod +x /home/user/failing/tar'
-    check "  taking GNU tar's status for a file that changed as it read it" \
-        on_host env PATH=/home/user/changing:/usr/bin:/bin /opt/claude-sync/claude-sync backup changed
+    check "backup passes GNU tar's status 1 for files that changed or went as it read them" \
+        on_host env PATH=/home/user/changing:/usr/bin:/bin TAR_SAYS="tar: ./h-only.md: file changed as we read it
+tar: ./gone.md: File removed before we read it" /opt/claude-sync/claude-sync backup changed
     check "  as an archive" on_host sh -c 'tar -tzf changed/*.tar.gz >/dev/null'
+    check "a file that shrank as tar read it fails backup" fails_with "tar could not archive" \
+        on_host env PATH=/home/user/changing:/usr/bin:/bin TAR_SAYS="tar: ./h-only.md: file changed as we read it
+tar: ./big: File shrank by 10 bytes; padding with zeros" /opt/claude-sync/claude-sync backup shrank
+    check "  leaving no archive" [ -z "$(on_host ls -A shrank)" ]
     check "a tar that fails fails backup" fails \
         on_host env PATH=/home/user/failing:/usr/bin:/bin /opt/claude-sync/claude-sync backup failed
     check "  leaving no partial archive" [ -z "$(on_host ls -A failed)" ]
@@ -835,6 +846,9 @@ EOF
         host_sync backup claude/.stfolder
     check "  and the folder itself, through a symlink" fails_with "is in the synced folder" \
         host_sync backup into-claude
+    check "  and a directory in it not made yet" fails_with "is in the synced folder" \
+        host_sync backup into-claude/new
+    check "  without making it" on_host test ! -e claude/new
     check "  leaving no archive in it" [ -z "$(on_host find claude -name '*.tar.gz')" ]
     check "setup again, naming the directory another way" host_sync setup --path ./claude/ --use-host-syncthing
     # A curl that never reaches the API, while `syncthing cli` still does.
@@ -1308,6 +1322,17 @@ group_backups() {
     check "an archive already named for this second is refused" fails_with "already exists; rerun in a second" \
         env PATH="$scratch/fixed-date:$PATH" CLAUDE_SYNC_NAME="$n" "$bin" backup "$scratch/same-second"
     check "  and left as it was" [ "$(cat "$scratch/same-second/$n-20250101T000000Z.tar.gz")" = stand-in ]
+    # Temporary files of backups stopped before they could remove them: one untouched since
+    # 2025, one still being written, and one of an instance whose name starts with this one's.
+    stale=.$n-20250101T000000Z.tar.gz.123 writing=.$n-20250102T000000Z.tar.gz.456
+    others_stale=.$n-work-20250101T000000Z.tar.gz.789
+    mkdir "$scratch/stopped"
+    (cd "$scratch/stopped" && touch -t 202501010000 -- "$stale" "$others_stale" && touch -- "$writing")
+    out=$(claude_sync "$n" backup "$scratch/stopped")
+    check "backup removes a temporary file that a backup stopped a day ago left" [ ! -e "$scratch/stopped/$stale" ]
+    check "  and says so" grep -qF "Removed $scratch/stopped/$stale." <<<"$out"
+    check "  keeping one still being written" [ -e "$scratch/stopped/$writing" ]
+    check "  and another instance's" [ -e "$scratch/stopped/$others_stale" ]
 
     echo "# restore, on a paired device"
     in_target "$mount_p" "chown $owner_p /t"

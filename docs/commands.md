@@ -94,9 +94,9 @@ and the time in UTC, to the directory, which it creates if needed. The archive i
 tar of the whole synced folder: it also holds the files that do not sync, this device's
 login in `.credentials.json` among them, and Syncthing's trash can, `.stversions`. It is an
 ordinary file with your default permissions, which you can copy to any device and restore
-there. Syncthing and Claude Code keep running meanwhile, so a file being written as `backup`
-reads it goes in as it was at that moment, and a file removed meanwhile is left out. With
-your own Syncthing, `backup` uses this host's `tar`.
+there. Syncthing and Claude Code keep running meanwhile, so a file written while `backup`
+reads it may go in partly written, and a file removed meanwhile is left out; if `tar`
+reports an error, rerun `backup`. With your own Syncthing, `backup` uses this host's `tar`.
 
 Keep the directory outside the synced folder: there, the archives would sync to every
 device, and each would hold the ones before it. With your own Syncthing, `backup` refuses
@@ -106,9 +106,10 @@ Then `backup` removes this instance's older archives in the directory, keeping t
 archive of each of the last 4 weeks that have one, and of each of the last 6 months that
 have one. `--keep-weekly` and `--keep-monthly` change those counts, and 0 turns a rule off;
 the archive just written always stays. Weeks run from Monday to Sunday, in UTC. `backup`
-reads each archive's time from its name and leaves other files alone. Give each device a
-directory of its own: two devices backing up one instance name into one directory remove
-each other's archives.
+reads each archive's time from its name. It also removes the hidden temporary file that a
+backup stopped partway, by a kill or a power cut, left there over a day before, and leaves
+other files alone. Give each device a directory of its own: two devices backing up one
+instance name into one directory remove each other's archives.
 
 ## restore
 
@@ -119,10 +120,11 @@ claude-sync restore ~/claude-backups/claude-sync-20261107T120000Z.tar.gz --path 
 
 Restores an archive from any device, on any device, whether or not claude-sync is set up
 there. `restore` reads the whole archive first, so it writes nothing from one it cannot
-read. It then extracts every file in the archive over the target and removes nothing:
-files made since the backup stay. A volume must exist and not be owned by root, as for
-`setup`; its owner gets the restored files. `--path` names a directory on this machine,
-created if needed, and restores it with this machine's `tar`, as you; it needs no Docker.
+read. It then extracts every file in the archive over the target, the files that do not
+sync included, and removes nothing: files made since the backup stay. A volume must exist
+and not be owned by root, as for `setup`; its owner gets the restored files. `--path` names
+a directory on this machine, created if needed, and restores it with this machine's `tar`,
+as you; it needs no Docker.
 
 In a folder that syncs, the restored files reach every device. [Recovering
 files](recovering-files.md#from-a-backup) says what to do after a restore there, and how to
