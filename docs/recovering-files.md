@@ -30,10 +30,8 @@ claude-sync restore ~/claude-backups/claude-sync-20261107T120000Z.tar.gz --volum
 claude-sync restore ~/claude-backups/claude-sync-20261107T120000Z.tar.gz --path ~/.claude
 ```
 
-`restore` puts back every file in the archive and removes none (see
-[Commands](commands.md#restore)).
-
-In a folder that syncs, the restored files reach every device, so a restore undoes a
+`restore` removes nothing ([details](commands.md#restore)). In a folder that syncs, the
+restored files reach every device, so a restore undoes a
 mistake that has already synced everywhere. Every other device moves the copies it replaces
 to its trash can; this device keeps none, so take a file the restore overwrote from another
 device's trash can. The files that do not sync, those that
