@@ -1495,7 +1495,6 @@ EOF
     out=$(unnamed list)
     check "list with no instance says so" grep -qxF "No instance is set up on this host." <<<"$out"
     claude_sync "$v" setup --volume "$vol_v" >/dev/null
-    # Syncthing state that no container uses, labelled as setup labels it.
     docker volume create --label claude-sync=config "$w-config" >/dev/null
     out=$(unnamed list)
     check "list shows a running instance and what it syncs" grep -qE "^  $v +running +volume $vol_v\$" <<<"$out"
@@ -1506,12 +1505,24 @@ EOF
     check "use refuses a name that is not an instance" fails_with "no instance named ${prefix}typo" \
         unnamed use "${prefix}typo"
     check "  selecting nothing" [ ! -e "$selection" ]
+    check "use when docker cannot list the instances fails, saying so" \
+        fails_with "so use cannot check that $v is one" \
+        env -u CLAUDE_SYNC_NAME CLAUDE_SYNC_TEST_DOCKER_DOWN=1 PATH="$scratch/select:$PATH" "$bin" use "$v"
+    check "use with neither HOME nor XDG_CONFIG_HOME fails, saying so" \
+        fails_with "nowhere to keep the selection" \
+        env -u CLAUDE_SYNC_NAME -u HOME -u XDG_CONFIG_HOME PATH="$scratch/select:$PATH" "$bin" use "$v"
     check "use selects an instance" unnamed use "$v"
     check "  in the config directory" [ "$(cat "$selection")" = "$v" ]
     check "  which list marks" grep -qE "^\* $v +running" <<<"$(unnamed list)"
     check "a command then acts on it, saying so" \
         fails_with "acting on instance $v, selected with claude-sync use" unnamed pair not-a-device-id
     check "  and finds it running" fails_with "not a device ID" unnamed pair not-a-device-id
+    check "setup says so too" fails_with "acting on instance $v, selected with claude-sync use" \
+        unnamed setup --use-host-syncthing --path "$scratch"
+    check "  and refuses --use-host-syncthing, saying to select the default" \
+        fails_with "run claude-sync use claude-sync first" unnamed setup --use-host-syncthing --path "$scratch"
+    check "unpair says so too" fails_with "acting on instance $v, selected with claude-sync use" \
+        unnamed unpair not-a-device-id
 
     check "CLAUDE_SYNC_NAME still wins over the selection" grep -qE "^\* $w +state only" <<<"$(named "$w" list)"
     check "  and a command it names says so" \
@@ -1521,6 +1532,9 @@ EOF
         <<<"$(named "$w" use "$v")"
     check "use of the default clears the selection" unnamed use claude-sync
     check "  removing the file" [ ! -e "$selection" ]
+    printf '\n%s\n' "$v" >"$selection"
+    check "a selection file with no valid name on its first line is refused, naming the file" \
+        fails_with "$selection does not hold a valid instance name" unnamed pair not-a-device-id
     unnamed use "$v" >/dev/null
     out=$(named "$w" uninstall 2>&1)
     check "uninstall of another instance leaves the selection" [ "$(cat "$selection")" = "$v" ]

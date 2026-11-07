@@ -101,8 +101,7 @@ Two installs upgrade differently:
 - claude-sync 0.1.1 and earlier have no `upgrade`: download claude-sync again as in
   [Install](#install), then run `claude-sync upgrade`.
 - With the RPM, rerun the `dnf install` line from [Install](#install), then run
-  `claude-sync setup`, with no target, for each instance
-  (`CLAUDE_SYNC_NAME=NAME claude-sync setup` for one not named `claude-sync`).
+  `CLAUDE_SYNC_NAME=NAME claude-sync setup`, with no target, for each instance NAME.
 
 ## Uninstall
 
@@ -112,7 +111,8 @@ claude-sync uninstall
 
 Removes the container and this device's Syncthing state; with your own Syncthing, it
 removes only claude-sync's folder from it. Your `~/.claude` is untouched (see
-[Commands](docs/commands.md#uninstall)).
+[Commands](docs/commands.md#uninstall)). After `claude-sync use NAME`, it removes instance
+NAME.
 
 ## What syncs
 

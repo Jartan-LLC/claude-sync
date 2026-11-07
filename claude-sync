@@ -119,8 +119,8 @@ Usage:
 Environment:
   CLAUDE_SYNC_NAME                  This instance's name, default the one selected with
                                     use, else claude-sync; one host can run several
-                                    instances under different names. Leave it unset
-                                    with --use-host-syncthing
+                                    instances under different names.
+                                    --use-host-syncthing sets up only claude-sync
 EOF
 }
 
@@ -136,8 +136,10 @@ valid_name() {
 }
 
 check_name() {
-    valid_name "$name" ||
-        die "CLAUDE_SYNC_NAME must be two or more lowercase letters, digits, '-' or '_', starting with a letter or digit: $name"
+    valid_name "$name" && return 0
+    [[ $name_from != selection ]] ||
+        die "$(selection_file) does not hold a valid instance name; select one again with claude-sync use NAME"
+    die "CLAUDE_SYNC_NAME must be two or more lowercase letters, digits, '-' or '_', starting with a letter or digit: $name"
 }
 
 # Says which instance a command acts on, and what chose it, when it is not the default.
@@ -494,10 +496,13 @@ stale() {
     [[ -z $1 ]] || ! parse_version "$1" || version_older "$1" "$claude_sync_version"
 }
 
-# The command that sets up the instance NAME again, for messages.
+# The command that sets up the instance NAME again, for messages. With a selection, the
+# bare command would act on the selected instance.
 setup_command() {
-    local prefix=""
-    [[ $1 == "$default_name" ]] || prefix="CLAUDE_SYNC_NAME=$1 "
+    local prefix="CLAUDE_SYNC_NAME=$1 "
+    if [[ $1 == "$default_name" ]] && ! selected_instance >/dev/null; then
+        prefix=""
+    fi
     echo "${prefix}claude-sync setup"
 }
 
@@ -719,8 +724,11 @@ setup() {
         [[ -z $network ]] || die "--$network changes how all of a Syncthing's folders connect; with --use-host-syncthing, set them in that Syncthing"
         [[ -z $want_gui$want_sync ]] || die "--gui-port and --sync-port change that Syncthing's own ports; with --use-host-syncthing, set them in that Syncthing"
         # One Syncthing holds one claude-sync folder, so names would not keep instances apart.
-        [[ $name == "$default_name" ]] ||
+        if [[ $name != "$default_name" ]]; then
+            [[ $name_from != selection ]] ||
+                die "--use-host-syncthing sets up only the default instance, $default_name; run claude-sync use $default_name first"
             die "CLAUDE_SYNC_NAME names claude-sync's own containers; with --use-host-syncthing, leave CLAUDE_SYNC_NAME unset"
+        fi
         setup_host "$target"
         return
     fi
@@ -1213,11 +1221,12 @@ list() {
             if [[ $instance == "$name" ]]; then
                 mark="*" marked=1
             fi
+            # ;;& goes on to the patterns below, so container and stopped share the SYNCS code.
             case $status in
+                container) state=running ;;&
+                stopped) state=stopped ;;&
                 container | stopped)
-                    state=running
-                    [[ $status == container ]] || state=stopped
-                    syncs=$(current_target "$instance")
+                    syncs=$(current_target "$instance") || syncs=""
                     if [[ $syncs == /* ]]; then
                         syncs="directory $syncs"
                     elif [[ -n $syncs ]]; then
@@ -1238,6 +1247,7 @@ list() {
     elif [[ -z $all ]]; then
         echo "No instance is set up on this host."
     elif [[ -z $marked ]]; then
+        check_name
         echo "Commands act on instance $name, which is not set up on this host."
     fi
 }

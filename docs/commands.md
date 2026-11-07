@@ -97,12 +97,12 @@ claude-sync pair OTHER-ID
 
 `claude-sync list` lists this host's instances. `claude-sync use NAME` makes later
 commands act on instance NAME, in every shell of this user, until `claude-sync use
-claude-sync` returns to the default. It keeps the name in `~/.config/claude-sync/instance`,
-or under `$XDG_CONFIG_HOME` when that is set. `CLAUDE_SYNC_NAME`, when set, wins over the
-selection, so a script that sets it acts on the instance it names. In `list`, `state only`
-marks an instance whose container is gone but whose Syncthing state, with its device ID, is
-left: `setup` with `--volume` or `--path` under its name uses that state again, and
-`uninstall` removes it.
+claude-sync` returns to the default or `uninstall` removes that instance. It keeps the
+name in `~/.config/claude-sync/instance`, or under `$XDG_CONFIG_HOME` when that is set.
+`CLAUDE_SYNC_NAME`, when set, wins over the selection, so a script that sets it acts on
+the instance it names. In `list`, `state only` marks an instance whose container is gone
+but whose Syncthing state, with its device ID, is left: `setup` with `--volume` or
+`--path` under its name uses that state again, and `uninstall` removes it.
 
 Each instance gets ports of its own, which `setup` prints, as long as the other instances
 are running when it first starts: Syncthing takes free ports only then. Each needs a
