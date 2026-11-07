@@ -130,11 +130,17 @@ cut_off() {
     (($? == 124))
 }
 
+# On a failed check, the command's exit status and output go to stderr, which check leaves
+# shown: they come just above the FAIL line.
 fails_with() {
-    local message=$1 out
+    local message=$1 out status=0 lines
     shift
-    out=$("$@" 2>&1) && return 1
-    grep -qF -- "$message" <<<"$out"
+    out=$("$@" 2>&1) || status=$?
+    ((status != 0)) && grep -qF -- "$message" <<<"$out" && return
+    mapfile -t lines <<<"$out"
+    printf '     exited %s, saying:\n' "$status" >&2
+    printf '     | %s\n' "${lines[@]}" >&2
+    return 1
 }
 
 wait_for() {
@@ -277,7 +283,9 @@ host_introducer() {
 }
 
 host_has_folder() {
-    on_host syncthing cli config folders list | grep -qx claude-sync
+    # Not grep -q, which can cut the list off and so fail the pipeline; see prints_line in
+    # claude-sync.
+    on_host syncthing cli config folders list | grep -x claude-sync >/dev/null
 }
 
 host_trash_can_14_days() {
@@ -771,6 +779,19 @@ EOF
     check ".stignore is the repo's stignore" on_host cmp -s claude/.stignore /opt/stignore
     check "trash can versioning, 14 days" host_trash_can_14_days
     check "setup again, naming the directory another way" host_sync setup --path ./claude/ --use-host-syncthing
+    # A syncthing that pauses after each line of the folder list. claude-sync comes first, so
+    # a reader that stops at it exits before the next line and cuts the list off.
+    docker exec -i -u user "$h" sh -c 'mkdir /home/user/slow && cat >/home/user/slow/syncthing &&
+        chmod +x /home/user/slow/syncthing' <<'EOF'
+#!/bin/sh
+if [ "$*" = "cli config folders list" ]; then
+    /bin/syncthing "$@" | while IFS= read -r line; do echo "$line" && sleep 0.5; done
+    exit
+fi
+exec /bin/syncthing "$@"
+EOF
+    check "setup again, Syncthing listing folders slowly" on_host env PATH=/home/user/slow:/usr/bin:/bin \
+        /opt/claude-sync/claude-sync setup --path claude --use-host-syncthing
     # A curl that never reaches the API, while `syncthing cli` still does.
     docker exec -u user "$h" sh -c 'mkdir /home/user/nocurl && printf "#!/bin/sh\nexit 7\n" >/home/user/nocurl/curl &&
         chmod +x /home/user/nocurl/curl'
@@ -826,12 +847,26 @@ EOF
     check "an invalid device ID is refused" fails_with "not a device ID" claude_sync "$a" unpair not-a-device-id
     # The host device pairs with D directly, so no introducer takes D away there, and also
     # shares another folder with it. It knows D by introduction so far, which pairing alone
-    # does not change.
+    # does not change, so D is deleted there first. Until pair has added D and shared the
+    # folder with it, the host device does not trust its other introducers: a ClusterConfig
+    # from one of them would add D back by introduction. Their connections stay up: a
+    # reconnection here would have the host device introduce D to A again just after A's
+    # unpair, before the test checks that the unpair removed it.
     check "the host device knows D" \
         wait_for on_host sh -c "syncthing cli config devices list | grep -qx $id_d"
+    ids=$(on_host syncthing cli config dump-json |
+        jq -r --arg d "$id_d" '.devices[] | select(.introducer and .deviceID != $d) | .deviceID')
+    introducers=()
+    [[ -z $ids ]] || mapfile -t introducers <<<"$ids"
+    for x in "${introducers[@]}"; do
+        on_host syncthing cli config devices "$x" introducer set false
+    done
     on_host syncthing cli config folders claude-sync devices "$id_d" delete
     on_host syncthing cli config devices "$id_d" delete
     host_sync pair "$id_d" --address "tcp://$d:22000" >/dev/null
+    for x in "${introducers[@]}"; do
+        on_host syncthing cli config devices "$x" introducer set true
+    done
     pair_bounded "$d" "$id_h" --address "tcp://$h:22000" >/dev/null
     on_host syncthing cli config folders photos devices add --device-id "$id_d"
     check "the host device knows D directly" [ -z "$(on_host syncthing cli config devices "$id_d" dump-json | jq -r .introducedBy)" ]

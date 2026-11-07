@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kept. Rerun `setup` on each device to get the new ignore list. Each device keeps the copies
   it already has: delete them by hand while no background job runs. The job's records beside
   them, `state.json` and `timeline.jsonl`, still sync.
+- On a Syncthing already on the host (`--use-host-syncthing`) that syncs other folders too,
+  claude-sync sometimes misread whether a folder or device was in Syncthing's list. Since
+  0.1.0 this could make a repeated `setup` fail with `folder "claude-sync": folder has
+  duplicate ID`, `uninstall` leave claude-sync's folder in place, and `pair` set a device
+  that shares other folders as introducer. These no longer happen.
 
 ## [0.1.1] - 2026-10-09
 
