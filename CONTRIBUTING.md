@@ -47,9 +47,9 @@ CLAUDE_SYNC_BIN=$PWD/dist/claude-sync CLAUDE_SYNC_BIN_VERSION=0.0.0-test make te
 Code adds files to `~/.claude` as it changes. A new file goes on the list when it belongs
 to one machine: its name holds a process ID or a session, a process holds it as a lock, or
 each machine fetches it on its own, as with a git clone. Conflict copies of a file nobody
-edits by hand, made while two devices run Claude Code, point to one. Claude Code's
-[`.claude` directory page](https://code.claude.com/docs/en/claude-directory.md) describes
-many of its files.
+edits by hand, made while two devices run Claude Code, are a sign of such a file. Claude
+Code's [`.claude` directory page](https://code.claude.com/docs/en/claude-directory.md)
+describes many of its files.
 
 To add a rule:
 

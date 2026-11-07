@@ -120,7 +120,7 @@ These live in the synced folder, beside Claude Code's files:
 | `.stversions/` | The trash can ([Recovering files](recovering-files.md)) |
 | `.claude-sync-unpaired/` | The devices removed with `unpair`, one empty file each ([Removing a device](pairing.md#removing-a-device)) |
 
-Syncthing never syncs the first three; each device has its own.
+Syncthing never syncs `.stignore`, `.stfolder` or `.stversions/`; each device has its own.
 
 ## What a first join does
 
