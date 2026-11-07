@@ -1421,12 +1421,15 @@ show() {
 status() {
     (($# == 0)) || die "status takes no arguments"
     check_name
-    local instance=$name place="" runs syncs="" id info="" set_up="" devices=""
+    local instance=$name place="" runs syncs="" id folders info="" set_up="" devices=""
     [[ $name == "$default_name" ]] || instance+=", $(name_source)"
     locate_syncthing
     if [[ -n $place ]]; then
-        { id=$(syncthing_run device-id) && info=$(instance_lines "$id") && devices=$(device_status "$id"); } ||
-            die "cannot reach Syncthing $where"
+        { id=$(syncthing_run device-id) && folders=$(st config folders list) &&
+            info=$(instance_lines "$id" "$folders"); } || die "cannot reach Syncthing $where"
+        if grep -qxF -- "$folder_id" <<<"$folders"; then
+            devices=$(device_status "$id") || die "cannot reach Syncthing $where"
+        fi
         set_up=$(set_up_by "$name" "$place") || true
     fi
     show Instance "$instance"
@@ -1467,13 +1470,20 @@ locate_syncthing() {
     fi
 }
 
-# Status lines of a running instance, for this device's ID, short of the devices. Fails
-# when its Syncthing does not answer.
+# Status lines of a running instance, for this device's ID and the folders its Syncthing
+# has, short of the devices. Fails when its Syncthing does not answer.
 instance_lines() {
-    local ui port network folder state paused conflicts
-    { ui=$(web_ui) && port=$(sync_port) && network=$(network_setting) && folder=$(folder_status); } || return
+    local ui port network folder="" state paused conflicts
+    { ui=$(web_ui) && port=$(sync_port) && network=$(network_setting); } || return
+    # The web UI can remove the folder, and Syncthing then refuses its status, which would
+    # read as Syncthing not answering.
+    if grep -qxF -- "$folder_id" <<<"$2"; then
+        folder=$(folder_status) || return
+    fi
     state=$(field state <<<"$folder")
-    if [[ $state == error ]]; then
+    if [[ -z $folder ]]; then
+        state="not in Syncthing; $(setup_command "$name") adds it again"
+    elif [[ $state == error ]]; then
         state="error: $(field error <<<"$folder")"
     elif [[ -z $state ]]; then
         # Syncthing gives no state for a folder it does not run.

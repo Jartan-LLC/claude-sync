@@ -1986,8 +1986,8 @@ group_status() {
     out=$(CLAUDE_SYNC_RELEASES_API="file://$sdir/releases.json" claude_sync "$sx" status)
     check "status from a checkout leaves out the release check" fails grep -qE '^Newer release:' <<<"$out"
 
-    # Syncthing's replies for three devices: one through a relay, one that does not share
-    # the folder, and one whose completion does not parse.
+    # Syncthing's replies for a device through a relay, one that does not share the folder,
+    # and one whose completion does not parse.
     cat >"$sdir/replies.sh" <<'EOF'
 st() {
     case $* in
@@ -2060,6 +2060,13 @@ EOF
         grep -qE '^Conflict copies: +could not search the synced folder; the message above says why$' <<<"$out"
     check "  with find's message" grep -qF "Permission denied" <<<"$out"
     check "  succeeding" [ "$status" = 0 ]
+    st "$sx" "$owner_sx" config folders claude-sync delete
+    out=$(status_of "$sx" releases.json 2>/dev/null) && status=0 || status=$?
+    check "status of an instance whose folder was removed from Syncthing says how to add it again" grep -qE \
+        "^Folder: +not in Syncthing; CLAUDE_SYNC_NAME=$sx claude-sync setup adds it again\$" <<<"$out"
+    check "  with no devices" fails grep -qE '^Devices:' <<<"$out"
+    check "  succeeding" [ "$status" = 0 ]
+    check "  and leaves the folder out" fails grep -qx claude-sync <<<"$(st "$sx" "$owner_sx" config folders list)"
     out=$(status_of "$sy" releases.json) && status=0 || status=$?
     check "status of a stopped instance says how to start it" grep -qE \
         "^Syncthing: +in container $sy, stopped; CLAUDE_SYNC_NAME=$sy claude-sync setup starts it\$" <<<"$out"
@@ -2080,6 +2087,7 @@ EOF
     as_user "$sz" sh -c "mkdir claude/.claude-sync-unpaired && : >claude/.claude-sync-unpaired/$id_sy"
     out=$(as_user "$sz" env CLAUDE_SYNC_RELEASES_API=file:///nonexistent ./claude-sync status)
     check "status shows the host's own Syncthing" grep -qE '^Syncthing: +your own, on this host$' <<<"$out"
+    check "  naming the default instance alone" grep -qE '^Instance: +claude-sync$' <<<"$out"
     check "  the directory it syncs" grep -qE '^Syncs: +directory /home/user/claude$' <<<"$out"
     check "  its web UI" grep -qE '^Web UI: +http://127\.0\.0\.1:8384$' <<<"$out"
     check "  that it is public" grep -qE '^Network: +public$' <<<"$out"
