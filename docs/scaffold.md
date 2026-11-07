@@ -1,7 +1,7 @@
-# About this template
+# Project tooling
 
-How the template's parts work and how to keep them current. This page stays useful after
-setup.
+For contributors: what the dev container, CI, publishing and Liza do in this repository,
+and how to keep them and the scaffold template they came from current.
 
 ## What's included
 

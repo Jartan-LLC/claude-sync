@@ -128,11 +128,17 @@ cut_off() {
     (($? == 124))
 }
 
+# On a failed check, the command's exit status and output go to stderr, which check leaves
+# shown: they come just above the FAIL line.
 fails_with() {
-    local message=$1 out
+    local message=$1 out status=0 lines
     shift
-    out=$("$@" 2>&1) && return 1
-    grep -qF -- "$message" <<<"$out"
+    out=$("$@" 2>&1) || status=$?
+    ((status != 0)) && grep -qF -- "$message" <<<"$out" && return
+    mapfile -t lines <<<"$out"
+    printf '     exited %s, saying:\n' "$status" >&2
+    printf '     | %s\n' "${lines[@]}" >&2
+    return 1
 }
 
 wait_for() {
@@ -270,7 +276,9 @@ host_introducer() {
 }
 
 host_has_folder() {
-    on_host syncthing cli config folders list | grep -qx claude-sync
+    # Not grep -q, which can cut the list off and so fail the pipeline; see prints_line in
+    # claude-sync.
+    on_host syncthing cli config folders list | grep -x claude-sync >/dev/null
 }
 
 host_trash_can_14_days() {
@@ -760,6 +768,19 @@ EOF
     check ".stignore is the repo's stignore" on_host cmp -s claude/.stignore /opt/stignore
     check "trash can versioning, 14 days" host_trash_can_14_days
     check "setup again, naming the directory another way" host_sync setup --path ./claude/ --use-host-syncthing
+    # A syncthing that pauses after each line of the folder list. claude-sync comes first, so
+    # a reader that stops at it exits before the next line and cuts the list off.
+    docker exec -i -u user "$h" sh -c 'mkdir /home/user/slow && cat >/home/user/slow/syncthing &&
+        chmod +x /home/user/slow/syncthing' <<'EOF'
+#!/bin/sh
+if [ "$*" = "cli config folders list" ]; then
+    /bin/syncthing "$@" | while IFS= read -r line; do echo "$line" && sleep 0.5; done
+    exit
+fi
+exec /bin/syncthing "$@"
+EOF
+    check "setup again, Syncthing listing folders slowly" on_host env PATH=/home/user/slow:/usr/bin:/bin \
+        /opt/claude-sync/claude-sync setup --path claude --use-host-syncthing
     # A curl that never reaches the API, while `syncthing cli` still does.
     docker exec -u user "$h" sh -c 'mkdir /home/user/nocurl && printf "#!/bin/sh\nexit 7\n" >/home/user/nocurl/curl &&
         chmod +x /home/user/nocurl/curl'
