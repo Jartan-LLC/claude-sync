@@ -1410,13 +1410,15 @@ EOF
     id_p=$(docker exec -u "$owner_p" "$p" syncthing device-id)
     pair_bounded "$n" "$id_p" --address "tcp://$p:22000" --keep >/dev/null
     check "P joins N" pair_bounded "$p" "$id_n" --address "tcp://$n:22000"
-    in_target "$mount_n" "echo changed >/t/settings.json && rm /t/claude.json"
+    in_target "$mount_n" "echo changed >/t/settings.json && rm /t/claude.json &&
+        echo newer >/t/newer.md && chown $owner_n /t/newer.md"
     check "a change and a delete on N reach P" \
         wait_for in_target "$mount_p" '[ ! -e /t/claude.json ] && grep -qx changed /t/settings.json'
     check "restore over N's live folder" claude_sync "$n" restore "$archive" --volume "$vol_n"
     check "  gives P the changed file back" \
         wait_for in_target "$mount_p" "grep -qx 'fixture settings.json' /t/settings.json"
     check "  and the deleted one" wait_for in_target "$mount_p" "grep -qx 'fixture claude.json' /t/claude.json"
+    check "  and keeps N's file that the archive lacks" in_target "$mount_n" "grep -qx newer /t/newer.md"
 }
 
 run_group chain

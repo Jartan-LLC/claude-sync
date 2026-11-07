@@ -1014,9 +1014,7 @@ backup() {
     detect_mode
     # Each archive would sync to every device and hold the ones before it. Checked before
     # mkdir, whose directory would sync too.
-    if in_synced_folder "$dir"; then
-        die "$dir is in the synced folder; give backup a directory outside it"
-    fi
+    check_outside_synced_folder "$dir"
     mkdir -p -- "$dir"
     local archive tmp
     # remove_stopped_backups and prune match this name's format again, and stop finding the
@@ -1053,36 +1051,37 @@ write_archive() {
     ((status == 0)) || die "tar could not archive the synced folder; its message is above"
 }
 
-# Whether DIR, or the directory mkdir -p would make of it, is the synced folder or inside it.
-in_synced_folder() {
+# Dies if DIR, or the directory mkdir -p would make of it, is the synced folder or in it.
+check_outside_synced_folder() {
     if [[ $mode == host ]]; then
-        path_within "$(planned_path "$1")" "$(real_path "$folder_path")"
-        return
+        path_within "$(planned_path "$1")" "$(real_path "$folder_path")" || return 0
+    else
+        # The container's folder is a volume or a path on the Docker host, which may not be
+        # this machine, so no path here compares with it. A file made in DIR's nearest
+        # existing directory is looked for from inside the container instead.
+        local dir=$1 probe out errors status=0
+        while [[ ! -d $dir ]]; do dir=$(dirname -- "$dir"); done
+        probe=$dir/.$name-probe.$$
+        # Not writable: then backup cannot make DIR or write in it either, and fails there.
+        : 2>/dev/null >"$probe" || return 0
+        # In a subshell, so this EXIT trap leaves the caller's in place.
+        out=$(
+            # shellcheck disable=SC2064 # expanded now: probe is local
+            trap "rm -f -- $(printf %q "$probe")" EXIT
+            docker exec -u "$owner" "$name" find "$folder_path" -name "${probe##*/}" 2>&1
+        ) || status=$?
+        # The paths find matched start with a slash; every other line is a message.
+        errors=$(grep -v '^/' <<<"$out") || true
+        [[ -z $errors ]] || printf '%s\n' "$errors" >&2
+        # BusyBox's find exits 1 for a file that goes between listing its directory and
+        # reading it, the race that only_files_that_changed passes for tar.
+        if ((status == 1)) && ! grep -qvE "^find: $folder_path/.*: No such file or directory\$" <<<"$errors"; then
+            status=0
+        fi
+        ((status == 0)) || die "could not search the synced folder for $1; find's message is above"
+        grep -q '^/' <<<"$out" || return 0
     fi
-    # The container's folder is a volume or a path on the Docker host, which may not be this
-    # machine, so no path here compares with it. A file made in DIR's nearest existing
-    # directory is looked for from inside the container instead.
-    local dir=$1 probe out errors status=0
-    while [[ ! -d $dir ]]; do dir=$(dirname -- "$dir"); done
-    probe=$dir/.$name-probe.$$
-    # Not writable: then backup cannot make DIR or write in it either, and fails there.
-    : 2>/dev/null >"$probe" || return 1
-    # In a subshell, so this EXIT trap leaves the caller's in place.
-    out=$(
-        # shellcheck disable=SC2064 # expanded now: probe is local
-        trap "rm -f -- $(printf %q "$probe")" EXIT
-        docker exec -u "$owner" "$name" find "$folder_path" -name "${probe##*/}" 2>&1
-    ) || status=$?
-    # The paths find matched start with a slash; every other line is a message.
-    errors=$(grep -v '^/' <<<"$out") || true
-    [[ -z $errors ]] || printf '%s\n' "$errors" >&2
-    # BusyBox's find exits 1 for a file that goes between listing its directory and reading
-    # it, the race that only_files_that_changed passes for tar.
-    if ((status == 1)) && ! grep -qvE "^find: $folder_path/.*: No such file or directory\$" <<<"$errors"; then
-        status=0
-    fi
-    ((status == 0)) || die "could not search the synced folder for $1; find's message is above"
-    grep -q '^/' <<<"$out"
+    die "$1 is in the synced folder; give backup a directory outside it"
 }
 
 # Removes the temporary files that this instance's backups into DIR left there when stopped
