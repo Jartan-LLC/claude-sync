@@ -1294,6 +1294,8 @@ EOF
     check "  and where there is none, prints usage" [ "$status" = 2 ]
     check "  and with a name that is not valid, says so" fails_with "CLAUDE_SYNC_NAME must be" \
         env CLAUDE_SYNC_NAME=Not-Valid "$new" setup
+    check "  and where docker cannot be reached, says so" fails_with "docker cannot be reached" \
+        with_releases missing.json env CLAUDE_SYNC_TEST_DOCKER_DOWN=1 CLAUDE_SYNC_NAME="$n" "$new" setup
 
     # A failed upgrade goes on to the checks, which say what it left undone.
     out=$(upgrade_here releases.json) || true

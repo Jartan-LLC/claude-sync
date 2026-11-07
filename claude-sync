@@ -651,6 +651,10 @@ setup() {
     done
     check_name
     if [[ -z $kind ]] && ! current_setup; then
+        # A daemon that is not running would otherwise pass for no instance in a container.
+        if command -v docker >/dev/null && ! docker info >/dev/null 2>&1; then
+            die "docker cannot be reached, so setup cannot tell whether instance $name runs in a container; once docker works, rerun $(setup_command "$name")"
+        fi
         usage >&2
         exit 2
     fi
@@ -1148,8 +1152,9 @@ upgrade() {
         install_release "$release_safe" "$file"
         echo "Installed claude-sync ${release_safe#v} in place of $claude_sync_version."
         # The new version applies itself, and tells of any breaking release. It does not exec
-        # again: install_release checked that it is release_safe, the newest release that is
-        # not breaking, so it finds nothing newer to install.
+        # again unless a newer release came out between the two fetches of the list:
+        # install_release checked that it is release_safe, the newest release that is not
+        # breaking.
         exec "$file" upgrade
     fi
     if [[ -n $release_breaking ]]; then

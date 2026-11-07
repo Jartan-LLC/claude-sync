@@ -50,7 +50,8 @@ port again.
 With no `--volume` or `--path`, `setup` applies this version to the instance already set
 up, with the target it syncs, as after an upgrade with `dnf`. Ports and `--private` stay as
 they are unless given again. With your own Syncthing, it applies to claude-sync's folder
-there. With no instance set up, it prints the usage.
+there. With no instance set up, it prints the usage, or, when Docker is installed but
+cannot be reached, says so.
 
 Each instance records the version of claude-sync that last set it up. When that version
 is older than the one installed, `pair` and `unpair` say so, with the `setup` command to
@@ -162,4 +163,5 @@ With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninsta
 | `cannot write to` ... `where claude-sync is` | Run `upgrade` as the user who owns that directory |
 | `does not match the release's SHA-256` or `is not version` | Nothing was changed; run `upgrade` again later, and report it if it keeps failing |
 | `setup failed for instance` | Fix what that instance's `setup` printed above, then rerun `upgrade` |
+| `docker cannot be reached` | Start Docker, and check that `docker ps` works as this user; then rerun `setup` |
 | `docker cannot list the instances in containers` | Start Docker, and check that `docker ps` works as this user; then rerun `upgrade` |
