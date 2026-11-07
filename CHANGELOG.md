@@ -40,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `uninstall` removes that instance. `CLAUDE_SYNC_NAME`, when set, still wins.
 - `setup`, `pair`, `unpair`, `uninstall` and `backup` say on stderr which instance they act
   on when it is not `claude-sync`.
+- `claude-sync setup --backup-dir DIR` runs `claude-sync backup DIR` for the instance every
+  day, with a systemd user timer, while you are logged in; a day missed runs at your next
+  login. Later runs of `setup` and `upgrade` keep it; `setup --no-backup` and `uninstall`
+  remove it. Hosts without systemd's user manager, such as macOS, refuse it.
 
 ### Fixed
 

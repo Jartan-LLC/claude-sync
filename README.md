@@ -111,7 +111,8 @@ claude-sync uninstall
 ```
 
 Removes the container and this device's Syncthing state; with your own Syncthing, it
-removes only claude-sync's folder from it. Your `~/.claude` is untouched (see
+removes only claude-sync's folder from it. It also removes the daily backup, if set up.
+Your `~/.claude` and the backup archives are untouched (see
 [Commands](docs/commands.md#uninstall)).
 
 ## What syncs

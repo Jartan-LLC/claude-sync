@@ -30,6 +30,8 @@ leaves the fix out. `claude-sync help` prints the same commands and flags.
 | `--public` | `setup`, not with `--use-host-syncthing` | Returns a private device to Syncthing's defaults |
 | `--gui-port PORT` | `setup`, not with `--use-host-syncthing` | Fixes the web UI port, from 1024 to 65535 |
 | `--sync-port PORT` | `setup`, not with `--use-host-syncthing` | Fixes the sync port, from 1024 to 65535 |
+| `--backup-dir DIR` | `setup` | Runs `backup DIR` daily ([Daily backups](#daily-backups)) |
+| `--no-backup` | `setup` | Removes the daily backup |
 | `--keep` | `pair` | Keeps this device's files instead of joining ([Joining](pairing.md#joining)) |
 | `--address tcp://HOST:PORT` | `pair` | Where to reach the other device; required when global discovery is off here (a `--private` device, or your own Syncthing with it off) |
 | `--keep-weekly N` | `backup` | Keeps the newest archive of each of the last N weeks that have one; default 4 |
@@ -56,10 +58,10 @@ the web UI port, Syncthing cannot start its web UI and `setup` cannot move it: f
 port again.
 
 With no `--volume` or `--path`, `setup` applies this version to the instance already set
-up, with the target it syncs, as after an upgrade with `dnf`. Ports and `--private` stay as
-they are unless given again. With your own Syncthing, it applies to claude-sync's folder
-there. With no instance set up, it prints the usage, or, when Docker is installed but
-cannot be reached, says so.
+up, with the target it syncs, as after an upgrade with `dnf`. Ports, `--private` and the
+daily backup stay as they are unless given again. With your own Syncthing, it applies to
+claude-sync's folder there. With no instance set up, it prints the usage, or, when Docker
+is installed but cannot be reached, says so.
 
 Each instance records the version of claude-sync that last set it up. When that version
 is older than the one installed, `pair` and `unpair` say so, with the `setup` command to
@@ -152,9 +154,10 @@ that Syncthing's ports in Syncthing itself.
 claude-sync uninstall
 ```
 
-Removes the instance `claude-sync list` marks: its container and this device's Syncthing
-state, including its device ID. Your `~/.claude` is untouched; the files Syncthing and
-claude-sync keep in it stay ([Caveats](caveats.md#syncthings-and-claude-syncs-files)).
+Removes the instance `claude-sync list` marks: its container, this device's Syncthing
+state, including its device ID, and its [daily backup](#daily-backups), whose archives
+stay. Your `~/.claude` is untouched; the files Syncthing and claude-sync keep in it stay
+([Caveats](caveats.md#syncthings-and-claude-syncs-files)).
 
 With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninstall).
 
@@ -183,6 +186,25 @@ It removes the other archives.
 
 Give each device a directory of its own: two devices backing up the same instance name into
 one directory remove each other's archives.
+
+### Daily backups
+
+```bash
+claude-sync setup --backup-dir ~/claude-backups
+```
+
+Runs `backup` into the directory every day through a systemd user timer, so it needs
+systemd. It keeps `backup`'s default `--keep-weekly` and `--keep-monthly`. The timer runs
+while you are logged in, and a day missed while you were logged out runs at your next
+login. Each instance has a timer of its own, named after it: `claude-sync-backup.timer`
+for the default instance. Later runs of `setup` keep it; `setup --no-backup` and
+`uninstall` remove it. A timer you disabled stays disabled until you give `--backup-dir`
+again.
+
+The timer runs `backup` in systemd's environment, which lacks what only your shell sets.
+If `backup` needs such a variable, such as `DOCKER_HOST` for rootless Docker, or a `PATH`
+that finds your own Syncthing, also set it in a `.conf` file in `~/.config/environment.d/`,
+then run `systemctl --user daemon-reload` so that the next backup gets it.
 
 ## restore
 
@@ -244,7 +266,9 @@ restore with `tar` alone.
 | `docker cannot be reached` | Start Docker, and check that `docker ps` works as this user; then rerun the command |
 | `docker cannot list the instances in containers` | Start Docker, and check that `docker ps` works as this user; then rerun the command |
 | `cannot inspect container` | Check that `docker ps` works as this user, then rerun `status` |
-| `is in the synced folder` | Give `backup` a directory outside the synced folder |
+| `is in the synced folder` | Give `backup` or `setup --backup-dir` a directory outside the synced folder |
+| `needs systemd's user manager` | Run `setup` in a login session as that user, not from `su` or `sudo`; without systemd, as on macOS, schedule `backup` another way |
+| `cannot reach systemd's user manager` | Rerun the command in a login session as that user, not from `su`, `sudo` or cron |
 | `could not search the synced folder` | find's message above names the directory. If the folder's owner cannot read it, `chown` it |
 | `tar could not archive the synced folder` | tar's message above names the file. If the folder's owner cannot read it, `chown` it; if it was being written at that moment, rerun `backup` |
 | `cannot read ARCHIVE as a backup` | The file is not a whole gzip tar archive, such as a copy cut short; copy it again |
