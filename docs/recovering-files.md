@@ -22,8 +22,9 @@ kept beside it as `NAME.sync-conflict-DATE-TIME-DEVICE.EXT`, on every device.
 
 ## From a backup
 
-An archive from [`backup`](commands.md#backup) holds the whole folder as it was. Restore it
-with claude-sync, into a Docker volume or a directory:
+An archive from [`backup`](commands.md#backup), which `setup` can also [run
+daily](commands.md#daily-backups), holds the whole folder as it was. Restore it with
+claude-sync, into a Docker volume or a directory:
 
 ```bash
 claude-sync restore ~/claude-backups/claude-sync-20261107T120000Z.tar.gz --volume claude-data

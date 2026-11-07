@@ -1847,6 +1847,8 @@ EOF
         fails_with "systemctl --user enable --now $u-backup.timer failed: Failed to enable" \
         env SYSTEMCTL_FAIL=enable CLAUDE_SYNC_NAME="$u" "$bin" setup --backup-dir "$tm/backups"
     check "  before recording its version" fails stamp_of "$u"
+    # The checks below that $units is empty would pass on a directory that is not there.
+    check "  after making the unit directory" [ -d "$units" ]
     check "  removing the units it wrote" [ -z "$(ls -A "$units")" ]
     check "  after disabling the timer, which enable may have left enabled" [ "$(systemctl_calls)" = "--user daemon-reload
 --user enable --now $u-backup.timer
@@ -1927,8 +1929,9 @@ EOF
 --user daemon-reload" ]
     check "  saying so" grep -qF "Removed the daily backup to $tm/backups;" <<<"$out"
     rm -f -- "$SYSTEMCTL_CALLS"
-    claude_sync "$u" setup --no-backup >/dev/null
-    check "  and with none, does nothing" [ -z "$(systemctl_calls)" ]
+    check "  and with none, needs no user manager" \
+        env SYSTEMCTL_STATE=offline CLAUDE_SYNC_NAME="$u" "$bin" setup --no-backup
+    check "  calling no systemctl" [ -z "$(systemctl_calls)" ]
     claude_sync "$u" setup --backup-dir "$tm/backups" >/dev/null
     claude_sync "$u" backup "$tm/backups" >/dev/null
     check "uninstall without systemd's user manager says so" \
@@ -1970,9 +1973,14 @@ EOF
     check "a DIR in the synced folder is refused" fails_with "is in the synced folder" \
         y_sync setup --path claude --use-host-syncthing --backup-dir claude/backups
     check "  writing no unit" fails as_user "$y" test -e .config/systemd/user/claude-sync-backup.service
-    check "  or adding the folder" fails grep -qx claude-sync <<<"$(as_user "$y" syncthing cli config folders list)"
-    y_sync setup --path claude --use-host-syncthing --backup-dir backups >/dev/null
-    check "setup --use-host-syncthing --backup-dir installs the daily backup, DIR made absolute" \
+    local folders
+    folders=$(as_user "$y" syncthing cli config folders list)
+    check "  or adding the folder" fails grep -qx claude-sync <<<"$folders"
+    # A relative XDG_CONFIG_HOME, which user_unit_dir ignores.
+    # shellcheck disable=SC2016 # expanded by the fixture's shell
+    as_user "$y" XDG_CONFIG_HOME=config sh -c 'PATH=/home/user/stub:$PATH SYSTEMCTL_CALLS=/home/user/calls exec "$@"' \
+        sh timeout 300 /opt/claude-sync/claude-sync setup --path claude --use-host-syncthing --backup-dir backups >/dev/null
+    check "setup --use-host-syncthing --backup-dir installs the daily backup in ~/.config, DIR made absolute" \
         as_user "$y" grep -qxF 'ExecStart="/opt/claude-sync/claude-sync" backup "/home/user/backups"' \
         .config/systemd/user/claude-sync-backup.service
     check "  for the default instance" as_user "$y" grep -qxF Environment=CLAUDE_SYNC_NAME=claude-sync \
@@ -1993,7 +2001,10 @@ EOF
     as_user "$y" rm .config/claude-sync/instance
     y_sync setup --no-backup >/dev/null
     check "setup --no-backup there removes it" [ -z "$(as_user "$y" ls -A .config/systemd/user)" ]
-    y_sync setup --backup-dir backups >/dev/null
+    # shellcheck disable=SC2088 # the ~ is for setup to expand
+    y_sync setup --backup-dir '~/backups' >/dev/null
+    check "setup --backup-dir expands a leading ~" as_user "$y" grep -qxF \
+        'ExecStart="/opt/claude-sync/claude-sync" backup "/home/user/backups"' "$y_units.service"
     y_sync uninstall >/dev/null
     check "uninstall there removes it" fails as_user "$y" test -e "$y_units.timer"
 }

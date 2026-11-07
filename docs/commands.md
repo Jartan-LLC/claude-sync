@@ -173,7 +173,8 @@ again.
 
 The timer runs `backup` in systemd's environment, which lacks what only your shell sets.
 If `backup` needs such a variable, such as `DOCKER_HOST` for rootless Docker, or a `PATH`
-that finds your own Syncthing, set it in `~/.config/environment.d/` as well.
+that finds your own Syncthing, also set it in a `.conf` file in `~/.config/environment.d/`,
+then run `systemctl --user daemon-reload` so that the next backup gets it.
 
 ## restore
 
