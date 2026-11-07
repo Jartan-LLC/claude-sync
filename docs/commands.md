@@ -224,7 +224,9 @@ restore with `tar` alone.
 | `setup failed for instance` | Fix what that instance's `setup` printed above, then rerun `upgrade` |
 | `docker cannot be reached` | Start Docker, and check that `docker ps` works as this user; then rerun `setup` |
 | `docker cannot list the instances in containers` | Start Docker, and check that `docker ps` works as this user; then rerun `upgrade` |
-| `is in the synced folder` | Give `backup` a directory outside the synced folder |
+| `is in the synced folder` | Give `backup` or `setup --backup-dir` a directory outside the synced folder |
+| `needs systemd's user manager` | Run `setup` in a login session as that user, not from `su` or `sudo`; without systemd, as on macOS, schedule `backup` another way |
+| `cannot reach systemd's user manager` | Rerun the command in a login session as that user, not from `su`, `sudo` or cron |
 | `could not search the synced folder` | find's message above names the directory. If the folder's owner cannot read it, `chown` it |
 | `tar could not archive the synced folder` | tar's message above names the file. If the folder's owner cannot read it, `chown` it; if it was being written at that moment, rerun `backup` |
 | `cannot read ARCHIVE as a backup` | The file is not a whole gzip tar archive, such as a copy cut short; copy it again |

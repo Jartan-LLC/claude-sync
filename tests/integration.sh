@@ -1761,7 +1761,7 @@ EOF
 # The calls the stub systemctl got since the last reset, apart from is-system-running, which
 # changes nothing.
 systemctl_calls() {
-    grep -vx -- '--user is-system-running' "$SYSTEMCTL_CALLS" 2>/dev/null || true
+    grep -v -e '^--user is-system-running$' -e '^--user is-enabled ' "$SYSTEMCTL_CALLS" 2>/dev/null || true
 }
 
 # U, then the host fixture Y: the daily backup's units, with a stub systemctl that logs its
@@ -1832,7 +1832,10 @@ EOF
     check "setup stops when systemd fails to enable the timer" \
         fails_with "systemctl --user enable --now $u-backup.timer failed: Failed to enable" \
         env SYSTEMCTL_FAIL=enable CLAUDE_SYNC_NAME="$u" "$bin" setup --backup-dir "$tm/backups"
-    check "  before recording its version, for upgrade to set it up again" fails stamp_of "$u"
+    check "  before recording its version" fails stamp_of "$u"
+    check "  removing the units it wrote" [ -z "$(ls -A "$units")" ]
+    out=$(claude_sync "$u" setup)
+    check "  so that setup after it does not say it backs up" fails grep -qF "Backs up to" <<<"$out"
     rm -f -- "$SYSTEMCTL_CALLS"
 
     out=$(claude_sync "$u" setup --backup-dir "$odd")
@@ -1856,6 +1859,8 @@ EOF
     check "setup with no target keeps the daily backup" [ "$(cat "$service" "$timer")" = "$units_before" ]
     check "  calling no systemctl, with nothing to change" [ -z "$(systemctl_calls)" ]
     check "  and reads DIR back, to say where it backs up" grep -qF "Backs up to $odd daily" <<<"$out"
+    out=$(env SYSTEMCTL_FAIL=is-enabled CLAUDE_SYNC_NAME="$u" "$bin" setup)
+    check "  which it does not say of a timer the user disabled" fails grep -qF "Backs up to" <<<"$out"
     claude_sync "$u" setup --volume "$vol_u" >/dev/null
     check "setup with the target keeps it too" [ "$(cat "$service" "$timer")" = "$units_before" ]
     out=$(env PATH="$tm/probe-bin:$PATH" CLAUDE_SYNC_NAME="$u" "$bin" setup 2>&1) && status=0 || status=$?
@@ -1864,6 +1869,10 @@ EOF
     check "  and keeping it" [ "$(cat "$service" "$timer")" = "$units_before" ]
     cp "$bin" "$tm/other/claude-sync"
     [[ -n ${CLAUDE_SYNC_BIN:-} ]] || cp "$root"/compose*.yaml "$root/stignore" "$tm/other/"
+    check "setup by another claude-sync stops when systemd fails to reload the units" \
+        fails_with "systemctl --user daemon-reload failed" \
+        env SYSTEMCTL_FAIL=daemon-reload CLAUDE_SYNC_NAME="$u" "$tm/other/claude-sync" setup
+    check "  putting back the units it replaced" [ "$(cat "$service" "$timer")" = "$units_before" ]
     rm -f -- "$SYSTEMCTL_CALLS"
     CLAUDE_SYNC_NAME=$u "$tm/other/claude-sync" setup >/dev/null
     check "setup by another claude-sync points the backup at it" \
@@ -1894,11 +1903,18 @@ EOF
         fails_with "cannot reach systemd's user manager to remove $u-backup.timer" \
         env SYSTEMCTL_STATE=offline CLAUDE_SYNC_NAME="$u" "$bin" uninstall
     check "  removing nothing" docker container inspect "$u"
+    mkdir "$tm/kept"
+    cp -p -- "$service" "$timer" "$tm/kept/"
     rm -f -- "$SYSTEMCTL_CALLS"
     claude_sync "$u" uninstall >/dev/null
     check "uninstall removes the daily backup" [ -z "$(ls -A "$units")" ]
     check "  disabling the timer" grep -qxF -- "--user disable --now $u-backup.timer" <<<"$(systemctl_calls)"
     check "  leaving the archives" [ "$(files_in "$tm/backups")" = 1 ]
+    # As left by an instance removed outside claude-sync.
+    cp -p -- "$tm/kept/"* "$units/"
+    out=$(claude_sync "$u" setup --no-backup)
+    check "setup --no-backup removes the daily backup of an instance that is gone" [ -z "$(ls -A "$units")" ]
+    check "  saying so" grep -qF "Removed the daily backup to $tm/backups;" <<<"$out"
 
     echo "# --backup-dir with --use-host-syncthing"
     docker run -d --name "$y" --network "$net" --user user --entrypoint env "$host_image" \
@@ -1925,8 +1941,15 @@ EOF
     check "  for the default instance" as_user "$y" grep -qxF Environment=CLAUDE_SYNC_NAME=claude-sync \
         .config/systemd/user/claude-sync-backup.service
     check "  enabling it" as_user "$y" grep -qxF -- "--user enable --now claude-sync-backup.timer" calls
+    local y_units=.config/systemd/user/claude-sync-backup
+    units_before=$(as_user "$y" cat "$y_units.service" "$y_units.timer")
+    y_sync setup >/dev/null
+    check "setup there keeps it" [ "$(as_user "$y" cat "$y_units.service" "$y_units.timer")" = "$units_before" ]
+    y_sync setup --no-backup >/dev/null
+    check "setup --no-backup there removes it" [ -z "$(as_user "$y" ls -A .config/systemd/user)" ]
+    y_sync setup --backup-dir backups >/dev/null
     y_sync uninstall >/dev/null
-    check "uninstall there removes it" fails as_user "$y" test -e .config/systemd/user/claude-sync-backup.timer
+    check "uninstall there removes it" fails as_user "$y" test -e "$y_units.timer"
 }
 
 run_group chain

@@ -743,6 +743,11 @@ setup() {
         if command -v docker >/dev/null && ! docker info >/dev/null 2>&1; then
             die "docker cannot be reached, so setup cannot tell whether instance $name runs in a container; once docker works, rerun $(setup_command "$name")"
         fi
+        # An instance removed outside claude-sync leaves its timer firing at nothing.
+        if [[ $backup == off ]] && has_scheduled_backup; then
+            unschedule_backup
+            return
+        fi
         usage >&2
         exit 2
     fi
@@ -1640,9 +1645,10 @@ scheduled_backup_dir() {
 
 # Applies setup's BACKUP to this instance's daily backup: a DIR installs it there, off
 # removes it, and empty keeps it, rewritten for this claude-sync. Called before setup records
-# the version, so when it fails, upgrade runs setup again.
+# the version, so that after a failure, which puts back the units it replaced, upgrade runs
+# setup again.
 schedule_backup() {
-    local dir=$1 asked="" path unit bin header service timer
+    local dir=$1 asked="" path unit bin header service timer saved="" ext
     [[ -z $1 ]] || asked=1
     case $dir in
         off)
@@ -1654,7 +1660,7 @@ schedule_backup() {
             # Only a warning, as upgrade runs this for every instance. DIR was checked when
             # given; a target set up again around it since can hold it.
             (check_outside_synced_folder "$dir") ||
-                printf 'claude-sync: the daily backup into %s fails each day until %s --backup-dir gives it another DIR\n' \
+                printf 'claude-sync: the daily backup into %s fails each day until what is above is fixed, or %s --backup-dir gives it another DIR\n' \
                     "$dir" "$(setup_command "$name")" >&2
             ;;
         *)
@@ -1692,33 +1698,64 @@ WantedBy=timers.target"
         user_systemd ||
             die "cannot reach systemd's user manager to update $unit.timer; run $(setup_command "$name") again in a login session as $(id -un)"
         mkdir -p -- "${path%/*}"
+        # The units this replaces, put back when systemd fails below: units it never loaded or
+        # enabled would pass for installed, and the next setup would find nothing to change.
+        saved=$(mktemp -d -t claude-sync.XXXXXX)
+        for ext in service timer; do
+            [[ ! -e $path.$ext ]] || cp -p -- "$path.$ext" "$saved/"
+        done
         printf '%s\n' "$service" >"$path.service"
         printf '%s\n' "$timer" >"$path.timer"
-        user_systemctl daemon-reload
     fi
-    # Only when asked: a timer the user disabled stays so through setup and upgrade.
-    [[ -z $asked ]] || user_systemctl enable --now "$unit.timer"
+    if ! (
+        [[ -z $saved ]] || user_systemctl daemon-reload
+        # Only when asked: a timer the user disabled stays so through setup and upgrade.
+        [[ -z $asked ]] || user_systemctl enable --now "$unit.timer"
+    ); then
+        if [[ -n $saved ]]; then
+            for ext in service timer; do
+                if [[ -e $saved/$unit.$ext ]]; then
+                    mv -- "$saved/$unit.$ext" "$path.$ext"
+                else
+                    rm -f -- "$path.$ext"
+                fi
+            done
+            rm -rf -- "$saved"
+            # Best effort, after the failure reported above: if the reload went through and
+            # enable failed, systemd has loaded the units this run wrote, not those put back.
+            systemctl --user daemon-reload >/dev/null 2>&1 || true
+        fi
+        exit 1
+    fi
+    [[ -z $saved ]] || rm -rf -- "$saved"
+    # Said only of an enabled timer: one the user disabled does not back up.
+    [[ -n $asked ]] || systemctl --user is-enabled --quiet "$unit.timer" 2>/dev/null || return 0
     printf 'Backs up to %s daily; systemctl --user start %s backs up now, and journalctl --user -u %s shows how each backup went.\n' \
         "$dir" "$unit" "$unit"
+}
+
+# Whether this instance has a daily backup, even one left half removed.
+has_scheduled_backup() {
+    local path
+    path=$(backup_unit)
+    [[ -e $path.service || -e $path.timer ]]
 }
 
 # Dies when this instance has a daily backup and systemd's user manager, which removes it,
 # cannot be reached. Called before anything else changes, so that the command does not stop
 # halfway.
 check_unschedule() {
-    local path
-    path=$(backup_unit)
-    [[ -e $path.service || -e $path.timer ]] || return 0
+    has_scheduled_backup || return 0
     user_systemd ||
-        die "cannot reach systemd's user manager to remove ${path##*/}.timer; run this again in a login session as $(id -un)"
+        die "cannot reach systemd's user manager to remove $name-backup.timer; run this again in a login session as $(id -un)"
 }
 
-# Removes this instance's daily backup, if it has one, once check_unschedule has passed. Its
-# archives stay.
+# Removes this instance's daily backup, if it has one. Its archives stay.
 unschedule_backup() {
     local path unit dir
+    has_scheduled_backup || return 0
+    check_unschedule
     path=$(backup_unit)
-    [[ -e $path.service || -e $path.timer ]] || return 0
     unit=${path##*/}
     dir=$(scheduled_backup_dir) || dir=""
     [[ ! -e $path.timer ]] || user_systemctl disable --now "$unit.timer"
