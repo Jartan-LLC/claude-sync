@@ -1212,7 +1212,7 @@ restore() {
         # tar run by root keeps the archive's owners unless told not to.
         own=(--no-same-owner)
     fi
-    # Read through first, so a damaged archive writes nothing.
+    # Read through first, so a damaged archive writes nothing, not even --path's DIR.
     "${untar[@]}" -tzf - <"$archive" >/dev/null || die "cannot read $archive as a backup; nothing was restored"
     [[ $kind == volume ]] || mkdir -p -- "$target"
     "${untar[@]}" -xzf - -C "$dest" "${own[@]}" <"$archive" ||
