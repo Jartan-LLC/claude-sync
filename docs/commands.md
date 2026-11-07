@@ -9,6 +9,8 @@ leaves the fix out. `claude-sync help` prints the same commands and flags.
 |---|---|
 | `setup --volume NAME` | Syncs the Docker volume NAME that holds `~/.claude` |
 | `setup --path DIR` | Syncs the directory DIR on this host |
+| `setup` | Applies this version to the instance already set up, keeping its target |
+| `upgrade` | Installs the newest release that is not breaking and applies it to every running instance on this host |
 | `pair DEVICE-ID` | Syncs with the device DEVICE-ID; run on both devices |
 | `unpair DEVICE-ID` | Removes the device DEVICE-ID from every device; run it on any device |
 | `uninstall` | Removes claude-sync's container and Syncthing state, or its folder from your own Syncthing |
@@ -44,6 +46,41 @@ instead, and later runs keep them. Swapping the two ports with each other leaves
 port down for about a minute, until Syncthing retries it. If another program later takes
 the web UI port, Syncthing cannot start its web UI and `setup` cannot move it: free that
 port again.
+
+With no `--volume` or `--path`, `setup` applies this version to the instance already set
+up, with the target it syncs, as after an upgrade with `dnf`. Ports and `--private` stay as
+they are unless given again. With your own Syncthing, it applies to claude-sync's folder
+there. With no instance set up, it prints the usage.
+
+Each instance records the version of claude-sync that last set it up. When that version
+is older than the one installed, `pair` and `unpair` say so, with the `setup` command to
+run.
+
+## upgrade
+
+```bash
+claude-sync upgrade
+```
+
+`upgrade` replaces the installed claude-sync with the newest release that is not breaking,
+then has the new version run `setup`, with no target, for every running instance on this
+host whose recorded version is older: each instance under its `CLAUDE_SYNC_NAME`, and
+claude-sync's folder in your own Syncthing. Run again with nothing new to install, it
+applies only to instances an earlier run left behind. It names a stopped instance and
+leaves it stopped; `setup` under that instance's name starts it with the new version.
+
+- It downloads the release's `claude-sync` from GitHub and checks it against the release's
+  `claude-sync.sha256`, then moves it over the installed file, so a command still running
+  the old file is unaffected. It does not run `gh attestation verify`; you can run that
+  yourself afterwards, as in [Install](../README.md#install).
+- A release is breaking, by its version number as [Semantic
+  Versioning](https://semver.org/) reads it, when it is a new major version, or a new minor
+  version while the major is 0. `upgrade` does not install one: it says the release is
+  out and links its release notes, which say how to upgrade to it by hand. A newer
+  release that is not breaking is still installed. Pre-releases are left out.
+- It refuses an RPM install, which `dnf` upgrades (see [Upgrade](../README.md#upgrade)),
+  and a claude-sync run from a checkout, whose version is `dev`.
+- It needs curl, and write access to the directory claude-sync is installed in.
 
 ## Several instances on one host
 
@@ -109,3 +146,10 @@ With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninsta
 | `container NAME already syncs` | Give this instance another target, or remove container NAME, which `docker ps -a` lists even when stopped; for a claude-sync instance, `CLAUDE_SYNC_NAME=NAME claude-sync uninstall` removes it |
 | `paths containing a comma` or `a newline are not supported` | Choose or rename a directory without one |
 | `is on the list of unpaired devices` | Run `pair` for that device on a device that already syncs, then rerun `pair` here |
+| `this instance was last set up by` | Run the `setup` command the message gives, to apply the installed version |
+| `runs from a checkout` | Update the checkout with git, then run `setup` to apply it |
+| `belongs to the RPM package` | Upgrade with `dnf` as in [Upgrade](../README.md#upgrade) |
+| `cannot get the list of claude-sync's releases` | Check that this host reaches `api.github.com`; GitHub also allows only 60 such requests an hour from one address without a login |
+| `cannot write to` ... `where claude-sync is` | Run `upgrade` as the user who owns that directory |
+| `does not match the release's SHA-256` or `is not version` | Nothing was changed; run `upgrade` again later, and report it if it keeps failing |
+| `setup failed for instance` | Fix what that instance's `setup` printed above, then rerun `upgrade` |

@@ -86,9 +86,22 @@ to do when `pair` stops.
 
 ## Upgrade
 
-Download claude-sync again, or rerun the `dnf install` line, as in [Install](#install).
-Then rerun `setup` on each device as you first ran it there, so it applies the new
-version's Syncthing settings and ignore list.
+On each device:
+
+```bash
+claude-sync upgrade
+```
+
+`upgrade` installs the newest release that is not breaking, then applies it to every
+running instance on the device, as `setup` would, keeping each one's target, ports and
+settings. It does not install a breaking release: it says the release is out and links its
+notes, which say how to upgrade by hand (see [Commands](docs/commands.md#upgrade)).
+
+If you installed the RPM, rerun the `dnf install` line from [Install](#install) instead,
+then run `claude-sync setup`, with no target, for each instance.
+
+claude-sync 0.1.1 and earlier have no `upgrade`: download claude-sync again as in
+[Install](#install), then run `claude-sync upgrade` once to apply it.
 
 ## Uninstall
 
