@@ -154,8 +154,8 @@ parse_version() {
     [[ $1 =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)([-~].+)?$ ]]
 }
 
-# Whether version A comes before version B under SemVer. Two pre-releases of one version
-# are not ordered: only a release follows its pre-releases.
+# Whether version A comes before version B, as SemVer orders them, except that two
+# pre-releases of one version are not ordered: only a release follows its pre-releases.
 version_older() {
     local a b i
     parse_version "$1" || return 1
@@ -171,8 +171,9 @@ version_older() {
     [[ -n ${a[3]} && -z ${b[3]} ]]
 }
 
-# Whether going from version A to the later version B is breaking, as the version number
-# says under SemVer: a new major version, or a new minor version while the major is 0.
+# Whether going from version A to the later version B is breaking by the project's rule
+# (CONTRIBUTING.md, Releasing): a new major version, or a new minor version while the
+# major is 0.
 version_breaking() {
     local a b
     parse_version "$1" || return 1
@@ -434,7 +435,8 @@ write_stamp() {
 
 # Whether an instance that claude-sync version STAMP set up needs this version's setup.
 # An empty STAMP, from before the stamp, or one that is not a version, as `dev` from a
-# checkout, says nothing, so that instance does. Only a release can tell.
+# checkout, says nothing, so that instance does. A claude-sync that is not a version
+# itself, as `dev`, counts no instance as needing it.
 stale() {
     parse_version "$claude_sync_version" || return 1
     [[ -z $1 ]] || ! parse_version "$1" || version_older "$1" "$claude_sync_version"

@@ -1164,7 +1164,7 @@ newest_releases() {
 }
 
 # CMD with the fake releases in LIST. Upgrade acts on every instance on the Docker daemon
-# and in the runner's own Syncthing, which may hold real ones, and the other groups' run
+# and in the runner's own Syncthing, which may hold real ones, and the other groups run
 # beside it, so it runs with the shims for docker and syncthing.
 with_releases() {
     env PATH="$up/shim:$PATH" CLAUDE_SYNC_RELEASES_API="file://$up/releases/$1" \

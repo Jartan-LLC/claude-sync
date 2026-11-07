@@ -44,15 +44,18 @@ CLAUDE_SYNC_BIN=$PWD/dist/claude-sync CLAUDE_SYNC_BIN_VERSION=0.0.0-test make te
 ## Releasing
 
 1. Move the `## [Unreleased]` entries in `CHANGELOG.md` under `## [X.Y.Z] - YYYY-MM-DD`
-   and update the links at its end.
+   and update the links at its end. A breaking change takes a new major version, or a new
+   minor version while the major is 0, never a patch: `claude-sync upgrade` tells a
+   breaking release only by its version number, and installs a newer release that is not
+   breaking without asking.
 2. Once that is merged, tag `main` and push the tag:
    `git fetch origin && git tag vX.Y.Z origin/main && git push origin vX.Y.Z`. A tag with a
    pre-release part, such as `v0.2.0-rc.1`, is published as a pre-release.
-3. If the release is breaking, a new major version or a new minor version while the major
-   is 0, add to its notes on GitHub how to upgrade to it by hand: download claude-sync as
-   in the README's Install section, run `claude-sync setup` for each instance, and do any
-   other step the release needs. `claude-sync upgrade` links a breaking release's notes
-   instead of installing it, and the generated notes list only the merged PRs.
+3. If the release is breaking (step 1), add to its notes on GitHub how to upgrade to it by
+   hand: download claude-sync as in the README's Install section, run `claude-sync setup`
+   for each instance, and do any other step the release needs. `claude-sync upgrade` links
+   a breaking release's notes instead of installing it, and the generated notes list only
+   the merged PRs.
 
 [Publishing](docs/scaffold.md#publishing) covers what the tag sets off.
 

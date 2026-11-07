@@ -82,11 +82,13 @@ new to install, it applies only to instances an earlier run left behind.
   `claude-sync.sha256`, then moves it over the installed file, so a command still running
   the old file is unaffected. It does not run `gh attestation verify`; you can run that
   yourself afterwards, as in [Install](../README.md#install).
-- A release is breaking, by its version number as [Semantic
-  Versioning](https://semver.org/) reads it, when it is a new major version, or a new minor
-  version while the major is 0. `upgrade` does not install one: it says the release is
-  out and links its release notes, which say how to upgrade to it by hand. A newer
-  release that is not breaking is still installed. Pre-releases are left out.
+- claude-sync gives a breaking release a new major version, or a new minor version while
+  the major is 0. That is the project's reading of [Semantic
+  Versioning](https://semver.org/), which itself lets any release before 1.0.0 break.
+  `upgrade` tells from the version number whether a release is breaking, and does not
+  install one: it says the release is out and links its release notes, which say how to
+  upgrade to it by hand. A newer release that is not breaking is still installed.
+  Pre-releases are left out.
 - It refuses an RPM install, which `dnf` upgrades (see [Upgrade](../README.md#upgrade)),
   and a claude-sync run from a checkout, whose version is `dev`.
 - It needs curl and sha256sum, and write access to the directory claude-sync is installed
