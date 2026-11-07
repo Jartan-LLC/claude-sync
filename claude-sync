@@ -401,7 +401,7 @@ instances() {
             return "$unlisted"
         fi
     fi
-    if host_folders | cut -f 1 | grep -qxF "$folder_id"; then
+    if prints_line "$folder_id" cut -f 1 < <(host_folders); then
         printf '%s\thost\n' "$default_name"
     fi
     return "$unlisted"
