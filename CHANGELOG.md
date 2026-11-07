@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instance.
 - Each instance records the version of claude-sync that set it up, and `pair` and `unpair`
   say when that version is older than the one installed.
+- `claude-sync backup DIR` writes a gzip tar archive of the whole synced folder to DIR,
+  including the files that do not sync, such as this device's login, and the trash can. It
+  then removes the instance's older archives there, keeping the newest of each of the last
+  4 weeks and 6 months; `--keep-weekly N` and `--keep-monthly N` change the counts.
+- `claude-sync restore ARCHIVE --volume NAME | --path DIR` extracts an archive over a
+  Docker volume or a directory, on any device. In a folder that syncs, the restored files
+  reach every device.
 
 ### Fixed
 
@@ -33,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   0.1.0 this could make a repeated `setup` fail with `folder "claude-sync": folder has
   duplicate ID`, `uninstall` leave claude-sync's folder in place, and `pair` set a device
   that shares other folders as introducer. These no longer happen.
+- When `setup` checked a path against the folders of the Syncthing on the host, it read a
+  quoted `~NAME` at the start of the path as the home directory followed by NAME, a
+  directory beside the home directory, since 0.1.0. It now leaves `~NAME` as a name.
 
 ## [0.1.1] - 2026-10-09
 
