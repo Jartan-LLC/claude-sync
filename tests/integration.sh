@@ -766,8 +766,8 @@ EOF
     check ".stignore is the repo's stignore" on_host cmp -s claude/.stignore /opt/stignore
     check "trash can versioning, 14 days" host_trash_can_14_days
     check "setup again, naming the directory another way" host_sync setup --path ./claude/ --use-host-syncthing
-    # A syncthing that lists folders a line at a time, so that anything reading only up to
-    # claude-sync, listed first, cuts the list off.
+    # A syncthing that pauses after each line of the folder list. claude-sync comes first, so
+    # a reader that stops at it exits before the next line and cuts the list off.
     docker exec -i -u user "$h" sh -c 'mkdir /home/user/slow && cat >/home/user/slow/syncthing &&
         chmod +x /home/user/slow/syncthing' <<'EOF'
 #!/bin/sh
