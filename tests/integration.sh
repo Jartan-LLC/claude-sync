@@ -828,6 +828,12 @@ EOF
     check "a tar that fails fails backup" fails \
         on_host env PATH=/home/user/failing:/usr/bin:/bin /opt/claude-sync/claude-sync backup failed
     check "  leaving no partial archive" [ -z "$(on_host ls -A failed)" ]
+    on_host ln -s claude into-claude
+    check "a directory in the folder is refused" fails_with "is in the synced folder" \
+        host_sync backup claude/.stfolder
+    check "  and the folder itself, through a symlink" fails_with "is in the synced folder" \
+        host_sync backup into-claude
+    check "  leaving no archive in it" [ -z "$(on_host find claude -name '*.tar.gz')" ]
     check "setup again, naming the directory another way" host_sync setup --path ./claude/ --use-host-syncthing
     # A curl that never reaches the API, while `syncthing cli` still does.
     docker exec -u user "$h" sh -c 'mkdir /home/user/nocurl && printf "#!/bin/sh\nexit 7\n" >/home/user/nocurl/curl &&
@@ -1207,6 +1213,27 @@ group_backups() {
     check "the archive holds the login" in_archive "$archive" ./.credentials.json
     check "  and the trash can" in_archive "$archive" ./.stversions/settings.json
     check "backup leaves the folder as it was" [ "$(volume_tree "$mount_n")" = "$original" ]
+    # Files that come and go as backup reads the folder, as temporary files do. Behind large
+    # files, so tar lists some that are gone by the time it reaches them. In a directory
+    # Syncthing ignores.
+    churn=/var/syncthing/claude/jobs/churn/tmp
+    docker exec -u "$owner_n" "$n" sh -c "mkdir -p $churn && touch /tmp/churning &&
+        for i in 1 2 3 4 5; do head -c 5000000 /dev/urandom >$churn/big\$i; done"
+    docker exec -u "$owner_n" "$n" sh -c "i=0; while [ -e /tmp/churning ]; do
+        i=\$((i + 1)); echo x >$churn/t\$i; rm -f $churn/t\$((i - 20)); done" &
+    churning=$!
+    wait_for docker exec "$n" sh -c "ls $churn | grep -q '^t[0-9]\{3\}'"
+    if claude_sync "$n" backup "$scratch/busy" >/dev/null 2>"$scratch/busy.err"; then busy=ok; else busy=failed; fi
+    docker exec -u "$owner_n" "$n" rm /tmp/churning
+    wait "$churning" || true
+    check "backup takes files that go as tar reads the folder" [ "$busy" = ok ]
+    check "  after tar found some gone" grep -qF "No such file or directory" "$scratch/busy.err"
+    check "  in a whole archive" in_archive "$(find "$scratch/busy" -name '*.tar.gz')" ./jobs/churn/tmp/big5
+    in_target "$mount_n" "echo locked >/t/jobs/churn/tmp/locked && chmod 000 /t/jobs/churn/tmp/locked"
+    check "a file the folder's owner cannot read fails backup" fails_with "tar could not archive" \
+        claude_sync "$n" backup "$scratch/unreadable"
+    check "  leaving no partial archive" [ "$(files_in "$scratch/unreadable")" = 0 ]
+    in_target "$mount_n" "rm -r /t/jobs/churn"
 
     echo "# restore"
     # Run as P, which is not set up yet: restore needs no instance.
@@ -1228,6 +1255,12 @@ group_backups() {
     check "a root-owned volume is refused" fails_with "owned by root" \
         claude_sync "$p" restore "$archive" --volume "$vol_p"
     check "a restore with no target is refused" fails claude_sync "$p" restore "$archive"
+    check "a restore given both a volume and a directory is refused" fails_with "give only one of" \
+        claude_sync "$p" restore "$archive" --volume "$vol_r" --path "$scratch/restored"
+    check "a target with no value is refused" fails_with "--path needs a value" \
+        claude_sync "$p" restore "$archive" --path
+    check "an unknown flag is refused" fails_with "unknown argument: --into" \
+        claude_sync "$p" restore "$archive" --into "$scratch/restored"
 
     echo "# backup retention"
     # Empty stand-ins, as backup reads only the names. In 2025, before any run of this test.
@@ -1260,6 +1293,19 @@ group_backups() {
     check "  and keeps the new one" [ "$(files_in "$scratch/keep-0-0")" = 1 ]
     check "a count that is not a number is refused" fails_with "--keep-weekly takes" \
         claude_sync "$n" backup "$scratch/keep-0-0" --keep-weekly x
+    check "a count with no value is refused" fails_with "--keep-monthly needs a value" \
+        claude_sync "$n" backup "$scratch/keep-0-0" --keep-monthly
+    check "an unknown flag is refused" fails_with "unknown argument: --keep-daily" \
+        claude_sync "$n" backup "$scratch/keep-0-0" --keep-daily 3
+    check "backup with no directory prints the usage" fails_with "Usage:" claude_sync "$n" backup
+    # A clock that gives the same second for each run, as when backup runs twice within one.
+    mkdir "$scratch/fixed-date" "$scratch/same-second"
+    printf '#!/bin/sh\necho 20250101T000000Z\n' >"$scratch/fixed-date/date"
+    chmod +x "$scratch/fixed-date/date"
+    echo stand-in >"$scratch/same-second/$n-20250101T000000Z.tar.gz"
+    check "an archive already named for this second is refused" fails_with "already exists; rerun in a second" \
+        env PATH="$scratch/fixed-date:$PATH" CLAUDE_SYNC_NAME="$n" "$bin" backup "$scratch/same-second"
+    check "  and left as it was" [ "$(cat "$scratch/same-second/$n-20250101T000000Z.tar.gz")" = stand-in ]
 
     echo "# restore, on a paired device"
     in_target "$mount_p" "chown $owner_p /t"

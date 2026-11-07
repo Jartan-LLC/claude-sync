@@ -36,14 +36,16 @@ claude-sync restore ~/claude-backups/claude-sync-20261107T120000Z.tar.gz --path 
 In a folder that syncs, the restored files reach every device, and each device moves the
 copies they replace to its trash can, so a restore undoes a mistake that has already synced
 everywhere. The files that do not sync come back on this device only: its login in
-`.credentials.json`, `.stignore`, and the list of unpaired devices. After the restore:
+`.credentials.json` and `.stignore`. After the restore:
 
 - rerun `setup` as you first ran it, so `.stignore` is this version's ignore list again;
-- if a device was unpaired when the backup was made and you paired it again since, run
-  `pair` for it again on a device that syncs.
+- the archive's list of unpaired devices syncs to every device, and each device unpairs the
+  devices on it; if you paired one of them again since the backup, run `pair` for it again
+  on a device that syncs.
 
 To start a new set of devices from an archive, restore it on the first device before
-pairing, then pair that device with `--keep` (see [The first pairing](pairing.md#the-first-pairing)).
+pairing, then pair that device with `--keep` (see [The first
+pairing](pairing.md#the-first-pairing)).
 
 Without claude-sync, `tar` restores it too. List what an archive holds, restore all of it,
 or restore one file:

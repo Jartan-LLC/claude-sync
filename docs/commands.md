@@ -95,11 +95,12 @@ tar of the whole synced folder: it also holds the files that do not sync, this d
 login in `.credentials.json` among them, and Syncthing's trash can, `.stversions`. It is an
 ordinary file with your default permissions, which you can copy to any device and restore
 there. Syncthing and Claude Code keep running meanwhile, so a file being written as `backup`
-reads it goes in as it was at that moment. With your own Syncthing, `backup` uses this
-host's `tar`.
+reads it goes in as it was at that moment, and a file removed meanwhile is left out. With
+your own Syncthing, `backup` uses this host's `tar`.
 
 Keep the directory outside the synced folder: there, the archives would sync to every
-device, and each would hold the ones before it.
+device, and each would hold the ones before it. With your own Syncthing, `backup` refuses
+a directory in the folder.
 
 Then `backup` removes this instance's older archives in the directory, keeping the newest
 archive of each of the last 4 weeks that have one, and of each of the last 6 months that
@@ -158,6 +159,7 @@ restore with `tar` alone.
 | `container NAME already syncs` | Give this instance another target, or remove container NAME, which `docker ps -a` lists even when stopped; for a claude-sync instance, `CLAUDE_SYNC_NAME=NAME claude-sync uninstall` removes it |
 | `paths containing a comma` or `a newline are not supported` | Choose or rename a directory without one |
 | `is on the list of unpaired devices` | Run `pair` for that device on a device that already syncs, then rerun `pair` here |
+| `is in the synced folder` | Give `backup` a directory outside the synced folder |
 | `tar could not archive the synced folder` | tar's message above names the file. If the folder's owner cannot read it, `chown` it; if it was being written at that moment, rerun `backup` |
 | `cannot read ARCHIVE as a backup` | The file is not a whole gzip tar archive, such as a copy cut short; copy it again |
 | `could not restore all of` | tar's message above says why, such as a full disk. The files restored so far stay; fix it and rerun `restore` |

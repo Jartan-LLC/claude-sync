@@ -631,7 +631,8 @@ compose_image() {
     echo "$image"
 }
 
-# Sets owner to the owner of TARGET, mounted at /target by MOUNT in IMAGE.
+# Takes IMAGE, the MOUNT that puts a target at /target, and TARGET, the target's name in
+# messages. Sets the global owner to the target's owner.
 read_owner() {
     owner=$(docker run --rm --entrypoint stat --mount "$2" "$1" -c %u:%g /target) ||
         die "cannot read $3"
@@ -986,7 +987,18 @@ backup() {
     check_name
     detect_mode
     mkdir -p -- "$dir"
-    local archive tmp status=0
+    if [[ $mode == host ]]; then
+        local real_dir real_folder
+        real_dir=$(real_path "$dir")
+        real_folder=$(real_path "$folder_path")
+        # Each archive would sync to every device and hold the ones before it: writing through
+        # a pipe to gzip, tar cannot tell its own archive from the folder's files. Not checked
+        # in a container, whose folder is a volume or a path on the Docker host, which may not
+        # be this machine.
+        [[ $real_dir != "$real_folder" && $real_dir != "${real_folder%/}"/* ]] ||
+            die "$dir is in the synced folder; give backup a directory outside it"
+    fi
+    local archive tmp errors status=0
     archive=$dir/$name-$(date -u +%Y%m%dT%H%M%SZ).tar.gz
     [[ ! -e $archive ]] || die "$archive already exists; rerun in a second"
     # Written under another name until whole, so no half-written archive passes for one.
@@ -1003,7 +1015,16 @@ backup() {
             status=0
         fi
     else
-        docker exec -u "$owner" "$name" tar -C "$folder_path" -czf - . >"$tmp" || status=$?
+        errors=$(docker exec -u "$owner" "$name" tar -C "$folder_path" -czf - . 2>&1 >"$tmp") || status=$?
+        [[ -z $errors ]] || printf '%s\n' "$errors" >&2
+        # BusyBox tar exits 1 when a file went between listing its directory and opening it,
+        # as Claude Code's and Syncthing's temporary files do, and archives the rest. Any
+        # other message, such as "short read" for a file that shrank as tar read it, means
+        # the archive is cut short.
+        local went="^tar: (\./.*|can't open '\./.*'): No such file or directory\$"
+        if ((status == 1)) && ! grep -qvE -e "$went" -e '^tar: error exit delayed from previous errors$' <<<"$errors"; then
+            status=0
+        fi
     fi
     ((status == 0)) || die "tar could not archive the synced folder; its message is above"
     mv -- "$tmp" "$archive"
