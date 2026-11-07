@@ -1348,6 +1348,11 @@ EOF
     check "  and keeps the new one" [ "$(files_in "$scratch/keep-0-0")" = 1 ]
     check "a count that is not a number is refused" fails_with "--keep-weekly takes" \
         claude_sync "$n" backup "$scratch/keep-0-0" --keep-weekly x
+    check "  and so is one over 9999" fails_with "--keep-monthly takes" \
+        claude_sync "$n" backup "$scratch/keep-0-0" --keep-monthly 10000
+    check "  and one below 0" fails_with "--keep-weekly takes" \
+        claude_sync "$n" backup "$scratch/keep-0-0" --keep-weekly -1
+    check "a count of 9999 is taken" claude_sync "$n" backup "$scratch/keep-9999" --keep-weekly 9999
     check "a count with no value is refused" fails_with "--keep-monthly needs a value" \
         claude_sync "$n" backup "$scratch/keep-0-0" --keep-monthly
     check "an unknown flag is refused" fails_with "unknown argument: --keep-daily" \

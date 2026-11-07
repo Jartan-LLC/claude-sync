@@ -76,10 +76,10 @@ Usage:
       --keep-monthly N              Keep the newest archive of each of the last N months
                                     that have one; default 6
   claude-sync restore ARCHIVE --volume NAME | --path DIR
-                                    Extract a backup over the Docker volume NAME or the
-                                    directory DIR on this machine, on any device. Removes
-                                    nothing; in a synced folder, the restored files sync to
-                                    every device
+                                    Extract a backup, made on any device, over the Docker
+                                    volume NAME or the directory DIR on this machine.
+                                    Removes nothing; in a synced folder, the restored files
+                                    sync to every device
   claude-sync version
   claude-sync help
 
@@ -1162,25 +1162,26 @@ restore() {
         exit 2
     fi
     [[ -f $archive ]] || die "no file $archive"
-    # A directory is written here, with this machine's tar, as the user running claude-sync;
-    # a volume in a container, as the volume's owner.
-    local untar=(tar) dest=$target
+    # A volume is written in a container, as the volume's owner; a directory here, with this
+    # machine's tar, as the user running claude-sync.
+    local untar dest own=()
     if [[ $kind == volume ]]; then
         command -v docker >/dev/null || die "Docker is required"
         check_volume "$target"
-        local image mount="type=volume,src=$target,dst=/target"
+        local image owner mount="type=volume,src=$target,dst=/target"
         image=$(compose_image)
         owner=$(read_owner "$image" "$mount" "$target")
         untar=(docker run --rm -i --user "$owner" --mount "$mount" --entrypoint tar "$image")
         dest=/target
+    else
+        untar=(tar)
+        dest=$target
+        # tar run by root keeps the archive's owners unless told not to.
+        own=(--no-same-owner)
     fi
     # Read through first, so a damaged archive writes nothing.
     "${untar[@]}" -tzf - <"$archive" >/dev/null || die "cannot read $archive as a backup; nothing was restored"
     [[ $kind == volume ]] || mkdir -p -- "$target"
-    # tar run by root keeps the archive's owners unless told not to. A volume's tar runs as
-    # its owner.
-    local own=()
-    [[ $kind == volume ]] || own=(--no-same-owner)
     "${untar[@]}" -xzf - -C "$dest" "${own[@]}" <"$archive" ||
         die "could not restore all of $archive to $target; tar's message is above"
     echo "Restored $archive to $target."
