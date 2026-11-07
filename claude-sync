@@ -1221,11 +1221,10 @@ list() {
             if [[ $instance == "$name" ]]; then
                 mark="*" marked=1
             fi
-            # ;;& goes on to the patterns below, so container and stopped share the SYNCS code.
             case $status in
-                container) state=running ;;&
-                stopped) state=stopped ;;&
                 container | stopped)
+                    state=running
+                    [[ $status == container ]] || state=stopped
                     syncs=$(current_target "$instance") || syncs=""
                     if [[ $syncs == /* ]]; then
                         syncs="directory $syncs"
