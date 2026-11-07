@@ -14,9 +14,11 @@ asset() {
 readonly default_name=claude-sync
 
 # Where `claude-sync use` keeps the selected instance. Fails when there is no home to
-# keep it in.
+# keep it in. A relative XDG_CONFIG_HOME is ignored, as the XDG spec says: the selection
+# would follow the working directory.
 selection_file() {
-    local dir=${XDG_CONFIG_HOME:-${HOME:+$HOME/.config}}
+    local dir=${HOME:+$HOME/.config}
+    [[ ${XDG_CONFIG_HOME:-} != /* ]] || dir=$XDG_CONFIG_HOME
     [[ -n $dir ]] || return 1
     echo "$dir/claude-sync/instance"
 }
@@ -139,8 +141,9 @@ valid_name() {
 
 check_name() {
     valid_name "$name" && return 0
-    [[ $name_from != selection ]] ||
+    if [[ $name_from == selection ]]; then
         die "$(selection_file) does not hold a valid instance name; select one again with claude-sync use NAME"
+    fi
     die "CLAUDE_SYNC_NAME must be two or more lowercase letters, digits, '-' or '_', starting with a letter or digit: $name"
 }
 
@@ -1262,17 +1265,18 @@ use() {
         exit 2
     fi
     local instance=$1 file all
-    file=$(selection_file) || die "neither HOME nor XDG_CONFIG_HOME is set, so there is nowhere to keep the selection"
+    file=$(selection_file) ||
+        die "neither HOME nor an absolute XDG_CONFIG_HOME is set, so there is nowhere to keep the selection"
     if [[ $instance == "$default_name" ]]; then
-        rm -f -- "$file"
+        rm -f -- "$file" 2>/dev/null || die "cannot remove $file, which holds the selection"
         echo "Commands now act on the default instance, $default_name."
     else
         all=$(instances) || die "docker cannot list the instances in containers, so use cannot check that $instance is one; once docker works, rerun claude-sync use $instance"
         if ! valid_name "$instance" || ! prints_line "$instance" cut -f 1 <<<"$all"; then
             die "no instance named $instance on this host; claude-sync list shows them"
         fi
-        mkdir -p -- "${file%/*}"
-        printf '%s\n' "$instance" >"$file"
+        { mkdir -p -- "${file%/*}" && printf '%s\n' "$instance" >"$file"; } 2>/dev/null ||
+            die "cannot write the selection to $file"
         echo "Commands now act on instance $instance."
     fi
     if [[ $name_from == variable && $name != "$instance" ]]; then

@@ -111,8 +111,7 @@ claude-sync uninstall
 
 Removes the container and this device's Syncthing state; with your own Syncthing, it
 removes only claude-sync's folder from it. Your `~/.claude` is untouched (see
-[Commands](docs/commands.md#uninstall)). After `claude-sync use NAME`, it removes instance
-NAME.
+[Commands](docs/commands.md#uninstall)). It acts on the instance `claude-sync list` marks.
 
 ## What syncs
 

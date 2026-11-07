@@ -98,11 +98,11 @@ claude-sync pair OTHER-ID
 `claude-sync list` lists this host's instances. `claude-sync use NAME` makes later
 commands act on instance NAME, in every shell of this user, until `claude-sync use
 claude-sync` returns to the default or `uninstall` removes that instance. It keeps the
-name in `~/.config/claude-sync/instance`, or under `$XDG_CONFIG_HOME` when that is set.
-`CLAUDE_SYNC_NAME`, when set, wins over the selection, so a script that sets it acts on
-the instance it names. In `list`, `state only` marks an instance whose container is gone
-but whose Syncthing state, with its device ID, is left: `setup` with `--volume` or
-`--path` under its name uses that state again, and `uninstall` removes it.
+name in `~/.config/claude-sync/instance`, or under `$XDG_CONFIG_HOME` when that is an
+absolute path. `CLAUDE_SYNC_NAME`, when set, wins over the selection, so a script that
+sets it acts on the instance it names. In `list`, `state only` marks an instance whose
+container is gone but whose Syncthing state, with its device ID, is left: `setup` with
+`--volume` or `--path` under its name uses that state again, and `uninstall` removes it.
 
 Each instance gets ports of its own, which `setup` prints, as long as the other instances
 are running when it first starts: Syncthing takes free ports only then. Each needs a
@@ -118,11 +118,11 @@ Syncthing itself.
 claude-sync uninstall
 ```
 
-Removes the container and this device's Syncthing state, including its device ID. After
-`claude-sync use NAME`, it removes instance NAME. Your
-`~/.claude` is untouched; Syncthing's `.stignore`, `.stfolder` and `.stversions`, and
-claude-sync's `.claude-sync-unpaired`, stay in it and can be deleted, though deleting
-`.stversions` empties the trash can.
+Removes the instance commands act on, which `claude-sync list` marks: its container and
+this device's Syncthing state, including its device ID. Your `~/.claude` is untouched;
+Syncthing's `.stignore`, `.stfolder` and `.stversions`, and claude-sync's
+`.claude-sync-unpaired`, stay in it and can be deleted, though deleting `.stversions`
+empties the trash can.
 
 With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninstall).
 
@@ -167,3 +167,4 @@ With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninsta
 | `docker cannot be reached` | Start Docker, and check that `docker ps` works as this user; then rerun `setup` |
 | `docker cannot list the instances in containers` | Start Docker, and check that `docker ps` works as this user; then rerun the command |
 | `no instance named` | For a new instance, run `setup` with `CLAUDE_SYNC_NAME` set to its name first, then `use` |
+| `does not hold a valid instance name` | Run `claude-sync use NAME` with a name `claude-sync list` shows, or `claude-sync use claude-sync` for the default instance |
