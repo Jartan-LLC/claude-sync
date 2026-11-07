@@ -1311,7 +1311,12 @@ uninstall() {
             echo "Removed the $folder_id folder from the Syncthing on this host; its other folders stay, and so do its devices, apart from unpaired ones that share no other folder."
         fi
     fi
+    # The container may be gone by now, and nothing runs uninstall again as upgrade does setup.
+    # A trap, not `|| die`, which would turn set -e off inside unschedule_backup.
+    # shellcheck disable=SC2064 # expanded now: name is checked
+    trap "echo 'claude-sync: the daily backup of instance $name is not removed yet; run CLAUDE_SYNC_NAME=$name claude-sync uninstall again' >&2" EXIT
     unschedule_backup
+    trap - EXIT
     echo "The synced files are untouched."
     if [[ $(selected_instance) == "$name" ]]; then
         rm -f -- "$(selection_file)"
@@ -1838,7 +1843,9 @@ WantedBy=timers.target"
         mkdir -p -- "${path%/*}"
         # The units this replaces, put back when writing them or systemd fails below: units it
         # never loaded or enabled would pass for installed, and the next setup would find
-        # nothing to change.
+        # nothing to change. Not on SIGINT or SIGTERM, which would need a trap beside setup's
+        # EXIT trap: one between the write and the reload leaves systemd on the old units
+        # until it next reloads.
         saved=$(mktemp -d -t claude-sync.XXXXXX)
         for ext in service timer; do
             [[ ! -e $path.$ext ]] || cp -p -- "$path.$ext" "$saved/" || {

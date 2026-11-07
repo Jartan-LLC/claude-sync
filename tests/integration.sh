@@ -1937,9 +1937,13 @@ EOF
     check "  removing nothing" docker container inspect "$u"
     mkdir "$tm/kept"
     cp -p -- "$service" "$timer" "$tm/kept/"
+    check "uninstall that systemd fails to finish says to run it again" \
+        fails_with "run CLAUDE_SYNC_NAME=$u claude-sync uninstall again" \
+        env SYSTEMCTL_FAIL=disable CLAUDE_SYNC_NAME="$u" "$bin" uninstall
+    check "  keeping the units" ls -- "$service" "$timer"
     rm -f -- "$SYSTEMCTL_CALLS"
     claude_sync "$u" uninstall >/dev/null
-    check "uninstall removes the daily backup" [ -z "$(ls -A "$units")" ]
+    check "uninstall run again, with the container gone, removes the daily backup" [ -z "$(ls -A "$units")" ]
     check "  disabling the timer" grep -qxF -- "--user disable --now $u-backup.timer" <<<"$(systemctl_calls)"
     check "  leaving the archives" [ "$(files_in "$tm/backups")" = 1 ]
     # As left by an instance removed outside claude-sync.
