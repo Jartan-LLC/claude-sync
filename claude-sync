@@ -58,9 +58,13 @@ Usage:
       --sync-port PORT              Sync port. Without it, a new device takes 22000, or
                                     a free port when 22000 is taken, and keeps it.
                                     Can't be combined with --use-host-syncthing
+      --backup-dir DIR              Run claude-sync backup DIR daily, with a systemd user
+                                    timer, while you are logged in. Later runs of setup
+                                    keep it
+      --no-backup                   Remove that daily backup
   claude-sync setup                 Apply this version to the instance already set up,
-                                    keeping its target, and its ports and --private
-                                    unless given again
+                                    keeping its target, and its ports, --private and
+                                    daily backup unless given again
   claude-sync upgrade               Install the newest release that is not breaking, then
                                     apply it to every running instance on this host.
                                     Not for an RPM install: upgrade that with dnf, then
@@ -80,8 +84,9 @@ Usage:
                                     on any device. A device using its own Syncthing drops
                                     it the next time claude-sync runs there
   claude-sync uninstall             Remove claude-sync's container and Syncthing state,
-                                    or its folder from the Syncthing on this host; the
-                                    synced files are left untouched
+                                    or its folder from the Syncthing on this host, and
+                                    its daily backup; the synced files and the backups
+                                    are left untouched
   claude-sync backup DIR            Write an archive of the whole synced folder, ignored
                                     files and trash can included, to DIR, then remove
                                     this instance's older archives there
@@ -686,7 +691,8 @@ current_setup() {
 }
 
 setup() {
-    local kind="" target="" network="" host="" want_gui="" want_sync=""
+    # backup: empty to keep the daily backup as it is, off, or the absolute DIR to back up to.
+    local kind="" target="" network="" host="" want_gui="" want_sync="" backup=""
     while (($#)); do
         case $1 in
             --volume | --path)
@@ -712,10 +718,25 @@ setup() {
                 if [[ $1 == --gui-port ]]; then want_gui=$2; else want_sync=$2; fi
                 shift 2
                 ;;
+            --backup-dir)
+                [[ $backup != off ]] || die "give only one of --backup-dir or --no-backup"
+                [[ -n ${2:-} ]] || die "$1 needs a value"
+                [[ $2 != *$'\n'* ]] || die "paths containing a newline are not supported"
+                backup=$(clean_path "$(expand_home "$2")")
+                shift 2
+                ;;
+            --no-backup)
+                [[ $backup != /* ]] || die "give only one of --backup-dir or --no-backup"
+                backup=off
+                shift
+                ;;
             *) die "unknown argument: $1" ;;
         esac
     done
     check_name
+    if [[ $backup == /* ]] && ! user_systemd; then
+        die "--backup-dir needs systemd's user manager (systemctl --user), which is not running for $(id -un) here; schedule claude-sync backup DIR another way, such as with cron"
+    fi
     if [[ -z $kind ]] && ! current_setup; then
         # A daemon that is not running would otherwise pass for no instance in a container.
         if command -v docker >/dev/null && ! docker info >/dev/null 2>&1; then
@@ -732,7 +753,7 @@ setup() {
         # One Syncthing holds one claude-sync folder, so names would not keep instances apart.
         [[ $name == "$default_name" ]] ||
             die "CLAUDE_SYNC_NAME names claude-sync's own containers; with --use-host-syncthing, leave CLAUDE_SYNC_NAME unset"
-        setup_host "$target"
+        setup_host "$target" "$backup"
         return
     fi
     command -v docker >/dev/null || die "Docker is required"
@@ -870,6 +891,7 @@ setup() {
         fi
     fi
     printf 'This device ID: %s\n' "$(docker exec -u "$owner" "$name" syncthing device-id)"
+    schedule_backup "$backup"
     write_stamp "$name" container
 }
 
@@ -926,7 +948,7 @@ wait_reachable() {
 }
 
 setup_host() {
-    local target=$1
+    local target=$1 backup=$2
     [[ -d $target ]] || die "no directory $target"
     # Stored absolute, without a trailing slash or `..`.
     target=$(cd -- "$target" && pwd)
@@ -962,6 +984,7 @@ setup_host() {
     tell_busy
 
     printf 'The Syncthing on this host syncs %s.\nThis device ID: %s\n' "$target" "$(syncthing_run device-id)"
+    schedule_backup "$backup"
     write_stamp "$name" host
 }
 
@@ -1219,6 +1242,7 @@ uninstall() {
             echo "Removed the $folder_id folder from the Syncthing on this host; its other folders stay, and so do its devices, apart from unpaired ones that share no other folder."
         fi
     fi
+    unschedule_backup
     echo "The synced files are untouched."
 }
 
@@ -1548,6 +1572,131 @@ restore() {
     "${untar[@]}" -xzf - -C "$dest" "${own[@]}" <"$archive" ||
         die "could not restore all of $archive to $target; tar's message is above"
     echo "Restored $archive to $target."
+}
+
+# Whether this user has a systemd user manager to run the daily backup. Read from the state
+# it prints, as its exit status is not 0 for a degraded manager, one with a failed unit, and
+# some containers have a systemctl that only prints a notice.
+user_systemd() {
+    case $(systemctl --user is-system-running 2>/dev/null) in
+        running | degraded | starting | initializing | maintenance) ;;
+        *) return 1 ;;
+    esac
+}
+
+# systemctl --user ARGS, silent unless it fails.
+user_systemctl() {
+    local out
+    out=$(systemctl --user "$@" 2>&1) || die "systemctl --user $* failed: $out"
+}
+
+# Where systemctl looks for this user's units. A relative XDG_CONFIG_HOME is ignored, as the
+# XDG spec says.
+user_unit_dir() {
+    if [[ ${XDG_CONFIG_HOME:-} == /* ]]; then
+        echo "$XDG_CONFIG_HOME/systemd/user"
+    else
+        echo "${HOME:?}/.config/systemd/user"
+    fi
+}
+
+# VALUE as one double-quoted word of a unit's command line, where systemd reads \ and " as
+# escapes, and % and $ as specifiers and variables.
+unit_quote() {
+    local s=${1//\\/\\\\}
+    s=${s//\"/\\\"}
+    s=${s//%/%%}
+    s=${s//\$/\$\$}
+    printf '"%s"\n' "$s"
+}
+
+# The value that unit_quote quoted, given without its quotes. A newline stands in for \ on
+# the way, which works as setup refuses a DIR with one.
+unit_unquote() {
+    local s=${1//\\\\/$'\n'}
+    s=${s//\\\"/\"}
+    s=${s//$'\n'/\\}
+    s=${s//%%/%}
+    printf '%s\n' "${s//\$\$/\$}"
+}
+
+# The DIR this instance's daily backup writes to. Its service unit is the only record of it:
+# the timer is on while that file exists. Fails when there is none.
+scheduled_backup_dir() {
+    local line
+    line=$(grep -m 1 '^ExecStart=' "$(user_unit_dir)/$name-backup.service" 2>/dev/null) || return 1
+    # The first `" backup "` ends the quoted claude-sync: every " inside a quoted value has a
+    # \ before it.
+    line=${line#*\" backup \"}
+    unit_unquote "${line%\"}"
+}
+
+# Applies setup's BACKUP to this instance's daily backup: a DIR installs it there, off
+# removes it, and empty keeps it, rewritten for this claude-sync. Called before setup records
+# the version, so when it fails, upgrade runs setup again.
+schedule_backup() {
+    local dir=$1 unit=$name-backup units bin service timer
+    case $dir in
+        off)
+            unschedule_backup
+            return
+            ;;
+        '') dir=$(scheduled_backup_dir) || return 0 ;;
+        *)
+            # Checked now, or each daily run would fail where nobody looks.
+            check_outside_synced_folder "$dir"
+            mkdir -p -- "$dir"
+            ;;
+    esac
+    units=$(user_unit_dir)
+    bin=$(readlink -f -- "${BASH_SOURCE[0]}")
+    service="# Written by claude-sync setup, which replaces it; $(setup_command "$name") --no-backup removes it.
+[Unit]
+Description=claude-sync backup of instance $name
+
+[Service]
+Type=oneshot
+Environment=CLAUDE_SYNC_NAME=$name
+ExecStart=$(unit_quote "$bin") backup $(unit_quote "$dir")"
+    timer="# Written by claude-sync setup, which replaces it; $(setup_command "$name") --no-backup removes it.
+[Unit]
+Description=Daily claude-sync backup of instance $name
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target"
+    if [[ $(cat -- "$units/$unit.service" 2>/dev/null) != "$service" ||
+        $(cat -- "$units/$unit.timer" 2>/dev/null) != "$timer" ]]; then
+        # Checked before writing: with the files written and not reloaded, the next setup
+        # would find nothing changed and not reload them either.
+        user_systemd ||
+            die "cannot reach systemd's user manager to update $unit.timer; run $(setup_command "$name") again in a login session as $(id -un)"
+        mkdir -p -- "$units"
+        printf '%s\n' "$service" >"$units/$unit.service"
+        printf '%s\n' "$timer" >"$units/$unit.timer"
+        user_systemctl daemon-reload
+    fi
+    # Only when asked: a timer the user disabled stays so through setup and upgrade.
+    [[ $1 == '' ]] || user_systemctl enable --now "$unit.timer"
+    printf 'Backs up to %s daily; systemctl --user start %s backs up now, and journalctl --user -u %s shows how each backup went.\n' \
+        "$dir" "$unit" "$unit"
+}
+
+# Removes this instance's daily backup, if it has one. Its archives stay.
+unschedule_backup() {
+    local unit=$name-backup units dir
+    units=$(user_unit_dir)
+    [[ -e $units/$unit.service || -e $units/$unit.timer ]] || return 0
+    dir=$(scheduled_backup_dir) || dir=""
+    user_systemd ||
+        die "cannot reach systemd's user manager to remove $unit.timer; run this again in a login session as $(id -un)"
+    [[ ! -e $units/$unit.timer ]] || user_systemctl disable --now "$unit.timer"
+    rm -f -- "$units/$unit.service" "$units/$unit.timer"
+    user_systemctl daemon-reload
+    echo "Removed the daily backup${dir:+ to $dir}; its archives stay."
 }
 
 case ${1:-help} in

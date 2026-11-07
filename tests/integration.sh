@@ -17,6 +17,7 @@ readonly prefix
 readonly net=${prefix}net a=${prefix}a b=${prefix}b c=${prefix}c d=${prefix}d e=${prefix}e g=${prefix}g k=${prefix}k
 readonly j=${prefix}j l=${prefix}l m=${prefix}m n=${prefix}n p=${prefix}p q=${prefix}q s=${prefix}s t=${prefix}t
 readonly hu=${prefix}hu
+readonly u=${prefix}u y=${prefix}y vol_u=${prefix}u-data owner_u=8642:8642
 readonly listener=${prefix}listener foreign=${prefix}foreign h=${prefix}h host_image=${prefix}host
 readonly vol_a=${prefix}a-data vol_b=${prefix}b-data vol_missing=${prefix}missing
 readonly vol_root=${prefix}root-data vol_c=${prefix}c-data vol_d=${prefix}d-data
@@ -429,16 +430,16 @@ files_in() {
 
 cleanup() {
     local x
-    for x in "$a" "$b" "$c" "$d" "$e" "$g" "$k" "$j" "$l" "$m" "$n" "$p" "$q" "$t" "$h" "$hu" "$bad_name" "$listener" "$foreign"; do
+    for x in "$a" "$b" "$c" "$d" "$e" "$g" "$k" "$j" "$l" "$m" "$n" "$p" "$q" "$t" "$h" "$hu" "$u" "$y" "$bad_name" "$listener" "$foreign"; do
         guard "$x"
         docker rm --force -v "$x" >/dev/null 2>&1 || true
     done
     guard "$host_image"
     docker image rm "$host_image" >/dev/null 2>&1 || true
     for x in "$a-config" "$b-config" "$c-config" "$d-config" "$e-config" "$g-config" "$k-config" \
-        "$j-config" "$l-config" "$m-config" "$n-config" "$p-config" "$q-config" "$s-config" "$t-config" "$bad_name-config" "$foreign-config" \
+        "$j-config" "$l-config" "$m-config" "$n-config" "$p-config" "$q-config" "$s-config" "$t-config" "$u-config" "$bad_name-config" "$foreign-config" \
         "$vol_a" "$vol_b" "$vol_c" "$vol_d" "$vol_e" "$vol_g" "$vol_j" "$vol_l" "$vol_m" "$vol_n" "$vol_p" \
-        "$vol_q" "$vol_r" "$vol_t" "$vol_q_missing" "$vol_missing" "$vol_root"; do
+        "$vol_q" "$vol_r" "$vol_t" "$vol_u" "$vol_q_missing" "$vol_missing" "$vol_root"; do
         guard "$x"
         docker volume rm "$x" >/dev/null 2>&1 || true
     done
@@ -473,7 +474,7 @@ on_exit() {
     fi
     wait 2>/dev/null || true
     if ((status != 0)); then
-        for node in "$a" "$b" "$c" "$d" "$e" "$g" "$j" "$l" "$m" "$n" "$p" "$q" "$t" "$h" "$hu"; do
+        for node in "$a" "$b" "$c" "$d" "$e" "$g" "$j" "$l" "$m" "$n" "$p" "$q" "$t" "$h" "$hu" "$u" "$y"; do
             docker logs --tail 30 "$node" 2>&1 | sed "s/^/[$node] /" || true
         done
         for out in "$scratch"/join-*.out; do
@@ -525,6 +526,7 @@ docker build -q -t "$host_image" --build-arg IMAGE="$image" -f "$root/tests/host
 docker volume create "$vol_q" >/dev/null
 docker volume create "$vol_r" >/dev/null
 docker volume create "$vol_t" >/dev/null
+docker volume create "$vol_u" >/dev/null
 in_target "type=volume,src=$vol_e" "echo e >/t/e-only.md && chown -R $owner_e /t"
 in_target "type=volume,src=$vol_g" "echo 'g claude.json' >/t/claude.json && chown -R $owner_g /t"
 in_target "$mount_l" "echo 'l claude.json' >/t/claude.json && chown -R $owner_l /t"
@@ -547,6 +549,7 @@ in_target "$mount_q" "$fixture && chmod 600 .credentials.json && ln -s settings.
 in_target "$mount_r" "chown $owner_r /t"
 in_target "$mount_b" "chown $owner_b /t"
 in_target "type=volume,src=$vol_d" "chown $owner_d /t"
+in_target "type=volume,src=$vol_u" "chown $owner_u /t"
 
 # The groups below share only the test network, each with nodes and volumes of its own,
 # so they run in parallel.
@@ -1755,12 +1758,152 @@ EOF
     check "  and keeps Q's file that the archive lacks" in_target "$mount_q" "grep -qx newer /t/newer.md"
 }
 
+# The calls the stub systemctl got since the last reset.
+systemctl_calls() {
+    cat -- "$SYSTEMCTL_CALLS" 2>/dev/null || true
+}
+
+# U, then the host fixture Y: the daily backup's units, with a stub systemctl that logs its
+# calls and a config directory of this group's, so no check reaches the real systemd or the
+# runner's ~/.config.
+group_timer() {
+    local tm=$scratch/timer
+    mkdir -p "$tm/bin" "$tm/other"
+    export XDG_CONFIG_HOME=$tm/config SYSTEMCTL_CALLS=$tm/calls PATH=$tm/bin:$PATH
+    local units=$XDG_CONFIG_HOME/systemd/user
+    local service=$units/$u-backup.service timer=$units/$u-backup.timer
+    # SYSTEMCTL_STATE is the user manager's, which is-system-running prints with the status
+    # SYSTEMCTL_STATUS; offline fails every call, as a manager that cannot be reached does.
+    cat >"$tm/bin/systemctl" <<'EOF'
+#!/bin/sh
+echo "$*" >>"$SYSTEMCTL_CALLS"
+state=${SYSTEMCTL_STATE:-running}
+[ "$state" != offline ] || exit 1
+if [ "$*" = "--user is-system-running" ]; then
+    echo "$state"
+    exit "${SYSTEMCTL_STATUS:-0}"
+fi
+EOF
+    chmod +x "$tm/bin/systemctl"
+    # A DIR holding what systemd reads as escapes, specifiers and variables in a unit, and
+    # how the unit quotes it.
+    # shellcheck disable=SC2016 # the $ is part of the name
+    local odd=$tm/'back ups/a"b\c%h$e' odd_quoted=\"$tm/'back ups/a\"b\\c%%h$$e"'
+    local real_bin
+    real_bin=$(readlink -f -- "$bin")
+
+    echo "# setup --backup-dir"
+    check "--backup-dir with --no-backup is refused" fails_with "only one of --backup-dir or --no-backup" \
+        claude_sync "$u" setup --volume "$vol_u" --backup-dir "$tm/backups" --no-backup
+    check "--backup-dir without systemd's user manager is refused" fails_with "needs systemd's user manager" \
+        env SYSTEMCTL_STATE=offline CLAUDE_SYNC_NAME="$u" "$bin" setup --volume "$vol_u" --backup-dir "$tm/backups"
+    check "  before setting anything up" fails docker container inspect "$u"
+    check "  as with a systemctl that prints a notice in place of a state" \
+        fails_with "needs systemd's user manager" env SYSTEMCTL_STATE='"systemd" is not running in this container' \
+        CLAUDE_SYNC_NAME="$u" "$bin" setup --volume "$vol_u" --backup-dir "$tm/backups"
+    check "  writing no unit" [ ! -e "$units" ]
+    rm -f -- "$SYSTEMCTL_CALLS"
+    claude_sync "$u" setup --volume "$vol_u" >/dev/null
+    check "setup without --backup-dir writes no unit" [ ! -e "$units" ]
+    check "  and calls no systemctl" [ -z "$(systemctl_calls)" ]
+
+    out=$(claude_sync "$u" setup --backup-dir "$odd")
+    check "setup --backup-dir with no target installs the daily backup" \
+        grep -qxF "Environment=CLAUDE_SYNC_NAME=$u" "$service"
+    check "  running this claude-sync's backup into DIR, each one quoted word for systemd" \
+        grep -qxF "ExecStart=\"$real_bin\" backup $odd_quoted" "$service"
+    check "  daily" grep -qxF OnCalendar=daily "$timer"
+    check "  catching up a day missed while logged out" grep -qxF Persistent=true "$timer"
+    check "  once enabled" grep -qxF WantedBy=timers.target "$timer"
+    check "  which it is, after systemd reloads the units" [ "$(systemctl_calls)" = "--user is-system-running
+--user is-system-running
+--user daemon-reload
+--user enable --now $u-backup.timer" ]
+    check "  making DIR" [ -d "$odd" ]
+    check "  and saying where it backs up" grep -qF "Backs up to $odd daily" <<<"$out"
+
+    echo "# setup again"
+    local units_before
+    units_before=$(cat "$service" "$timer")
+    rm -f -- "$SYSTEMCTL_CALLS"
+    out=$(claude_sync "$u" setup)
+    check "setup with no target keeps the daily backup" [ "$(cat "$service" "$timer")" = "$units_before" ]
+    check "  calling no systemctl, with nothing to change" [ -z "$(systemctl_calls)" ]
+    check "  and reads DIR back, to say where it backs up" grep -qF "Backs up to $odd daily" <<<"$out"
+    claude_sync "$u" setup --volume "$vol_u" >/dev/null
+    check "setup with the target keeps it too" [ "$(cat "$service" "$timer")" = "$units_before" ]
+    cp "$bin" "$tm/other/claude-sync"
+    [[ -n ${CLAUDE_SYNC_BIN:-} ]] || cp "$root"/compose*.yaml "$root/stignore" "$tm/other/"
+    rm -f -- "$SYSTEMCTL_CALLS"
+    CLAUDE_SYNC_NAME=$u "$tm/other/claude-sync" setup >/dev/null
+    check "setup by another claude-sync points the backup at it" \
+        grep -qxF "ExecStart=\"$tm/other/claude-sync\" backup $odd_quoted" "$service"
+    check "  reloading the units without enabling the timer again" \
+        [ "$(systemctl_calls)" = "--user is-system-running
+--user daemon-reload" ]
+    check "a degraded user manager runs the backup too" env SYSTEMCTL_STATE=degraded SYSTEMCTL_STATUS=1 \
+        CLAUDE_SYNC_NAME="$u" "$bin" setup --backup-dir "$tm/backups"
+    check "  moving it to the new DIR" grep -qxF "ExecStart=\"$real_bin\" backup \"$tm/backups\"" "$service"
+
+    echo "# --no-backup and uninstall"
+    check "--no-backup without systemd's user manager says so" \
+        fails_with "cannot reach systemd's user manager to remove $u-backup.timer" \
+        env SYSTEMCTL_STATE=offline CLAUDE_SYNC_NAME="$u" "$bin" setup --no-backup
+    check "  keeping the units" ls -- "$service" "$timer"
+    rm -f -- "$SYSTEMCTL_CALLS"
+    out=$(claude_sync "$u" setup --no-backup)
+    check "setup --no-backup removes the daily backup" [ -z "$(ls -A "$units")" ]
+    check "  disabling the timer, then reloading" [ "$(systemctl_calls)" = "--user is-system-running
+--user disable --now $u-backup.timer
+--user daemon-reload" ]
+    check "  saying so" grep -qF "Removed the daily backup to $tm/backups;" <<<"$out"
+    rm -f -- "$SYSTEMCTL_CALLS"
+    claude_sync "$u" setup --no-backup >/dev/null
+    check "  and with none, does nothing" [ -z "$(systemctl_calls)" ]
+    claude_sync "$u" setup --backup-dir "$tm/backups" >/dev/null
+    claude_sync "$u" backup "$tm/backups" >/dev/null
+    rm -f -- "$SYSTEMCTL_CALLS"
+    claude_sync "$u" uninstall >/dev/null
+    check "uninstall removes the daily backup" [ -z "$(ls -A "$units")" ]
+    check "  disabling the timer" grep -qxF -- "--user disable --now $u-backup.timer" <<<"$(systemctl_calls)"
+    check "  leaving the archives" [ "$(files_in "$tm/backups")" = 1 ]
+
+    echo "# --backup-dir with --use-host-syncthing"
+    docker run -d --name "$y" --network "$net" --user user --entrypoint env "$host_image" \
+        -u STHOMEDIR -u STGUIADDRESS HOME=/home/user syncthing serve --no-browser >/dev/null
+    docker exec -u 0 "$y" mkdir /opt/claude-sync
+    docker cp -q "$bin" "$y:/opt/claude-sync/"
+    [[ -n ${CLAUDE_SYNC_BIN:-} ]] || docker cp -q "$root/stignore" "$y:/opt/claude-sync/"
+    as_user "$y" mkdir stub claude
+    docker cp -q "$tm/bin/systemctl" "$y:/home/user/stub/"
+    wait_for as_user "$y" syncthing cli show version
+    # In the fixture's own ~/.config, with no XDG_CONFIG_HOME.
+    y_sync() {
+        # shellcheck disable=SC2016 # expanded by the fixture's shell
+        as_user "$y" sh -c 'PATH=/home/user/stub:$PATH SYSTEMCTL_CALLS=/home/user/calls exec "$@"' sh \
+            timeout 300 /opt/claude-sync/claude-sync "$@"
+    }
+    check "a DIR in the synced folder is refused" fails_with "is in the synced folder" \
+        y_sync setup --path claude --use-host-syncthing --backup-dir claude/backups
+    check "  writing no unit" fails as_user "$y" test -e .config/systemd/user/claude-sync-backup.service
+    y_sync setup --path claude --use-host-syncthing --backup-dir backups >/dev/null
+    check "setup --use-host-syncthing --backup-dir installs the daily backup, DIR made absolute" \
+        as_user "$y" grep -qxF 'ExecStart="/opt/claude-sync/claude-sync" backup "/home/user/backups"' \
+        .config/systemd/user/claude-sync-backup.service
+    check "  for the default instance" as_user "$y" grep -qxF Environment=CLAUDE_SYNC_NAME=claude-sync \
+        .config/systemd/user/claude-sync-backup.service
+    check "  enabling it" as_user "$y" grep -qxF -- "--user enable --now claude-sync-backup.timer" calls
+    y_sync uninstall >/dev/null
+    check "uninstall there removes it" fails as_user "$y" test -e .config/systemd/user/claude-sync-backup.timer
+}
+
 run_group chain
 run_group instances
 run_group stuck
 run_group refusals
 run_group upgrade
 run_group backups
+run_group timer
 # Each group's output as it ends.
 while ((${#group_of[@]})); do
     wait -n -p done_pid || true
