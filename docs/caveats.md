@@ -16,19 +16,22 @@ running Claude Code rewrites often.
 
 ### Where `.claude.json` lives
 
+To see which of these applies, run `echo "$CLAUDE_CONFIG_DIR"` and `ls -l ~/.claude.json`.
+
 - By default it is `~/.claude.json`, beside `~/.claude` rather than in it, so claude-sync
   does not sync it. MCP servers added with `--scope user` and the projects you trusted stay
   on the device where you set them up.
-- With `CLAUDE_CONFIG_DIR` set, it is `.claude.json` in that directory. When that directory
-  is the synced folder, the file syncs.
 - When `~/.claude.json` is a symlink into the synced folder, the file it points to syncs.
   A symlink the other way, from the synced folder to `~/.claude.json`, syncs as a symlink
   only.
+- With `CLAUDE_CONFIG_DIR` set, it is `.claude.json` in that directory. When that directory
+  is the synced folder, the file syncs.
 
-Either way, Claude Code copies the file to `backups/` in `~/.claude` (or in
-`CLAUDE_CONFIG_DIR`) when it rewrites it, and keeps only the five newest copies, as its
-[`.claude` directory page](https://code.claude.com/docs/en/claude-directory.md) says. That
-directory syncs: each device holds the other devices' copies too.
+Even when `.claude.json` does not sync, copies of it do. Each time Claude Code rewrites the
+file, it saves a copy in `backups/` in `~/.claude` (or in `CLAUDE_CONFIG_DIR`) and keeps the
+five newest, as its [`.claude` directory page](https://code.claude.com/docs/en/claude-directory.md)
+says. These are Claude Code's own backups, and that directory syncs, so each device holds
+the other devices' copies too.
 
 ### What happens when it syncs
 
