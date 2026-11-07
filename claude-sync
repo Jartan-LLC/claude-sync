@@ -125,8 +125,7 @@ Usage:
                                     volume NAME or the directory DIR on this machine.
                                     Removes nothing; in a synced folder, the restored files
                                     sync to every device
-  claude-sync list                  List this host's instances; * marks the one
-                                    commands act on
+  claude-sync list                  List this host's instances
   claude-sync use NAME              Make later commands act on instance NAME
                                     (default: claude-sync)
   claude-sync version
