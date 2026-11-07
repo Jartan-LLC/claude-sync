@@ -1008,16 +1008,19 @@ backup() {
         usage >&2
         exit 2
     fi
+    # A quoted ~, which the guard's path comparison expands, so mkdir and the archive must too.
+    dir=${dir/#\~/$HOME}
     check_name
     detect_mode
-    # Each archive would sync to every device and hold the ones before it: writing through a
-    # pipe to gzip, tar cannot tell its own archive from the folder's files. Checked before
+    # Each archive would sync to every device and hold the ones before it. Checked before
     # mkdir, whose directory would sync too.
     if in_synced_folder "$dir"; then
         die "$dir is in the synced folder; give backup a directory outside it"
     fi
     mkdir -p -- "$dir"
-    local archive tmp errors status=0
+    local archive tmp
+    # remove_stopped_backups and prune match this name's format again, and stop finding the
+    # archives if it changes here alone.
     archive=$dir/$name-$(date -u +%Y%m%dT%H%M%SZ).tar.gz
     [[ ! -e $archive ]] || die "$archive already exists; rerun in a second"
     # Written under another name until whole, so no half-written archive passes for one.
@@ -1026,22 +1029,28 @@ backup() {
     tmp=$dir/.${archive##*/}.$$
     # shellcheck disable=SC2064 # expanded now: tmp is local
     trap "rm -f -- $(printf %q "$tmp")" EXIT
+    write_archive "$tmp"
+    mv -- "$tmp" "$archive"
+    trap - EXIT
+    echo "Backed up to $archive."
+    remove_stopped_backups "$dir"
+    prune "$dir" "$archive" "$weekly" "$monthly"
+}
+
+# Writes a gzip tar of the synced folder to FILE, or dies.
+write_archive() {
+    local errors status=0
     if [[ $mode == host ]]; then
         # In English, which only_files_that_changed reads.
-        errors=$(LC_ALL=C tar -C "$folder_path" -czf - . 2>&1 >"$tmp") || status=$?
+        errors=$(LC_ALL=C tar -C "$folder_path" -czf - . 2>&1 >"$1") || status=$?
     else
-        errors=$(docker exec -u "$owner" "$name" tar -C "$folder_path" -czf - . 2>&1 >"$tmp") || status=$?
+        errors=$(docker exec -u "$owner" "$name" tar -C "$folder_path" -czf - . 2>&1 >"$1") || status=$?
     fi
     [[ -z $errors ]] || printf '%s\n' "$errors" >&2
     if ((status == 1)) && only_files_that_changed "$errors"; then
         status=0
     fi
     ((status == 0)) || die "tar could not archive the synced folder; its message is above"
-    mv -- "$tmp" "$archive"
-    trap - EXIT
-    echo "Backed up to $archive."
-    remove_stopped_backups "$dir"
-    prune "$dir" "$archive" "$weekly" "$monthly"
 }
 
 # Whether DIR, or the directory mkdir -p would make of it, is the synced folder or inside it.
@@ -1053,18 +1062,27 @@ in_synced_folder() {
     # The container's folder is a volume or a path on the Docker host, which may not be this
     # machine, so no path here compares with it. A file made in DIR's nearest existing
     # directory is looked for from inside the container instead.
-    local dir=$1 probe found
+    local dir=$1 probe out errors status=0
     while [[ ! -d $dir ]]; do dir=$(dirname -- "$dir"); done
     probe=$dir/.$name-probe.$$
     # Not writable: then backup cannot make DIR or write in it either, and fails there.
     : 2>/dev/null >"$probe" || return 1
-    # shellcheck disable=SC2064 # expanded now: probe is local
-    trap "rm -f -- $(printf %q "$probe")" EXIT
-    found=$(docker exec -u "$owner" "$name" find "$folder_path" -name "${probe##*/}") ||
-        die "could not search the synced folder for $1; find's message is above"
-    rm -f -- "$probe"
-    trap - EXIT
-    [[ -n $found ]]
+    # In a subshell, so this EXIT trap leaves the caller's in place.
+    out=$(
+        # shellcheck disable=SC2064 # expanded now: probe is local
+        trap "rm -f -- $(printf %q "$probe")" EXIT
+        docker exec -u "$owner" "$name" find "$folder_path" -name "${probe##*/}" 2>&1
+    ) || status=$?
+    # The paths find matched start with a slash; every other line is a message.
+    errors=$(grep -v '^/' <<<"$out") || true
+    [[ -z $errors ]] || printf '%s\n' "$errors" >&2
+    # BusyBox's find exits 1 for a file that goes between listing its directory and reading
+    # it, the race that only_files_that_changed passes for tar.
+    if ((status == 1)) && ! grep -qvE "^find: $folder_path/.*: No such file or directory\$" <<<"$errors"; then
+        status=0
+    fi
+    ((status == 0)) || die "could not search the synced folder for $1; find's message is above"
+    grep -q '^/' <<<"$out"
 }
 
 # Removes the temporary files that this instance's backups into DIR left there when stopped

@@ -1247,13 +1247,16 @@ group_backups() {
     check "  and the trash can" in_archive "$archive" ./.stversions/settings.json
     check "backup leaves the folder as it was" [ "$(volume_tree "$mount_n")" = "$original" ]
     # The folder is a volume, which no directory here is in: this docker runs the search for
-    # backup's probe in a directory here instead of the folder.
+    # backup's probe in a directory here instead of the folder, then, with FIND_SAYS set,
+    # prints it and exits 1, as BusyBox's find when files went as it searched.
     mkdir -p "$scratch/probe-bin" "$scratch/folder/sub"
     cat >"$scratch/probe-bin/docker" <<EOF
 #!/bin/sh
 if [ "\$1" = exec ] && [ "\$5" = find ]; then
     shift 6
-    exec find "$scratch/folder" "\$@"
+    find "$scratch/folder" "\$@" || exit
+    [ -z "\$FIND_SAYS" ] || { printf '%s\n' "\$FIND_SAYS" >&2; exit 1; }
+    exit 0
 fi
 exec "$(command -v docker)" "\$@"
 EOF
@@ -1268,6 +1271,12 @@ EOF
         backup_in_folder "$scratch/folder/sub/backups"
     check "  without making it" [ ! -e "$scratch/folder/sub/backups" ]
     check "  or leaving its probe there" [ "$(files_in "$scratch/folder/sub")" = 0 ]
+    check "a container backup passes find's status 1 for files that went as it searched" \
+        env FIND_SAYS="find: /var/syncthing/claude/jobs/gone: No such file or directory" \
+        PATH="$scratch/probe-bin:$PATH" CLAUDE_SYNC_NAME="$n" "$bin" backup "$scratch/searched"
+    check "  but not for another error" fails_with "could not search the synced folder" \
+        env FIND_SAYS="find: /var/syncthing/claude/jobs: Permission denied" \
+        PATH="$scratch/probe-bin:$PATH" CLAUDE_SYNC_NAME="$n" "$bin" backup "$scratch/unsearched"
     # Files that come and go as backup reads the folder, as temporary files do. Behind large
     # files, so tar lists some that are gone by the time it reaches them. In a directory
     # Syncthing ignores.
