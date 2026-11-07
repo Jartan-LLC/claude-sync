@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `claude-sync restore ARCHIVE --volume NAME | --path DIR` extracts an archive over a
   Docker volume or a directory, on any device. In a folder that syncs, the restored files
   reach every device.
+- `claude-sync setup --backup-dir DIR` runs `claude-sync backup DIR` for the instance every
+  day, with a systemd user timer, while you are logged in; a day missed runs at your next
+  login. Later runs of `setup` and `upgrade` keep it; `setup --no-backup` and `uninstall`
+  remove it. Hosts without systemd's user manager, such as macOS, refuse it.
 
 ### Fixed
 

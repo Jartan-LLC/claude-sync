@@ -27,6 +27,8 @@ leaves the fix out. `claude-sync help` prints the same commands and flags.
 | `--public` | `setup`, not with `--use-host-syncthing` | Returns a private device to Syncthing's defaults |
 | `--gui-port PORT` | `setup`, not with `--use-host-syncthing` | Fixes the web UI port, from 1024 to 65535 |
 | `--sync-port PORT` | `setup`, not with `--use-host-syncthing` | Fixes the sync port, from 1024 to 65535 |
+| `--backup-dir DIR` | `setup` | Runs `backup DIR` daily ([Daily backups](#daily-backups)) |
+| `--no-backup` | `setup` | Removes the daily backup |
 | `--keep` | `pair` | Keeps this device's files instead of joining ([Joining](pairing.md#joining)) |
 | `--address tcp://HOST:PORT` | `pair` | Where to reach the other device; required when global discovery is off here (a `--private` device, or your own Syncthing with it off) |
 | `--keep-weekly N` | `backup` | Keeps the newest archive of each of the last N weeks that have one; default 4 |
@@ -53,8 +55,8 @@ the web UI port, Syncthing cannot start its web UI and `setup` cannot move it: f
 port again.
 
 With no `--volume` or `--path`, `setup` applies this version to the instance already set
-up, with the target it syncs, as after an upgrade with `dnf`. Ports and `--private` stay as
-they are unless given again. With your own Syncthing, it applies to claude-sync's folder
+up, with the target it syncs, as after an upgrade with `dnf`. Ports, `--private` and the
+daily backup stay as they are unless given again. With your own Syncthing, it applies to claude-sync's folder
 there. With no instance set up, it prints the usage, or, when Docker is installed but
 cannot be reached, says so.
 
@@ -112,8 +114,8 @@ Syncthing itself.
 claude-sync uninstall
 ```
 
-Removes the container and this device's Syncthing state, including its device ID. Your
-`~/.claude` is untouched; Syncthing's `.stignore`, `.stfolder` and `.stversions`, and
+Removes the container and this device's Syncthing state, including its device ID, and the
+[daily backup](#daily-backups), whose archives stay. Your `~/.claude` is untouched; Syncthing's `.stignore`, `.stfolder` and `.stversions`, and
 claude-sync's `.claude-sync-unpaired`, stay in it and can be deleted, though deleting
 `.stversions` empties the trash can.
 
@@ -144,6 +146,22 @@ It removes the other archives.
 
 Give each device a directory of its own: two devices backing up the same instance name into
 one directory remove each other's archives.
+
+### Daily backups
+
+```bash
+claude-sync setup --backup-dir ~/claude-backups
+```
+
+Runs `backup` into the directory every day through a systemd user timer, so it needs
+systemd. It keeps `backup`'s default `--keep-weekly` and `--keep-monthly`. The timer runs
+while you are logged in, and a day missed while you were logged out runs at your next
+login. Each instance has its own, `NAME-backup.timer`. Later runs of `setup` keep it;
+`setup --no-backup` and `uninstall` remove it.
+
+The timer runs `backup` in systemd's environment, which lacks what only your shell sets.
+If `backup` needs such a variable, such as `DOCKER_HOST` for rootless Docker, set it in
+`~/.config/environment.d/` as well.
 
 ## restore
 
