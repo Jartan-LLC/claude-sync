@@ -1476,7 +1476,7 @@ backup() {
     fi
     # A quoted ~: left as it is, mkdir would make ./~ here and write the archive into it.
     dir=$(expand_home "$dir")
-    check_name
+    check_instance
     detect_mode
     # Each archive would sync to every device and hold the ones before it. Checked before
     # mkdir, whose directory would sync too.

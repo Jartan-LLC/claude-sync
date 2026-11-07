@@ -1863,6 +1863,8 @@ EOF
     check "CLAUDE_SYNC_NAME still wins over the selection" grep -qE "^\* $w +state only" <<<"$(named "$w" list)"
     check "  and a command it names says so" \
         fails_with "acting on instance $w, named by CLAUDE_SYNC_NAME" named "$w" pair not-a-device-id
+    check "  as backup does" \
+        fails_with "acting on instance $w, named by CLAUDE_SYNC_NAME" named "$w" backup "$scratch/w-backups"
     check "  and --use-host-syncthing under it says to clear the selection too" \
         fails_with "leave CLAUDE_SYNC_NAME unset and run claude-sync use claude-sync first" \
         named "$w" setup --use-host-syncthing --path "$scratch"

@@ -32,8 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `claude-sync use NAME` makes later commands act on instance NAME without
   `CLAUDE_SYNC_NAME`, until `claude-sync use claude-sync` returns to the default or
   `uninstall` removes that instance. `CLAUDE_SYNC_NAME`, when set, still wins.
-- `setup`, `pair`, `unpair` and `uninstall` say on stderr which instance they act on when
-  it is not `claude-sync`.
+- `setup`, `pair`, `unpair`, `uninstall` and `backup` say on stderr which instance they act
+  on when it is not `claude-sync`.
 
 ### Fixed
 
