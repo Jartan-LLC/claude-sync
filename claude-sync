@@ -115,16 +115,14 @@ Usage:
                                     synced files are left untouched
   claude-sync list                  List this host's instances; * marks the one
                                     commands act on
-  claude-sync use NAME              Make later commands act on instance NAME;
-                                    claude-sync use claude-sync goes back to the default
+  claude-sync use NAME              Make later commands act on instance NAME
+                                    (default: claude-sync)
   claude-sync version
   claude-sync help
 
 Environment:
-  CLAUDE_SYNC_NAME                  This instance's name, default the one selected with
-                                    use, else claude-sync; one host can run several
-                                    instances under different names.
-                                    --use-host-syncthing sets up only claude-sync
+  CLAUDE_SYNC_NAME                  The instance to act on; overrides the one selected
+                                    with use
 EOF
 }
 

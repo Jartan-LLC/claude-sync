@@ -29,8 +29,8 @@ leaves the fix out. `claude-sync help` prints the same commands and flags.
 | `--keep` | `pair` | Keeps this device's files instead of joining ([Joining](pairing.md#joining)) |
 | `--address tcp://HOST:PORT` | `pair` | Where to reach the other device; required when global discovery is off here (a `--private` device, or your own Syncthing with it off) |
 
-`CLAUDE_SYNC_NAME`, or when it is unset the instance selected with `use`, names the
-instance a command acts on (see [Several instances on one host](#several-instances-on-one-host)).
+A command acts on the instance `CLAUDE_SYNC_NAME` names or, when it is unset, on the one
+selected with `use` (see [Several instances on one host](#several-instances-on-one-host)).
 
 ## setup
 
@@ -95,14 +95,13 @@ claude-sync use claude-work
 claude-sync pair OTHER-ID
 ```
 
-`claude-sync list` lists this host's instances. `claude-sync use NAME` makes later
-commands act on instance NAME, in every shell of this user, until `claude-sync use
-claude-sync` returns to the default or `uninstall` removes that instance. It keeps the
-name in `~/.config/claude-sync/instance`, or under `$XDG_CONFIG_HOME` when that is an
-absolute path. `CLAUDE_SYNC_NAME`, when set, wins over the selection, so a script that
-sets it acts on the instance it names. In `list`, `state only` marks an instance whose
-container is gone but whose Syncthing state, with its device ID, is left: `setup` with
-`--volume` or `--path` under its name uses that state again, and `uninstall` removes it.
+`claude-sync list` lists this host's instances and marks the one commands act on.
+`claude-sync use NAME` makes later commands act on NAME, in every shell, until
+`claude-sync use claude-sync` or `uninstall` of that instance. `CLAUDE_SYNC_NAME`, when
+set, wins over the selection.
+
+In `list`, `state only` is an instance whose container is gone but whose Syncthing state,
+with its device ID, is left; `setup` under its name uses it again.
 
 Each instance gets ports of its own, which `setup` prints, as long as the other instances
 are running when it first starts: Syncthing takes free ports only then. Each needs a
@@ -118,11 +117,9 @@ Syncthing itself.
 claude-sync uninstall
 ```
 
-Removes the instance commands act on, which `claude-sync list` marks: its container and
-this device's Syncthing state, including its device ID. Your `~/.claude` is untouched;
-Syncthing's `.stignore`, `.stfolder` and `.stversions`, and claude-sync's
-`.claude-sync-unpaired`, stay in it and can be deleted, though deleting `.stversions`
-empties the trash can.
+Removes the instance `claude-sync list` marks: its container and this device's Syncthing
+state, including its device ID. Your `~/.claude` is untouched; the files Syncthing and
+claude-sync keep in it stay ([Caveats](caveats.md#syncthings-and-claude-syncs-files)).
 
 With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninstall).
 
