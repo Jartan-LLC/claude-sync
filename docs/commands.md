@@ -118,7 +118,8 @@ Syncthing itself.
 claude-sync uninstall
 ```
 
-Removes the container and this device's Syncthing state, including its device ID. Your
+Removes the container and this device's Syncthing state, including its device ID. After
+`claude-sync use NAME`, it removes instance NAME. Your
 `~/.claude` is untouched; Syncthing's `.stignore`, `.stfolder` and `.stversions`, and
 claude-sync's `.claude-sync-unpaired`, stay in it and can be deleted, though deleting
 `.stversions` empties the trash can.

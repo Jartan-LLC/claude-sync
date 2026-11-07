@@ -21,11 +21,13 @@ selection_file() {
     echo "$dir/claude-sync/instance"
 }
 
-# The instance `claude-sync use` selected. Fails when none is.
+# The instance `claude-sync use` selected. Fails when none is. For a file that is empty or
+# cannot be read it prints nothing, which check_name refuses: falling back to the default
+# would let uninstall remove claude-sync unannounced.
 selected_instance() {
     local file
-    file=$(selection_file) && [[ -s $file ]] || return 1
-    head -n 1 -- "$file"
+    file=$(selection_file) && [[ -e $file ]] || return 1
+    head -n 1 -- "$file" 2>/dev/null || true
 }
 
 # What chose the instance: CLAUDE_SYNC_NAME, which wins so scripts and the tests are not
@@ -142,8 +144,10 @@ check_name() {
     die "CLAUDE_SYNC_NAME must be two or more lowercase letters, digits, '-' or '_', starting with a letter or digit: $name"
 }
 
-# Says which instance a command acts on, and what chose it, when it is not the default.
-tell_instance() {
+# For a command that acts on the instance: refuses an invalid name, then says which
+# instance it acts on, and what chose it, when it is not the default.
+check_instance() {
+    check_name
     [[ $name != "$default_name" ]] || return 0
     local by="named by CLAUDE_SYNC_NAME"
     [[ $name_from != selection ]] || by="selected with claude-sync use"
@@ -708,8 +712,7 @@ setup() {
             *) die "unknown argument: $1" ;;
         esac
     done
-    check_name
-    tell_instance
+    check_instance
     if [[ -z $kind ]] && ! current_setup; then
         # A daemon that is not running would otherwise pass for no instance in a container.
         if command -v docker >/dev/null && ! docker info >/dev/null 2>&1; then
@@ -727,7 +730,11 @@ setup() {
         if [[ $name != "$default_name" ]]; then
             [[ $name_from != selection ]] ||
                 die "--use-host-syncthing sets up only the default instance, $default_name; run claude-sync use $default_name first"
-            die "CLAUDE_SYNC_NAME names claude-sync's own containers; with --use-host-syncthing, leave CLAUDE_SYNC_NAME unset"
+            local selected fix="leave CLAUDE_SYNC_NAME unset"
+            if selected=$(selected_instance) && [[ $selected != "$default_name" ]]; then
+                fix+=" and run claude-sync use $default_name first"
+            fi
+            die "CLAUDE_SYNC_NAME names claude-sync's own containers; with --use-host-syncthing, $fix"
         fi
         setup_host "$target"
         return
@@ -964,8 +971,7 @@ pair() {
         usage >&2
         exit 2
     fi
-    check_name
-    tell_instance
+    check_instance
     detect_mode
 
     [[ $id =~ $id_re ]] || die "not a device ID: $id; copy it as setup printed it"
@@ -1148,8 +1154,7 @@ unpair() {
         exit 2
     fi
     local id=$1 self
-    check_name
-    tell_instance
+    check_instance
     detect_mode
     [[ $id =~ $id_re ]] || die "not a device ID: $id; copy it as setup printed it"
     self=$(syncthing_run device-id)
@@ -1165,8 +1170,7 @@ unpair() {
 
 uninstall() {
     (($# == 0)) || die "uninstall takes no arguments"
-    check_name
-    tell_instance
+    check_instance
     local container="" volume=""
     if command -v docker >/dev/null; then
         if docker container inspect "$name" >/dev/null 2>&1; then
@@ -1241,12 +1245,12 @@ list() {
             printf '%s %-*s  %-14s  %s\n' "$mark" "$width" "$instance" "$state" "${syncs:--}"
         done <<<"$all"
     fi
-    if [[ -n $unlisted ]]; then
+    [[ -z $unlisted ]] ||
         die "docker cannot list the instances in containers, so this list leaves them out; once docker works, rerun claude-sync list"
-    elif [[ -z $all ]]; then
+    [[ -n $marked ]] || check_name
+    if [[ -z $all ]]; then
         echo "No instance is set up on this host."
     elif [[ -z $marked ]]; then
-        check_name
         echo "Commands act on instance $name, which is not set up on this host."
     fi
 }
@@ -1283,7 +1287,7 @@ upgrade() {
     local file
     file=$(readlink -f -- "${BASH_SOURCE[0]}")
     if command -v rpm >/dev/null && rpm -qf -- "$file" >/dev/null 2>&1; then
-        die "$file belongs to the RPM package $(rpm -qf -- "$file"): upgrade it with dnf as you installed it, then run claude-sync setup"
+        die "$file belongs to the RPM package $(rpm -qf -- "$file"): upgrade it with dnf as you installed it, then run CLAUDE_SYNC_NAME=NAME claude-sync setup for each instance NAME that claude-sync list shows"
     fi
     command -v curl >/dev/null || die "curl is required"
     command -v sha256sum >/dev/null || die "sha256sum is required"
@@ -1328,8 +1332,8 @@ install_release() {
 # Runs FILE's setup, with no target, for every running instance that an older version set
 # up, carrying on past one that fails.
 apply_everywhere() {
-    local file=$1 list instance status version unlisted="" found="" running="" applied="" failed=()
-    list=$(instances) || unlisted=1
+    local file=$1 all instance status version unlisted="" found="" running="" applied="" failed=()
+    all=$(instances) || unlisted=1
     while IFS=$'\t' read -r instance status; do
         [[ -n $instance ]] || continue
         found=1
@@ -1354,7 +1358,7 @@ apply_everywhere() {
         printf 'Applying claude-sync %s to instance %s:\n' "$claude_sync_version" "$instance"
         # Its stdin would otherwise be the rest of the list.
         CLAUDE_SYNC_NAME=$instance "$file" setup </dev/null || failed+=("$instance")
-    done <<<"$list"
+    done <<<"$all"
     if [[ -n $unlisted ]]; then
         # A daemon that is not running, or a user outside the docker group, would otherwise
         # pass for a host with no instance in a container.

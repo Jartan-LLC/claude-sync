@@ -16,8 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   From 0.1.1 or earlier, download claude-sync once more as in the README's Install
   section, then run `claude-sync upgrade`.
 - `claude-sync setup` with no `--volume` or `--path` applies the installed version to the
-  instance already set up, keeping its target. After upgrading the RPM, run it for each
-  instance.
+  instance already set up, keeping its target. After upgrading the RPM, run
+  `CLAUDE_SYNC_NAME=NAME claude-sync setup` for each instance NAME.
 - Each instance records the version of claude-sync that set it up, and `pair` and `unpair`
   say when that version is older than the one installed.
 - `claude-sync list` lists the host's instances: each one's name, whether it runs, and the

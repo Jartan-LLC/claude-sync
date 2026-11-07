@@ -1494,6 +1494,15 @@ EOF
 
     out=$(unnamed list)
     check "list with no instance says so" grep -qxF "No instance is set up on this host." <<<"$out"
+    mkdir -p "${selection%/*}"
+    : >"$selection"
+    check "  but refuses an empty selection file, naming it" \
+        fails_with "$selection does not hold a valid instance name" unnamed list
+    rm "$selection"
+    mkdir "$selection"
+    check "a command refuses a selection file it cannot read, naming it" \
+        fails_with "$selection does not hold a valid instance name" unnamed pair not-a-device-id
+    rmdir "$selection"
     claude_sync "$v" setup --volume "$vol_v" >/dev/null
     docker volume create --label claude-sync=config "$w-config" >/dev/null
     out=$(unnamed list)
@@ -1514,19 +1523,23 @@ EOF
     check "use selects an instance" unnamed use "$v"
     check "  in the config directory" [ "$(cat "$selection")" = "$v" ]
     check "  which list marks" grep -qE "^\* $v +running" <<<"$(unnamed list)"
+    out=$(unnamed pair not-a-device-id 2>&1) || true
     check "a command then acts on it, saying so" \
-        fails_with "acting on instance $v, selected with claude-sync use" unnamed pair not-a-device-id
-    check "  and finds it running" fails_with "not a device ID" unnamed pair not-a-device-id
-    check "setup says so too" fails_with "acting on instance $v, selected with claude-sync use" \
-        unnamed setup --use-host-syncthing --path "$scratch"
+        grep -qF "acting on instance $v, selected with claude-sync use" <<<"$out"
+    check "  and finds it running" grep -qF "not a device ID" <<<"$out"
+    out=$(unnamed setup --use-host-syncthing --path "$scratch" 2>&1) || true
+    check "setup says so too" grep -qF "acting on instance $v, selected with claude-sync use" <<<"$out"
     check "  and refuses --use-host-syncthing, saying to select the default" \
-        fails_with "run claude-sync use claude-sync first" unnamed setup --use-host-syncthing --path "$scratch"
+        grep -qF "run claude-sync use claude-sync first" <<<"$out"
     check "unpair says so too" fails_with "acting on instance $v, selected with claude-sync use" \
         unnamed unpair not-a-device-id
 
     check "CLAUDE_SYNC_NAME still wins over the selection" grep -qE "^\* $w +state only" <<<"$(named "$w" list)"
     check "  and a command it names says so" \
         fails_with "acting on instance $w, named by CLAUDE_SYNC_NAME" named "$w" pair not-a-device-id
+    check "  and --use-host-syncthing under it says to clear the selection too" \
+        fails_with "leave CLAUDE_SYNC_NAME unset and run claude-sync use claude-sync first" \
+        named "$w" setup --use-host-syncthing --path "$scratch"
     check "use with CLAUDE_SYNC_NAME set says it still wins" \
         grep -qF "CLAUDE_SYNC_NAME is set, so commands run with it still act on instance $w." \
         <<<"$(named "$w" use "$v")"
@@ -1536,6 +1549,12 @@ EOF
     check "a selection file with no valid name on its first line is refused, naming the file" \
         fails_with "$selection does not hold a valid instance name" unnamed pair not-a-device-id
     unnamed use "$v" >/dev/null
+    # A bind source must exist on the Docker host, hence /. The container is never started,
+    # so nothing is mounted: list reads only its list of mounts.
+    docker create --name "$w" --label "com.docker.compose.project=$w" \
+        --mount type=bind,src=/,dst=/var/syncthing/claude,readonly "$image" >/dev/null
+    check "list shows what an instance on a directory syncs" \
+        grep -qE "^  $w +stopped +directory /\$" <<<"$(unnamed list)"
     out=$(named "$w" uninstall 2>&1)
     check "uninstall of another instance leaves the selection" [ "$(cat "$selection")" = "$v" ]
     check "  and says nothing of it" fails grep -qF "no longer selected" <<<"$out"
