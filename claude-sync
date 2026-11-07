@@ -1472,9 +1472,9 @@ locate_syncthing() {
     fi
 }
 
-# Status lines of a running instance, for this device's ID and the folder's STATUS from
-# Syncthing, empty when Syncthing does not have the folder, short of the devices. Fails
-# when its Syncthing does not answer.
+# Status lines of a running instance, all but the devices, for this device's ID and the
+# folder's STATUS from Syncthing, empty when Syncthing does not have the folder. Fails when
+# its Syncthing does not answer.
 instance_lines() {
     local ui port network folder=$2 state paused conflicts
     { ui=$(web_ui) && port=$(sync_port) && network=$(network_setting); } || return
@@ -1544,8 +1544,8 @@ device_status() {
     done
 }
 
-# Device ID's name and ID, how this device reaches it, and how much of the folder it has,
-# from Syncthing's CONNECTIONS and device STATS.
+# The device ID's name and ID, how this device reaches it, and how much of the folder it
+# has, from Syncthing's CONNECTIONS and device STATS.
 device_line() {
     local device_name connection seen="" text completion percent
     device_name=$(st config devices "$1" name get) || return
