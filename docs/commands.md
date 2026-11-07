@@ -53,8 +53,8 @@ they are unless given again. With your own Syncthing, it applies to claude-sync'
 there. With no instance set up, it prints the usage.
 
 Each instance records the version of claude-sync that last set it up. When that version
-is older than the one installed, `pair` and `unpair` say so, with the `setup` command to
-run.
+is older than the one installed, or the instance has no record, as one set up by 0.1.1 or
+earlier, `pair` and `unpair` say so, with the `setup` command to run.
 
 ## upgrade
 
@@ -64,10 +64,13 @@ claude-sync upgrade
 
 `upgrade` replaces the installed claude-sync with the newest release that is not breaking,
 then has the new version run `setup`, with no target, for every running instance on this
-host whose recorded version is older: each instance under its `CLAUDE_SYNC_NAME`, and
-claude-sync's folder in your own Syncthing. Run again with nothing new to install, it
-applies only to instances an earlier run left behind. It names a stopped instance and
-leaves it stopped; `setup` under that instance's name starts it with the new version.
+host whose recorded version is older, or that has none: each instance under its
+`CLAUDE_SYNC_NAME`, and claude-sync's folder in your own Syncthing. Run again with nothing
+new to install, it applies only to instances an earlier run left behind. It names a
+stopped instance and leaves it stopped; `setup` under that instance's name starts it with
+the new version. It also names an instance whose Syncthing state is left in its config
+volume with no container; `setup` under that name, with `--volume` or `--path`, uses that
+state again.
 
 - It downloads the release's `claude-sync` from GitHub and checks it against the release's
   `claude-sync.sha256`, then moves it over the installed file, so a command still running

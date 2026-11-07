@@ -391,22 +391,33 @@ instances() {
 # instances gives them. Fails when there is none: it predates the stamp, or its container
 # is not running.
 instance_version() {
-    local config
+    local file
+    file=$(stamp_file "$2") || return 1
     case $2 in
-        container) docker exec "$1" cat "/var/syncthing/config/$stamp" 2>/dev/null ;;
-        host) config=$(host_config_file) && cat -- "${config%/*}/$stamp" 2>/dev/null ;;
+        container) docker exec "$1" cat "$file" 2>/dev/null ;;
+        host) cat -- "$file" 2>/dev/null ;;
         *) return 1 ;;
     esac
 }
 
-# Records this version in this instance, once it is set up.
+# The file in which an instance of KIND, container or host, records its version; for a
+# container, a path inside it.
+stamp_file() {
+    local config
+    case $1 in
+        container) echo "/var/syncthing/config/$stamp" ;;
+        host) config=$(host_config_file) && echo "${config%/*}/$stamp" ;;
+    esac
+}
+
+# Records this version in this instance, of KIND, once it is set up.
 write_stamp() {
-    if [[ $mode == host ]]; then
-        local config
-        config=$(host_config_file) && printf '%s\n' "$claude_sync_version" >"${config%/*}/$stamp"
-    else
-        docker exec -i -u "$owner" "$name" sh -c "cat >/var/syncthing/config/$stamp" <<<"$claude_sync_version"
-    fi
+    local file
+    file=$(stamp_file "$1") || die "cannot record the version in instance $name"
+    case $1 in
+        container) docker exec -i -u "$owner" "$name" sh -c "cat >$file" <<<"$claude_sync_version" ;;
+        host) printf '%s\n' "$claude_sync_version" >"$file" ;;
+    esac || die "cannot record the version in instance $name"
 }
 
 # Whether an instance that claude-sync version STAMP set up, or one that predates the
@@ -780,7 +791,7 @@ setup() {
         fi
     fi
     printf 'This device ID: %s\n' "$(docker exec -u "$owner" "$name" syncthing device-id)"
-    write_stamp
+    write_stamp container
 }
 
 # Moves the sync port to PORT, if given and new.
@@ -848,7 +859,7 @@ setup_host() {
     tell_busy
 
     printf 'The Syncthing on this host syncs %s.\nThis device ID: %s\n' "$target" "$(syncthing_run device-id)"
-    write_stamp
+    write_stamp host
 }
 
 pair() {
@@ -1100,8 +1111,8 @@ uninstall() {
             folder_path=$(st config folders "$folder_id" path get)
             apply_unpaired
             st config folders "$folder_id" delete
-            local config
-            config=$(host_config_file) && rm -f -- "${config%/*}/$stamp"
+            local file
+            file=$(stamp_file host) && rm -f -- "$file"
             echo "Removed the $folder_id folder from the Syncthing on this host; its other folders stay, and so do its devices, apart from unpaired ones that share no other folder."
         fi
     fi

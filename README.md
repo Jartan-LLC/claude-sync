@@ -101,7 +101,9 @@ settings. It does not install a breaking release: it says the release is out and
 notes, which say how to upgrade by hand (see [Commands](docs/commands.md#upgrade)).
 
 If you installed the RPM, rerun the `dnf install` line from [Install](#install) instead,
-then run `claude-sync setup`, with no target, for each instance.
+then run `claude-sync setup`, with no target, for each instance. For an instance with a
+name other than the default, that is `CLAUDE_SYNC_NAME=NAME claude-sync setup` (see
+[Several instances on one host](docs/commands.md#several-instances-on-one-host)).
 
 ## Uninstall
 

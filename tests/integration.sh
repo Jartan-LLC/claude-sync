@@ -15,7 +15,7 @@ readonly prefix
     exit 1
 }
 readonly net=${prefix}net a=${prefix}a b=${prefix}b c=${prefix}c d=${prefix}d e=${prefix}e g=${prefix}g k=${prefix}k
-readonly j=${prefix}j l=${prefix}l m=${prefix}m n=${prefix}n p=${prefix}p hu=${prefix}hu
+readonly j=${prefix}j l=${prefix}l m=${prefix}m n=${prefix}n p=${prefix}p s=${prefix}s hu=${prefix}hu
 readonly listener=${prefix}listener foreign=${prefix}foreign h=${prefix}h host_image=${prefix}host
 readonly vol_a=${prefix}a-data vol_b=${prefix}b-data vol_missing=${prefix}missing
 readonly vol_root=${prefix}root-data vol_c=${prefix}c-data vol_d=${prefix}d-data
@@ -385,7 +385,7 @@ cleanup() {
     guard "$host_image"
     docker image rm "$host_image" >/dev/null 2>&1 || true
     for x in "$a-config" "$b-config" "$c-config" "$d-config" "$e-config" "$g-config" "$k-config" \
-        "$j-config" "$l-config" "$m-config" "$n-config" "$p-config" "$bad_name-config" "$foreign-config" \
+        "$j-config" "$l-config" "$m-config" "$n-config" "$p-config" "$s-config" "$bad_name-config" "$foreign-config" \
         "$vol_a" "$vol_b" "$vol_c" "$vol_d" "$vol_e" "$vol_g" "$vol_j" "$vol_l" "$vol_m" "$vol_n" "$vol_p" \
         "$vol_missing" "$vol_root"; do
         guard "$x"
@@ -1138,19 +1138,19 @@ stamp_of() {
     docker exec "$1" cat /var/syncthing/config/claude-sync-version
 }
 
-# A fake release list in the shape of GitHub's API, under BASE: v0.4.1 is the only release
-# with files, and SUMS, if given, is where its SHA-256 is.
+# A fake release list in the shape of GitHub's API, for a repository at BASE: v0.4.1 is the
+# only release with files, and SUMS, if given, is the repository its SHA-256 is in.
 releases_json() {
     local base=$1 sums=${2:-$1}
     cat <<EOF
 [
-  {"html_url": "$base/tag/v0.5.0", "tag_name": "v0.5.0", "prerelease": false, "assets": []},
-  {"html_url": "$base/tag/v0.4.2-rc.1", "tag_name": "v0.4.2-rc.1", "prerelease": true, "assets": []},
-  {"html_url": "$base/tag/v0.4.1", "tag_name": "v0.4.1", "prerelease": false, "assets": [
-    {"browser_download_url": "$base/download/v0.4.1/claude-sync"},
-    {"browser_download_url": "$sums/download/v0.4.1/claude-sync.sha256"}
+  {"html_url": "$base/releases/tag/v0.5.0", "tag_name": "v0.5.0", "prerelease": false, "assets": []},
+  {"html_url": "$base/releases/tag/v0.4.2-rc.1", "tag_name": "v0.4.2-rc.1", "prerelease": true, "assets": []},
+  {"html_url": "$base/releases/tag/v0.4.1", "tag_name": "v0.4.1", "prerelease": false, "assets": [
+    {"browser_download_url": "$base/releases/download/v0.4.1/claude-sync"},
+    {"browser_download_url": "$sums/releases/download/v0.4.1/claude-sync.sha256"}
   ]},
-  {"html_url": "$base/tag/v0.4.0", "tag_name": "v0.4.0", "prerelease": false, "assets": []}
+  {"html_url": "$base/releases/tag/v0.4.0", "tag_name": "v0.4.0", "prerelease": false, "assets": []}
 ]
 EOF
 }
@@ -1176,8 +1176,8 @@ group_upgrade() {
     # 0.4.0, the build installed: a copy whose ignore list and compose file differ from this
     # checkout's, so the reapply shows. 0.4.1, the release: this checkout.
     mkdir -p "$up/old-src/packaging" "$up/old" "$up/install" "$up/shim" "$up/rpm" \
-        "$up/releases/download/v0.4.1" "$up/releases/bad/download/v0.4.1" \
-        "$up/releases/wrong/download/v0.4.1"
+        "$up/releases/download/v0.4.1" "$up/bad/releases/download/v0.4.1" \
+        "$up/wrong/releases/download/v0.4.1"
     cp "$root/claude-sync" "$root"/compose*.yaml "$root/stignore" "$up/old-src"
     cp "$root/packaging/build.sh" "$up/old-src/packaging"
     echo '// the old ignore list' >>"$up/old-src/stignore"
@@ -1186,31 +1186,35 @@ group_upgrade() {
     "$root/packaging/build.sh" 0.4.1 "$up/releases/download/v0.4.1/claude-sync"
     (cd "$up/releases/download/v0.4.1" && sha256sum claude-sync >claude-sync.sha256)
     echo "0000000000000000000000000000000000000000000000000000000000000000  claude-sync" \
-        >"$up/releases/bad/download/v0.4.1/claude-sync.sha256"
+        >"$up/bad/releases/download/v0.4.1/claude-sync.sha256"
     # A release whose file says it is another version.
-    "$root/packaging/build.sh" 0.4.9 "$up/releases/wrong/download/v0.4.1/claude-sync"
-    (cd "$up/releases/wrong/download/v0.4.1" && sha256sum claude-sync >claude-sync.sha256)
-    releases_json "file://$up/releases" >"$up/releases/releases.json"
-    releases_json "file://$up/releases" "file://$up/releases/bad" >"$up/releases/bad.json"
-    releases_json "file://$up/releases/wrong" >"$up/releases/wrong.json"
+    "$root/packaging/build.sh" 0.4.9 "$up/wrong/releases/download/v0.4.1/claude-sync"
+    (cd "$up/wrong/releases/download/v0.4.1" && sha256sum claude-sync >claude-sync.sha256)
+    releases_json "file://$up" >"$up/releases/releases.json"
+    releases_json "file://$up" "file://$up/bad" >"$up/releases/bad.json"
+    releases_json "file://$up/wrong" >"$up/releases/wrong.json"
+    # A release with no files, and one whose file is not there.
+    releases_json "file://$up" | sed '/browser_download_url/d' >"$up/releases/no-assets.json"
+    releases_json "file://$up/gone" >"$up/releases/gone.json"
     readonly new=$up/releases/download/v0.4.1/claude-sync
     cp "$up/old/claude-sync" "$up/install/claude-sync"
     # A second name for the installed file: a rewrite in place would show through it.
     ln "$up/install/claude-sync" "$up/held"
-    # Lists only N's and P's volumes, as `volume ls -q` gives them. Under any other
-    # instance's name, or under CLAUDE_SYNC_TEST_REFUSE's, which makes that instance's setup
-    # fail, it lets through only reads and commands run in N's and P's containers.
+    # Lists only N's, P's and S's volumes, as `volume ls -q` gives them; S has no container.
+    # Under any other instance's name, or under one of the names in CLAUDE_SYNC_TEST_REFUSE,
+    # which makes that instance's setup fail, it lets through only reads and commands run in
+    # N's and P's containers.
     cat >"$up/shim/docker" <<EOF
 #!/usr/bin/env bash
-real=$(command -v docker) n=$n p=$p
+real=$(command -v docker) n=$n p=$p s=$s
 EOF
     cat >>"$up/shim/docker" <<'EOF'
 if [[ $1 == volume && $2 == ls ]]; then
-    "$real" "$@" | grep -xF -e "$n-config" -e "$p-config" || true
+    "$real" "$@" | grep -xF -e "$n-config" -e "$p-config" -e "$s-config" || true
     exit
 fi
 ours() { [[ $1 == "$n" || $1 == "$p" ]]; }
-if ours "${CLAUDE_SYNC_NAME:-}" && [[ $CLAUDE_SYNC_NAME != "${CLAUDE_SYNC_TEST_REFUSE:-}" ]]; then
+if ours "${CLAUDE_SYNC_NAME:-}" && [[ " ${CLAUDE_SYNC_TEST_REFUSE:-} " != *" $CLAUDE_SYNC_NAME "* ]]; then
     exec "$real" "$@"
 fi
 [[ $1 == inspect || $1 == ps || ($1 =~ ^(container|volume|image)$ && $2 == inspect) ]] && exec "$real" "$@"
@@ -1243,6 +1247,14 @@ EOF
     check "a download that is another version is refused" fails_with "is not version 0.4.1" \
         upgrade_here wrong.json
     check "  leaving the installed file as it was" cmp -s "$up/install/claude-sync" "$up/old/claude-sync"
+    check "upgrade without the list of releases fails" fails_with "cannot get the list of claude-sync's releases" \
+        upgrade_here missing.json
+    check "a release with no files is refused" fails_with "release v0.4.1 has no claude-sync or claude-sync.sha256" \
+        upgrade_here no-assets.json
+    check "a download that fails is refused" \
+        fails_with "cannot download file://$up/gone/releases/download/v0.4.1/claude-sync" upgrade_here gone.json
+    check "  leaving the installed file as it was" cmp -s "$up/install/claude-sync" "$up/old/claude-sync"
+    check "  and no download behind" [ "$(ls -A "$up/install")" = claude-sync ]
 
     CLAUDE_SYNC_NAME=$n "$up/old/claude-sync" setup --volume "$vol_n" --private >/dev/null
     CLAUDE_SYNC_NAME=$p "$up/old/claude-sync" setup --volume "$vol_p" --gui-port 8484 --sync-port 22100 >/dev/null
@@ -1283,20 +1295,31 @@ EOF
     check "  then fails" [ "$status" != 0 ]
     check "  naming it" grep -qF "setup failed for instance $n;" <<<"$out"
     check "  which keeps its old stamp" [ "$(stamp_of "$n")" = 0.4.0 ]
+    docker exec -u "$owner_p" "$p" sh -c 'echo 0.4.0 >/var/syncthing/config/claude-sync-version'
+    out=$(with_releases releases.json env CLAUDE_SYNC_TEST_REFUSE="$n $p" "$up/install/claude-sync" upgrade 2>&1) ||
+        true
+    check "upgrade names every instance whose setup fails" grep -qF "setup failed for instances $n $p;" <<<"$out"
 
     docker stop "$p" >/dev/null
-    out=$(upgrade_here releases.json) || true
+    out=$(upgrade_here releases.json) && status=0 || status=$?
     check "upgrade again reapplies an instance an older version set up" [ "$(stamp_of "$n")" = 0.4.1 ]
+    check "  succeeding" [ "$status" = 0 ]
     check "  naming it" grep -qF "to instance $n" <<<"$out"
     check "  says it leaves a stopped instance be" grep -qF "$p is stopped" <<<"$out"
     check "  and does" [ "$(docker inspect -f '{{.State.Running}}' "$p")" = false ]
-    out=$(upgrade_here releases.json) || true
+    out=$(upgrade_here releases.json) && status=0 || status=$?
     check "upgrade with nothing to do reapplies nothing" fails grep -qF "to instance" <<<"$out"
+    check "  succeeding" [ "$status" = 0 ]
     check "  and says every running instance runs it" \
         grep -qF "Every running instance already runs claude-sync 0.4.1" <<<"$out"
     docker stop "$n" >/dev/null
-    out=$(upgrade_here releases.json) || true
+    # Syncthing state that no container uses, labelled as setup labels it.
+    docker volume create --label claude-sync=config "$s-config" >/dev/null
+    out=$(upgrade_here releases.json) && status=0 || status=$?
     check "  which it does not say with none running" fails grep -qF "Every running instance" <<<"$out"
+    check "  succeeding" [ "$status" = 0 ]
+    check "upgrade names Syncthing state no container uses" \
+        grep -qF "Volume $s-config holds the Syncthing state of instance $s," <<<"$out"
 
     echo "# upgrade, on the host's Syncthing"
     docker run -d --name "$hu" --network "$net" --user user --entrypoint env "$host_image" \
@@ -1304,7 +1327,7 @@ EOF
     docker exec -u 0 "$hu" mkdir -p /opt/releases /home/user/bin
     docker exec -u 0 "$hu" chown user /home/user/bin
     docker cp -q "$up/releases/download" "$hu:/opt/releases/"
-    releases_json file:///opt/releases | docker exec -i -u 0 "$hu" sh -c 'cat >/opt/releases/releases.json'
+    releases_json file:///opt | docker exec -i -u 0 "$hu" sh -c 'cat >/opt/releases/releases.json'
     docker cp -q "$up/old/claude-sync" "$hu:/home/user/bin/"
     docker exec -u 0 "$hu" chown user /home/user/bin/claude-sync
     docker cp -q "$root/stignore" "$hu:/opt/stignore"

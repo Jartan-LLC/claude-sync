@@ -9,13 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `claude-sync upgrade` installs the newest release that is not breaking, checked against
-  the release's SHA-256, then applies it to every running instance on the host, keeping
-  each one's target, ports and settings. A breaking release (a new major version, or a new
-  minor version while the major is 0) is not installed: `upgrade` says it is out and links
-  its release notes. It refuses an RPM install, which you upgrade with `dnf` as before. From
-  0.1.1 or earlier, download claude-sync once more as in the README's Install section, then
-  run `claude-sync upgrade`.
+- `claude-sync upgrade` installs the newest release that is not breaking, then applies it
+  to every running instance on the host, keeping each one's target, ports and settings. It
+  links a breaking release's notes instead of installing it, and refuses an RPM install,
+  which you upgrade with `dnf` as before; the README's Upgrade section has the details.
+  From 0.1.1 or earlier, download claude-sync once more as in the README's Install
+  section, then run `claude-sync upgrade`.
 - `claude-sync setup` with no `--volume` or `--path` applies the installed version to the
   instance already set up, keeping its target. After upgrading the RPM, run it for each
   instance.
