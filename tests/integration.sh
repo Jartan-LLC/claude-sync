@@ -848,6 +848,10 @@ EOF
     check "  into the home directory" on_host test -f tilde-restored/h-only.md
     check "  but not a ~ that starts a name" host_sync restore "$host_archive" --path '~restored'
     check "  which stays a name in the working directory" on_host test -f '~restored/h-only.md'
+    # shellcheck disable=SC2088 # given to claude-sync unexpanded, as when quoted
+    check "backup expands a quoted ~ in its directory" host_sync backup '~/tilde-backups'
+    check "  into the home directory" on_host sh -c 'ls tilde-backups/*.tar.gz'
+    check "  making no ~ directory" fails on_host test -e '~'
     # A directory that user can neither write in nor chmod.
     docker exec -u 0 "$h" mkdir /home/user/root-owned
     check "a restore that tar cannot finish fails" fails_with "could not restore all of" \

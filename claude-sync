@@ -498,13 +498,11 @@ real_path() {
     (cd -- "$path" 2>/dev/null && pwd -P) || echo "${path%/}"
 }
 
-# PATH as real_path gives it, for a directory that may not exist yet: its nearest existing
-# ancestor resolved, and the rest, which mkdir -p would make, cleaned.
-planned_path() {
-    local path rest=""
-    path=$(expand_home "$1")
+# The nearest of PATH and its ancestors that is a directory here, or . for a relative PATH
+# with none.
+nearest_dir() {
+    local path=$1
     while [[ ! -d $path ]]; do
-        rest=/${path##*/}$rest
         if [[ $path == */* ]]; then
             path=${path%/*}
             path=${path:-/}
@@ -512,7 +510,18 @@ planned_path() {
             path=.
         fi
     done
-    clean_path "$(real_path "$path")$rest"
+    printf '%s\n' "$path"
+}
+
+# PATH as real_path gives it, for a directory that may not exist yet: its nearest existing
+# ancestor resolved, and the rest, which mkdir -p would make, cleaned.
+planned_path() {
+    local path base
+    path=$(expand_home "$1")
+    # So that a relative path starts with the . that nearest_dir may give, which is cut off.
+    [[ $path == /* ]] || path=./$path
+    base=$(nearest_dir "$path")
+    clean_path "$(real_path "$base")/${path#"$base"}"
 }
 
 # Whether resolved PATH is DIR or inside it. The slash is dropped before adding one, so a DIR
@@ -1380,9 +1389,8 @@ check_outside_synced_folder() {
         # The container's folder is a volume or a path on the Docker host, which may not be
         # this machine, so no path here compares with it. A file made in DIR's nearest
         # existing directory is looked for from inside the container instead.
-        local dir=$1 probe out errors status=0
-        while [[ ! -d $dir ]]; do dir=$(dirname -- "$dir"); done
-        probe=$dir/.$name-probe.$$
+        local probe out errors status=0
+        probe=$(nearest_dir "$1")/.$name-probe.$$
         # Not writable: then backup cannot make DIR or write in it either, and fails there.
         : 2>/dev/null >"$probe" || return 0
         # In a subshell, so this EXIT trap leaves the caller's in place.
@@ -1394,9 +1402,7 @@ check_outside_synced_folder() {
         # The paths find matched start with a slash; every other line is a message.
         errors=$(grep -v '^/' <<<"$out") || true
         [[ -z $errors ]] || printf '%s\n' "$errors" >&2
-        # BusyBox's find exits 1 for a file that goes between listing its directory and
-        # reading it, the race that only_files_that_changed passes for tar.
-        if ((status == 1)) && ! grep -qvE "^find: $folder_path/.*: No such file or directory\$" <<<"$errors"; then
+        if ((status == 1)) && only_paths_that_went "$errors"; then
             status=0
         fi
         ((status == 0)) || die "could not search the synced folder for $1; find's message is above"
@@ -1429,6 +1435,13 @@ only_files_that_changed() {
         -e '^tar: \.(/.*)?: (file changed as we read it|File removed before we read it)$' \
         -e "^tar: (\./.*|can't open '\./.*'): No such file or directory\$" \
         -e '^tar: error exit delayed from previous errors$' <<<"$1"
+}
+
+# Whether each line find printed, given as ERRORS, says only that a path under the folder
+# went while find walked it. BusyBox's find exits 1 for a file that goes between listing its
+# directory and reading it, the race that only_files_that_changed passes for tar.
+only_paths_that_went() {
+    ! grep -qvE "^find: $folder_path/.*: No such file or directory\$" <<<"$1"
 }
 
 # Removes this instance's archives in DIR that neither rule keeps: the newest archive of each

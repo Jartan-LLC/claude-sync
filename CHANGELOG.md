@@ -40,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   0.1.0 this could make a repeated `setup` fail with `folder "claude-sync": folder has
   duplicate ID`, `uninstall` leave claude-sync's folder in place, and `pair` set a device
   that shares other folders as introducer. These no longer happen.
+- When `setup` checked a path against the folders of the Syncthing on the host, it read a
+  quoted `~NAME` at the start of the path as the home directory followed by NAME, a
+  directory beside the home directory, since 0.1.0. It now leaves `~NAME` as a name.
 
 ## [0.1.1] - 2026-10-09
 

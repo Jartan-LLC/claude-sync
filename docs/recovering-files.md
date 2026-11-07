@@ -31,12 +31,11 @@ claude-sync restore ~/claude-backups/claude-sync-20261107T120000Z.tar.gz --path 
 ```
 
 `restore` removes nothing ([details](commands.md#restore)). In a folder that syncs, the
-restored files reach every device, so a restore undoes a
-mistake that has already synced everywhere. Every other device moves the copies it replaces
-to its trash can; this device keeps none, so take a file the restore overwrote from another
-device's trash can. The files that do not sync, those that
-[What syncs](../README.md#what-syncs) lists as not syncing and `.stignore`, come back on
-this device only. After the restore:
+restored files reach every device, so a restore undoes a mistake that has already synced
+everywhere. Every other device moves the copies it replaces to its trash can; this device
+keeps none, so take a file the restore overwrote from another device's trash can. The files
+that do not sync, those that [What syncs](../README.md#what-syncs) lists as not syncing and
+`.stignore`, come back on this device only. After the restore:
 
 - rerun `setup` as you first ran it, so `.stignore` is this version's ignore list again;
 - if the archive came from another device, its `.credentials.json` is that device's login,

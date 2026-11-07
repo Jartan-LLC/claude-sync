@@ -132,15 +132,15 @@ there.
 
 - It holds everything in the folder, the files that do not sync included, such as this
   device's login in `.credentials.json`.
-- With your own Syncthing, `backup` uses this host's `tar`; it must be GNU or BusyBox, or
-  the backup fails.
+- With your own Syncthing, `backup` uses this host's `tar`. With a `tar` other than GNU or
+  BusyBox, a backup taken while files change fails.
 
 ### Which archives it keeps
 
 Of this instance's archives in the directory, `backup` keeps the one it just wrote, the
 newest of each of the last `--keep-weekly` weeks that have one (default 4), and the newest
 of each of the last `--keep-monthly` months that have one (default 6). 0 turns a rule off.
-It removes the other archives and nothing else.
+It removes the other archives.
 
 Give each device a directory of its own: two devices backing up the same instance name into
 one directory remove each other's archives.
