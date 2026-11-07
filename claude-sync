@@ -188,7 +188,7 @@ version_breaking() {
 check_releases() {
     local tag
     release_safe="" release_breaking=""
-    releases=$(curl -fsSL "$releases_api") || die "cannot get the list of claude-sync's releases from $releases_api"
+    releases=$(curl -fsSL -- "$releases_api") || die "cannot get the list of claude-sync's releases from $releases_api"
     # grep, as the list may come on one line or many, and users need no jq.
     while IFS= read -r tag; do
         [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
@@ -405,6 +405,7 @@ stamp_file() {
     case $1 in
         container) echo "/var/syncthing/config/$stamp" ;;
         host) config=$(host_config_file) && echo "${config%/*}/$stamp" ;;
+        *) return 1 ;;
     esac
 }
 
@@ -417,7 +418,6 @@ instance_version() {
     case $2 in
         container) docker exec "$1" cat "$file" 2>/dev/null ;;
         host) cat -- "$file" 2>/dev/null ;;
-        *) return 1 ;;
     esac
 }
 
@@ -649,12 +649,12 @@ setup() {
             *) die "unknown argument: $1" ;;
         esac
     done
+    check_name
     if [[ -z $kind ]] && ! current_setup; then
         usage >&2
         exit 2
     fi
     [[ -z $want_gui || $want_gui != "$want_sync" ]] || die "--gui-port and --sync-port need different ports"
-    check_name
     if [[ -n $host ]]; then
         [[ $kind == path ]] || die "--use-host-syncthing works only with --path: a Syncthing on the host cannot reach a Docker volume"
         [[ -z $network ]] || die "--$network changes how all of a Syncthing's folders connect; with --use-host-syncthing, set them in that Syncthing"
@@ -1147,7 +1147,9 @@ upgrade() {
     if [[ -n $release_safe ]]; then
         install_release "$release_safe" "$file"
         echo "Installed claude-sync ${release_safe#v} in place of $claude_sync_version."
-        # The new version applies itself, and tells of any breaking release.
+        # The new version applies itself, and tells of any breaking release. It does not exec
+        # again: install_release checked that it is release_safe, the newest release that is
+        # not breaking, so it finds nothing newer to install.
         exec "$file" upgrade
     fi
     if [[ -n $release_breaking ]]; then
@@ -1167,8 +1169,8 @@ install_release() {
     tmp=$(mktemp -- "${file%/*}/.claude-sync.XXXXXX") || die "cannot write to ${file%/*}, where claude-sync is"
     # shellcheck disable=SC2064 # expanded now: tmp is local
     trap "rm -f -- $(printf %q "$tmp")" EXIT
-    curl -fsSL -o "$tmp" "$url" || die "cannot download $url"
-    want=$(curl -fsSL "$sums") || die "cannot download $sums"
+    curl -fsSL -o "$tmp" -- "$url" || die "cannot download $url"
+    want=$(curl -fsSL -- "$sums") || die "cannot download $sums"
     [[ $(sha256sum <"$tmp") == "${want%% *} "* ]] ||
         die "the claude-sync downloaded from $url does not match the release's SHA-256; nothing was changed"
     chmod 755 "$tmp"
@@ -1198,6 +1200,8 @@ apply_everywhere() {
                 continue
                 ;;
         esac
+        # What is left, container or host, is also where the instance's Syncthing runs, the
+        # place instance_version and setup's write_stamp take.
         running=1
         version=$(instance_version "$instance" "$status") || version=""
         stale "$version" || continue

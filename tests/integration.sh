@@ -1155,6 +1155,14 @@ releases_json() {
 EOF
 }
 
+# The newest releases in LIST, to the 0.4.0 build: the one that is not breaking and the
+# one that is.
+newest_releases() {
+    # shellcheck disable=SC2016 # expanded by the inner bash
+    CLAUDE_SYNC_RELEASES_API="file://$up/releases/$1" bash -c \
+        'source "$1" help >/dev/null && check_releases && echo "$release_safe $release_breaking"' _ "$up/old/claude-sync"
+}
+
 # CMD with the fake releases in LIST. Upgrade acts on every instance on the Docker daemon
 # and in the runner's own Syncthing, which may hold real ones, and the other groups' run
 # beside it, so it runs with the shims for docker and syncthing.
@@ -1196,6 +1204,14 @@ group_upgrade() {
     # A release with no files, and one whose claude-sync is not there, though its SHA-256 is.
     releases_json "file://$up" | sed '/browser_download_url/d' >"$up/releases/no-assets.json"
     releases_json "file://$up/gone" "file://$up" >"$up/releases/gone.json"
+    # Tags in no version order, as GitHub lists releases by date: neither the first nor the
+    # last of each kind is the newest.
+    cat >"$up/releases/order.json" <<'EOF'
+[
+  {"tag_name": "v0.4.2"}, {"tag_name": "v0.5.0"}, {"tag_name": "v0.4.3"},
+  {"tag_name": "v0.6.0"}, {"tag_name": "v0.4.1"}, {"tag_name": "v0.5.1"}
+]
+EOF
     readonly new=$up/releases/download/v0.4.1/claude-sync
     cp "$up/old/claude-sync" "$up/install/claude-sync"
     # A second name for the installed file: a rewrite in place would show through it.
@@ -1241,6 +1257,8 @@ EOF
     check "  a pre-release before its release" calls version_older 0.4.0-rc.1 0.4.0
     check "  also as an RPM writes it" calls version_older 0.4.0~rc.1 0.4.0
     check "  and a version not before itself" fails calls version_older 0.4.0 0.4.0
+    check "the newest release of each kind is picked, whatever the list's order" \
+        [ "$(newest_releases order.json)" = "v0.4.3 v0.6.0" ]
 
     # With no release list, so a refusal that fails cannot go further.
     check "upgrade from a checkout is refused" fails_with "runs from a checkout" \
@@ -1274,6 +1292,8 @@ EOF
     check "setup with no target reapplies to the instance's own" env CLAUDE_SYNC_NAME="$n" "$up/old/claude-sync" setup
     CLAUDE_SYNC_NAME=$hu "$new" setup >/dev/null 2>&1 && status=0 || status=$?
     check "  and where there is none, prints usage" [ "$status" = 2 ]
+    check "  and with a name that is not valid, says so" fails_with "CLAUDE_SYNC_NAME must be" \
+        env CLAUDE_SYNC_NAME=Not-Valid "$new" setup
 
     # A failed upgrade goes on to the checks, which say what it left undone.
     out=$(upgrade_here releases.json) || true
@@ -1317,6 +1337,9 @@ EOF
     check "  succeeding" [ "$status" = 0 ]
     check "  and says every running instance runs it" \
         grep -qF "Every running instance already runs claude-sync 0.4.1" <<<"$out"
+    out=$(env CLAUDE_SYNC_NAME="$n" "$new" pair not-a-device-id 2>&1) || true
+    check "  so pair no longer says the instance needs its setup" fails grep -qF "last set up by" <<<"$out"
+    check "  getting on to the device ID" grep -qF "not a device ID" <<<"$out"
 
     # As an instance set up by 0.1.1 or earlier.
     docker exec -u "$owner_n" "$n" rm /var/syncthing/config/claude-sync-version
