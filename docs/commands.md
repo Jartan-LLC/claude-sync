@@ -17,6 +17,7 @@ leaves the fix out. `claude-sync help` prints the same commands and flags.
 | `backup DIR` | Writes an archive of the whole synced folder to DIR, then removes older ones there |
 | `restore ARCHIVE --volume NAME` | Extracts a backup over the Docker volume NAME |
 | `restore ARCHIVE --path DIR` | Extracts a backup over the directory DIR on this machine |
+| `status` | Shows how the instance is set up and syncs, its devices, and whether a newer release is out |
 | `list` | Lists this host's instances and marks the one commands act on |
 | `use NAME` | Makes later commands act on instance NAME |
 | `version` | Prints claude-sync's version |
@@ -88,6 +89,17 @@ instances an earlier run missed.
   [Install](../README.md#install).
 - An RPM install is upgraded with `dnf` (see [Upgrade](../README.md#upgrade)).
 
+## status
+
+```bash
+claude-sync status
+```
+
+Shows the instance `claude-sync list` marks, and changes nothing: a stopped container stays
+stopped. It asks GitHub whether a newer release is out, and says so when it cannot. The
+conflict copies it counts are those outside the trash can ([Recovering
+files](recovering-files.md)).
+
 ## Several instances on one host
 
 `CLAUDE_SYNC_NAME` names an instance: its container and the volume that holds its
@@ -108,7 +120,7 @@ set, wins over the selection.
 In `list`, `state only` is an instance whose container is gone but whose Syncthing state,
 with its device ID, is left; `setup` under its name uses it again.
 
-Each instance gets ports of its own, which `setup` prints, as long as the other instances
+Each instance gets ports of its own, which `setup` and `status` print, as long as the other instances
 are running when it first starts: Syncthing takes free ports only then. Each needs a
 target of its own too: `setup` refuses a volume or directory that another Syncthing
 container mounts, running or stopped. A name other than the default, `claude-sync`, can't
@@ -211,7 +223,7 @@ restore with `tar` alone.
 | `cannot write to` ... `where claude-sync is` | Run `upgrade` as the user who owns that directory |
 | `does not match the release's SHA-256` or `is not version` | Nothing was changed; run `upgrade` again later, and report it if it keeps failing |
 | `setup failed for instance` | Fix what that instance's `setup` printed above, then rerun `upgrade` |
-| `docker cannot be reached` | Start Docker, and check that `docker ps` works as this user; then rerun `setup` |
+| `docker cannot be reached` | Start Docker, and check that `docker ps` works as this user; then rerun the command |
 | `docker cannot list the instances in containers` | Start Docker, and check that `docker ps` works as this user; then rerun the command |
 | `is in the synced folder` | Give `backup` a directory outside the synced folder |
 | `could not search the synced folder` | find's message above names the directory. If the folder's owner cannot read it, `chown` it |

@@ -19,6 +19,8 @@ docker run --rm --user 1000:1000 -v claude-data:/claude busybox \
 
 When two devices change a file before syncing, the newer change wins and the other is
 kept beside it as `NAME.sync-conflict-DATE-TIME-DEVICE.EXT`, on every device.
+`claude-sync status` counts them. Keep the copy you want under the file's own name and
+delete the other; the deletion reaches every device.
 
 ## From a backup
 
