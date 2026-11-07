@@ -12,7 +12,34 @@ asset() {
 }
 # END ASSETS
 readonly default_name=claude-sync
-export CLAUDE_SYNC_NAME=${CLAUDE_SYNC_NAME:-$default_name}
+
+# Where `claude-sync use` keeps the selected instance. Fails when there is no home to
+# keep it in.
+selection_file() {
+    local dir=${XDG_CONFIG_HOME:-${HOME:+$HOME/.config}}
+    [[ -n $dir ]] || return 1
+    echo "$dir/claude-sync/instance"
+}
+
+# The instance `claude-sync use` selected. Fails when none is.
+selected_instance() {
+    local file
+    file=$(selection_file) && [[ -s $file ]] || return 1
+    head -n 1 -- "$file"
+}
+
+# What chose the instance: CLAUDE_SYNC_NAME, which wins so scripts and the tests are not
+# steered by a selection, then the selection, else the default.
+if [[ -n ${CLAUDE_SYNC_NAME:-} ]]; then
+    name_from=variable
+elif CLAUDE_SYNC_NAME=$(selected_instance); then
+    name_from=selection
+else
+    CLAUDE_SYNC_NAME=$default_name name_from=default
+fi
+readonly name_from
+# Exported for compose.yaml.
+export CLAUDE_SYNC_NAME
 readonly name=$CLAUDE_SYNC_NAME
 readonly folder_id=claude-sync
 # Devices unpaired anywhere, one empty file per device ID in the synced folder, so every
@@ -82,13 +109,18 @@ Usage:
   claude-sync uninstall             Remove claude-sync's container and Syncthing state,
                                     or its folder from the Syncthing on this host; the
                                     synced files are left untouched
+  claude-sync list                  List this host's instances; * marks the one
+                                    commands act on
+  claude-sync use NAME              Make later commands act on instance NAME;
+                                    claude-sync use claude-sync goes back to the default
   claude-sync version
   claude-sync help
 
 Environment:
-  CLAUDE_SYNC_NAME                  This instance's name, default claude-sync; one host
-                                    can run several instances under different names.
-                                    Leave it unset with --use-host-syncthing
+  CLAUDE_SYNC_NAME                  This instance's name, default the one selected with
+                                    use, else claude-sync; one host can run several
+                                    instances under different names. Leave it unset
+                                    with --use-host-syncthing
 EOF
 }
 
@@ -97,11 +129,23 @@ die() {
     exit 1
 }
 
+# Compose's project-name rule, plus Docker's two-character minimum for container names,
+# since an instance's name is both.
+valid_name() {
+    [[ $1 =~ ^[a-z0-9][a-z0-9_-]+$ ]]
+}
+
 check_name() {
-    # Compose's project-name rule, plus Docker's two-character minimum for container names,
-    # since the name is both.
-    [[ $name =~ ^[a-z0-9][a-z0-9_-]+$ ]] ||
+    valid_name "$name" ||
         die "CLAUDE_SYNC_NAME must be two or more lowercase letters, digits, '-' or '_', starting with a letter or digit: $name"
+}
+
+# Says which instance a command acts on, and what chose it, when it is not the default.
+tell_instance() {
+    [[ $name != "$default_name" ]] || return 0
+    local by="named by CLAUDE_SYNC_NAME"
+    [[ $name_from != selection ]] || by="selected with claude-sync use"
+    printf 'claude-sync: acting on instance %s, %s\n' "$name" "$by" >&2
 }
 
 syncthing_run() {
@@ -343,10 +387,10 @@ ours_container() {
     [[ $(docker container inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' "$1") == "$1" ]]
 }
 
-# The volume name or host path the existing container syncs, if any.
+# The volume name or host path the existing container NAME syncs, if any.
 current_target() {
     docker container inspect --format "{{range .Mounts}}{{if eq .Destination \"$folder_path\"}}{{if eq .Type \"volume\"}}{{.Name}}{{else}}{{.Source}}{{end}}{{end}}{{end}}" \
-        "$name" 2>/dev/null
+        "$1" 2>/dev/null
 }
 
 host_config_file() {
@@ -615,7 +659,7 @@ forget_unpaired() {
 current_setup() {
     if command -v docker >/dev/null && docker container inspect "$name" >/dev/null 2>&1; then
         ours_container "$name" || die "container $name was not created by claude-sync"
-        target=$(current_target)
+        target=$(current_target "$name")
         [[ -n $target ]] || die "container $name syncs nothing; run uninstall, then setup with --volume or --path"
         kind=volume
         [[ $(docker container inspect --format "{{range .Mounts}}{{if eq .Destination \"$folder_path\"}}{{.Type}}{{end}}{{end}}" \
@@ -660,6 +704,7 @@ setup() {
         esac
     done
     check_name
+    tell_instance
     if [[ -z $kind ]] && ! current_setup; then
         # A daemon that is not running would otherwise pass for no instance in a container.
         if command -v docker >/dev/null && ! docker info >/dev/null 2>&1; then
@@ -715,7 +760,7 @@ setup() {
     fi
 
     local current
-    current=$(current_target) || current=""
+    current=$(current_target "$name") || current=""
     [[ -z $current || $current == "$target" ]] || die "already set up for $current; run uninstall first"
     # Two Syncthings on one target would each sync it as a device of its own.
     local taken
@@ -912,6 +957,7 @@ pair() {
         exit 2
     fi
     check_name
+    tell_instance
     detect_mode
 
     [[ $id =~ $id_re ]] || die "not a device ID: $id; copy it as setup printed it"
@@ -1095,6 +1141,7 @@ unpair() {
     fi
     local id=$1 self
     check_name
+    tell_instance
     detect_mode
     [[ $id =~ $id_re ]] || die "not a device ID: $id; copy it as setup printed it"
     self=$(syncthing_run device-id)
@@ -1111,6 +1158,7 @@ unpair() {
 uninstall() {
     (($# == 0)) || die "uninstall takes no arguments"
     check_name
+    tell_instance
     local container="" volume=""
     if command -v docker >/dev/null; then
         if docker container inspect "$name" >/dev/null 2>&1; then
@@ -1144,6 +1192,79 @@ uninstall() {
         fi
     fi
     echo "The synced files are untouched."
+    if [[ $(selected_instance) == "$name" ]]; then
+        rm -f -- "$(selection_file)"
+        echo "Instance $name is no longer selected; later commands act on the default instance, $default_name."
+    fi
+}
+
+# Lists this host's instances, marking the one commands act on.
+list() {
+    (($# == 0)) || die "list takes no arguments"
+    local all unlisted="" instance status width=4 mark state syncs marked="" tab=$'\t'
+    all=$(instances) || unlisted=1
+    while IFS=$'\t' read -r instance status; do
+        ((${#instance} <= width)) || width=${#instance}
+    done <<<"$all"
+    if [[ -n $all ]]; then
+        printf '  %-*s  %-14s  %s\n' "$width" NAME STATE SYNCS
+        while IFS=$'\t' read -r instance status; do
+            mark=" "
+            if [[ $instance == "$name" ]]; then
+                mark="*" marked=1
+            fi
+            case $status in
+                container | stopped)
+                    state=running
+                    [[ $status == container ]] || state=stopped
+                    syncs=$(current_target "$instance")
+                    if [[ $syncs == /* ]]; then
+                        syncs="directory $syncs"
+                    elif [[ -n $syncs ]]; then
+                        syncs="volume $syncs"
+                    fi
+                    ;;
+                state-only) state="state only" syncs="" ;;
+                host)
+                    state="host Syncthing"
+                    syncs="directory $(host_folders | sed -n "s/^$folder_id$tab//p")"
+                    ;;
+            esac
+            printf '%s %-*s  %-14s  %s\n' "$mark" "$width" "$instance" "$state" "${syncs:--}"
+        done <<<"$all"
+    fi
+    if [[ -n $unlisted ]]; then
+        die "docker cannot list the instances in containers, so this list leaves them out; once docker works, rerun claude-sync list"
+    elif [[ -z $all ]]; then
+        echo "No instance is set up on this host."
+    elif [[ -z $marked ]]; then
+        echo "Commands act on instance $name, which is not set up on this host."
+    fi
+}
+
+# Selects the instance later commands act on, when CLAUDE_SYNC_NAME is unset.
+use() {
+    if (($# != 1)); then
+        usage >&2
+        exit 2
+    fi
+    local instance=$1 file all
+    file=$(selection_file) || die "neither HOME nor XDG_CONFIG_HOME is set, so there is nowhere to keep the selection"
+    if [[ $instance == "$default_name" ]]; then
+        rm -f -- "$file"
+        echo "Commands now act on the default instance, $default_name."
+    else
+        all=$(instances) || die "docker cannot list the instances in containers, so use cannot check that $instance is one; once docker works, rerun claude-sync use $instance"
+        if ! valid_name "$instance" || ! prints_line "$instance" cut -f 1 <<<"$all"; then
+            die "no instance named $instance on this host; claude-sync list shows them"
+        fi
+        mkdir -p -- "${file%/*}"
+        printf '%s\n' "$instance" >"$file"
+        echo "Commands now act on instance $instance."
+    fi
+    if [[ $name_from == variable && $name != "$instance" ]]; then
+        echo "CLAUDE_SYNC_NAME is set, so commands run with it still act on instance $name."
+    fi
 }
 
 upgrade() {
@@ -1261,6 +1382,14 @@ case ${1:-help} in
     upgrade)
         shift
         upgrade "$@"
+        ;;
+    list)
+        shift
+        list "$@"
+        ;;
+    use)
+        shift
+        use "$@"
         ;;
     version | --version) echo "claude-sync $claude_sync_version" ;;
     help | -h | --help) usage ;;

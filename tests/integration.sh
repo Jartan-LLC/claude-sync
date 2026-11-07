@@ -16,6 +16,7 @@ readonly prefix
 }
 readonly net=${prefix}net a=${prefix}a b=${prefix}b c=${prefix}c d=${prefix}d e=${prefix}e g=${prefix}g k=${prefix}k
 readonly j=${prefix}j l=${prefix}l m=${prefix}m n=${prefix}n p=${prefix}p s=${prefix}s hu=${prefix}hu
+readonly v=${prefix}v w=${prefix}w vol_v=${prefix}v-data owner_v=3690:3690
 readonly listener=${prefix}listener foreign=${prefix}foreign h=${prefix}h host_image=${prefix}host
 readonly vol_a=${prefix}a-data vol_b=${prefix}b-data vol_missing=${prefix}missing
 readonly vol_root=${prefix}root-data vol_c=${prefix}c-data vol_d=${prefix}d-data
@@ -386,15 +387,17 @@ snapshot() {
 
 cleanup() {
     local x
-    for x in "$a" "$b" "$c" "$d" "$e" "$g" "$k" "$j" "$l" "$m" "$n" "$p" "$h" "$hu" "$bad_name" "$listener" "$foreign"; do
+    for x in "$a" "$b" "$c" "$d" "$e" "$g" "$k" "$j" "$l" "$m" "$n" "$p" "$v" "$w" "$h" "$hu" "$bad_name" "$listener" \
+        "$foreign"; do
         guard "$x"
         docker rm --force -v "$x" >/dev/null 2>&1 || true
     done
     guard "$host_image"
     docker image rm "$host_image" >/dev/null 2>&1 || true
     for x in "$a-config" "$b-config" "$c-config" "$d-config" "$e-config" "$g-config" "$k-config" \
-        "$j-config" "$l-config" "$m-config" "$n-config" "$p-config" "$s-config" "$bad_name-config" "$foreign-config" \
-        "$vol_a" "$vol_b" "$vol_c" "$vol_d" "$vol_e" "$vol_g" "$vol_j" "$vol_l" "$vol_m" "$vol_n" "$vol_p" \
+        "$j-config" "$l-config" "$m-config" "$n-config" "$p-config" "$s-config" "$v-config" "$w-config" \
+        "$bad_name-config" "$foreign-config" \
+        "$vol_a" "$vol_b" "$vol_c" "$vol_d" "$vol_e" "$vol_g" "$vol_j" "$vol_l" "$vol_m" "$vol_n" "$vol_p" "$vol_v" \
         "$vol_missing" "$vol_root"; do
         guard "$x"
         docker volume rm "$x" >/dev/null 2>&1 || true
@@ -430,7 +433,7 @@ on_exit() {
     fi
     wait 2>/dev/null || true
     if ((status != 0)); then
-        for node in "$a" "$b" "$c" "$d" "$e" "$g" "$j" "$l" "$m" "$n" "$p" "$h" "$hu"; do
+        for node in "$a" "$b" "$c" "$d" "$e" "$g" "$j" "$l" "$m" "$n" "$p" "$v" "$h" "$hu"; do
             docker logs --tail 30 "$node" 2>&1 | sed "s/^/[$node] /" || true
         done
         for out in "$scratch"/join-*.out; do
@@ -451,6 +454,8 @@ set -E
 trap '((BASH_SUBSHELL == top)) && echo "aborted at tests/integration.sh:$LINENO${FUNCNAME:+ in ${FUNCNAME[0]}, called from line ${BASH_LINENO[0]}}" >&2' ERR
 trap on_exit EXIT
 scratch=$(mktemp -d -t "${prefix}XXXXXX")
+# Where claude-sync keeps the selected instance, so no run reads or writes the user's own.
+export XDG_CONFIG_HOME=$scratch/config
 # The claude-sync under test: this checkout's, or with CLAUDE_SYNC_BIN the single file
 # `make build` writes, alone in a directory so it can only use the files it carries.
 if [[ -n ${CLAUDE_SYNC_BIN:-} ]]; then
@@ -1443,11 +1448,102 @@ EOF
     check "uninstall removes the stamp" fails as_user "$hu" test -e .local/state/syncthing/claude-sync-version
 }
 
+# claude-sync as the user runs it, with no CLAUDE_SYNC_NAME, and the docker shim of
+# group_select.
+unnamed() {
+    env -u CLAUDE_SYNC_NAME PATH="$scratch/select:$PATH" "$bin" "$@"
+}
+
+# claude-sync with CLAUDE_SYNC_NAME set to NAME, and the docker shim of group_select.
+named() {
+    env CLAUDE_SYNC_NAME="$1" PATH="$scratch/select:$PATH" "$bin" "${@:2}"
+}
+
+# V and W: listing a host's instances and selecting the one commands act on.
+group_select() {
+    echo "# list and use"
+    local selection=$XDG_CONFIG_HOME/claude-sync/instance
+    # list and use read every instance on the Docker daemon, which may hold real ones, and
+    # with no CLAUDE_SYNC_NAME a command acts on the default name, which may be a real
+    # instance's. So these run with a shim that lists only V's and W's volumes, and lets
+    # through only reads, unless claude-sync acts on V or W. With
+    # CLAUDE_SYNC_TEST_DOCKER_DOWN set, every command fails, as with a daemon that is not
+    # running.
+    mkdir "$scratch/select"
+    cat >"$scratch/select/docker" <<EOF
+#!/usr/bin/env bash
+real=$(command -v docker) v=$v w=$w
+EOF
+    cat >>"$scratch/select/docker" <<'EOF'
+if [[ -n ${CLAUDE_SYNC_TEST_DOCKER_DOWN:-} ]]; then
+    echo "docker shim: cannot connect to the Docker daemon" >&2
+    exit 1
+fi
+if [[ $1 == volume && $2 == ls ]]; then
+    "$real" "$@" | grep -xF -e "$v-config" -e "$w-config" || true
+    exit
+fi
+[[ ${CLAUDE_SYNC_NAME:-} == "$v" || ${CLAUDE_SYNC_NAME:-} == "$w" ]] && exec "$real" "$@"
+[[ $1 == inspect || ($1 =~ ^(container|volume|image)$ && $2 == inspect) ]] && exec "$real" "$@"
+echo "docker shim: refusing docker $* under CLAUDE_SYNC_NAME=${CLAUDE_SYNC_NAME:-}" >&2
+exit 97
+EOF
+    chmod +x "$scratch/select/docker"
+    docker volume create "$vol_v" >/dev/null
+    in_target "type=volume,src=$vol_v" "chown $owner_v /t"
+
+    out=$(unnamed list)
+    check "list with no instance says so" grep -qxF "No instance is set up on this host." <<<"$out"
+    claude_sync "$v" setup --volume "$vol_v" >/dev/null
+    # Syncthing state that no container uses, labelled as setup labels it.
+    docker volume create --label claude-sync=config "$w-config" >/dev/null
+    out=$(unnamed list)
+    check "list shows a running instance and what it syncs" grep -qE "^  $v +running +volume $vol_v\$" <<<"$out"
+    check "  and one with only its Syncthing state" grep -qE "^  $w +state only +-\$" <<<"$out"
+    check "  and that the default, which commands act on, is not set up" \
+        grep -qxF "Commands act on instance claude-sync, which is not set up on this host." <<<"$out"
+
+    check "use refuses a name that is not an instance" fails_with "no instance named ${prefix}typo" \
+        unnamed use "${prefix}typo"
+    check "  selecting nothing" [ ! -e "$selection" ]
+    check "use selects an instance" unnamed use "$v"
+    check "  in the config directory" [ "$(cat "$selection")" = "$v" ]
+    check "  which list marks" grep -qE "^\* $v +running" <<<"$(unnamed list)"
+    check "a command then acts on it, saying so" \
+        fails_with "acting on instance $v, selected with claude-sync use" unnamed pair not-a-device-id
+    check "  and finds it running" fails_with "not a device ID" unnamed pair not-a-device-id
+
+    check "CLAUDE_SYNC_NAME still wins over the selection" grep -qE "^\* $w +state only" <<<"$(named "$w" list)"
+    check "  and a command it names says so" \
+        fails_with "acting on instance $w, named by CLAUDE_SYNC_NAME" named "$w" pair not-a-device-id
+    check "use with CLAUDE_SYNC_NAME set says it still wins" \
+        grep -qF "CLAUDE_SYNC_NAME is set, so commands run with it still act on instance $w." \
+        <<<"$(named "$w" use "$v")"
+    check "use of the default clears the selection" unnamed use claude-sync
+    check "  removing the file" [ ! -e "$selection" ]
+    unnamed use "$v" >/dev/null
+    out=$(named "$w" uninstall 2>&1)
+    check "uninstall of another instance leaves the selection" [ "$(cat "$selection")" = "$v" ]
+    check "  and says nothing of it" fails grep -qF "no longer selected" <<<"$out"
+
+    docker stop "$v" >/dev/null
+    check "list shows a stopped instance" grep -qE "^\* $v +stopped +volume $vol_v\$" <<<"$(unnamed list)"
+    check "list when docker cannot list the instances fails, saying so" \
+        fails_with "docker cannot list the instances in containers" \
+        env -u CLAUDE_SYNC_NAME CLAUDE_SYNC_TEST_DOCKER_DOWN=1 PATH="$scratch/select:$PATH" "$bin" list
+    out=$(unnamed uninstall 2>&1)
+    check "uninstall acts on the selected instance" fails docker container inspect "$v"
+    check "  and clears the selection" [ ! -e "$selection" ]
+    check "  saying later commands act on the default" \
+        grep -qF "later commands act on the default instance, claude-sync." <<<"$out"
+}
+
 run_group chain
 run_group instances
 run_group stuck
 run_group refusals
 run_group upgrade
+run_group select
 # Each group's output as it ends.
 while ((${#group_of[@]})); do
     wait -n -p done_pid || true
