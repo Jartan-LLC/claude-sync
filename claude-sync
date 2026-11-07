@@ -62,6 +62,8 @@ readonly label=claude-sync=config
 readonly stamp=claude-sync-version
 # GitHub's list of releases; the tests point it at a file.
 readonly releases_api=${CLAUDE_SYNC_RELEASES_API:-https://api.github.com/repos/Jartan-LLC/claude-sync/releases?per_page=100}
+# How to upgrade an RPM install, for messages.
+readonly rpm_upgrade="upgrade it with dnf as you installed it, then run CLAUDE_SYNC_NAME=NAME claude-sync setup for each running instance NAME that claude-sync list shows"
 owner=""
 compose_files=()
 probe_error=""
@@ -125,6 +127,8 @@ Usage:
                                     volume NAME or the directory DIR on this machine.
                                     Removes nothing; in a synced folder, the restored files
                                     sync to every device
+  claude-sync status                Show how this instance is set up and syncs, and
+                                    whether a newer release is out
   claude-sync list                  List this host's instances
   claude-sync use NAME              Make later commands act on instance NAME
                                     (default: claude-sync)
@@ -156,14 +160,21 @@ check_name() {
     die "CLAUDE_SYNC_NAME must be two or more lowercase letters, digits, '-' or '_', starting with a letter or digit: $name"
 }
 
+# What chose an instance other than the default, for messages.
+name_source() {
+    if [[ $name_from == selection ]]; then
+        echo "selected with claude-sync use"
+    else
+        echo "named by CLAUDE_SYNC_NAME"
+    fi
+}
+
 # For a command that acts on the instance: refuses an invalid name, then says which
 # instance it acts on, and what chose it, when it is not the default.
 check_instance() {
     check_name
     [[ $name != "$default_name" ]] || return 0
-    local by="named by CLAUDE_SYNC_NAME"
-    [[ $name_from != selection ]] || by="selected with claude-sync use"
-    printf 'claude-sync: acting on instance %s, %s\n' "$name" "$by" >&2
+    printf 'claude-sync: acting on instance %s, %s\n' "$name" "$(name_source)" >&2
 }
 
 syncthing_run() {
@@ -204,6 +215,22 @@ rest() {
 # and users need no jq.
 field() {
     sed -n "s/^  \"$1\": \(.*\)\$/\1/p" | sed 's/,$//; s/^"\(.*\)"$/\1/'
+}
+
+# The object under KEY, at any depth of the REST API's JSON, with its keys where field
+# reads them.
+object() {
+    local line lead indent="" found=""
+    while IFS= read -r line; do
+        if [[ -z $found ]]; then
+            lead=${line%%[! ]*}
+            [[ ${line#"$lead"} != "\"$1\": {" ]] || found=1 indent=$lead
+        elif [[ $line == "$indent}" || $line == "$indent}," ]]; then
+            return 0
+        else
+            printf '%s\n' "${line#"$indent"}"
+        fi
+    done
 }
 
 folder_status() {
@@ -248,10 +275,11 @@ version_breaking() {
 # Fetches the list of releases into releases, which release_url reads, then sets
 # release_safe to the newest release after this version that is not breaking, and
 # release_breaking to the newest that is, each a tag or empty. Pre-releases are left out.
+# Its arguments go to curl. Fails when it cannot fetch the list.
 check_releases() {
     local tag
     release_safe="" release_breaking=""
-    releases=$(curl -fsSL -- "$releases_api") || die "cannot get the list of claude-sync's releases from $releases_api"
+    releases=$(curl -fsSL "$@" -- "$releases_api") || return 1
     # grep, as the list may come on one line or many, and users need no jq.
     while IFS= read -r tag; do
         [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
@@ -640,14 +668,19 @@ use_host() {
     fi
 }
 
+# The UID:GID that the container NAME runs Syncthing as.
+container_owner() {
+    local env
+    env=$(docker container inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$1") || return
+    echo "$(sed -n 's/^PUID=//p' <<<"$env"):$(sed -n 's/^PGID=//p' <<<"$env")"
+}
+
 # Container mode when claude-sync's container exists, else the Syncthing this user has
 # configured on this host.
 detect_mode() {
     if command -v docker >/dev/null && docker container inspect "$name" >/dev/null 2>&1; then
         { running && ours_container "$name"; } || die "Syncthing is not running in container $name; run setup first"
-        local env
-        env=$(docker container inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$name")
-        owner=$(sed -n 's/^PUID=//p' <<<"$env"):$(sed -n 's/^PGID=//p' <<<"$env")
+        owner=$(container_owner "$name")
         warn_stale
     elif [[ $name == "$default_name" ]] && host_syncthing_configured; then
         use_host
@@ -1357,18 +1390,188 @@ use() {
     fi
 }
 
+# The file this claude-sync runs from, symlinks resolved.
+installed_file() {
+    readlink -f -- "${BASH_SOURCE[0]}"
+}
+
+# The RPM package that installed FILE. Fails when none did.
+rpm_package() {
+    command -v rpm >/dev/null && rpm -qf -- "$1" 2>/dev/null
+}
+
+# Shows how the instance is set up, how it syncs, and whether a newer release is out. It
+# only reads, so it never starts a stopped container, and does not use detect_mode, which
+# applies the unpaired list to the Syncthing on this host.
+status() {
+    (($# == 0)) || die "status takes no arguments"
+    check_name
+    local instance=$name kind="" target="" host="" place="" syncthing syncs="" info="" devices=""
+    local version text
+    [[ $name == "$default_name" ]] || instance+=", $(name_source)"
+    if ! current_setup; then
+        if command -v docker >/dev/null && ! docker info >/dev/null 2>&1; then
+            die "docker cannot be reached, so status cannot tell whether instance $name runs in a container; once docker works, rerun claude-sync status"
+        fi
+        syncthing="not set up on this host; $(setup_command "$name") --volume NAME or --path DIR sets it up"
+    else
+        syncs="volume $target"
+        [[ $kind == volume ]] || syncs="directory $target"
+        if [[ -n $host ]]; then
+            use_host
+            folder_path=$target place=host syncthing="your own, on this host"
+        elif running; then
+            owner=$(container_owner "$name") || die "cannot inspect container $name"
+            place=container syncthing="in container $name"
+        else
+            syncthing="in container $name, stopped; $(setup_command "$name") starts it"
+        fi
+        if [[ -n $place ]]; then
+            { info=$(syncthing_status) && devices=$(device_status); } || die "cannot reach Syncthing $where"
+        fi
+    fi
+    show Instance "$instance"
+    show Syncthing "$syncthing"
+    [[ -z $syncs ]] || show Syncs "$syncs"
+    [[ -z $info ]] || printf '%s\n' "$info"
+    show Installed "claude-sync $claude_sync_version"
+    if [[ -n $place ]]; then
+        version=$(instance_version "$name" "$place") || version=""
+        text="claude-sync $version"
+        [[ -n $version ]] || text="an older claude-sync"
+        ! stale "$version" || text+="; run $(setup_command "$name") to apply $claude_sync_version"
+        show "Set up by" "$text"
+    fi
+    release_status
+    [[ -z $place ]] || printf '%s\n' "$devices"
+}
+
+# Prints LABEL and VALUE as a line of status.
+show() {
+    printf '%-17s%s\n' "$1:" "$2"
+}
+
+# Status lines that need the instance's Syncthing to answer, short of the devices.
+syncthing_status() {
+    local ui id port network folder state conflicts
+    { ui=$(web_ui) && id=$(syncthing_run device-id) && port=$(sync_port) && network=$(network_setting) &&
+        folder=$(folder_status); } || return
+    state=$(field state <<<"$folder")
+    [[ $state != error ]] || state="error: $(field error <<<"$folder")"
+    # Trash can copies left out: they are old versions, not conflicts left to resolve.
+    # shellcheck disable=SC2016 # expanded by sh
+    conflicts=$(in_folder 'cd "$1" && find . -path ./.stversions -prune -o -name "*.sync-conflict-*" -print | wc -l' \
+        sh "$folder_path") || return
+    show "Web UI" "$ui"
+    show "Device ID" "$id"
+    show "Sync port" "$port"
+    show Network "$network"
+    show Folder "$state"
+    show "Conflict copies" "$((conflicts))"
+}
+
+# public or private, as setup's --public and --private set them, or each option as it is.
+network_setting() {
+    local discovery relays nat
+    { discovery=$(st config options global-ann-enabled get) && relays=$(st config options relays-enabled get) &&
+        nat=$(st config options natenabled get); } || return
+    case $discovery$relays$nat in
+        truetruetrue) echo public ;;
+        falsefalsefalse) echo private ;;
+        *) printf 'global discovery %s, relays %s, NAT traversal %s\n' "$(on_off "$discovery")" \
+            "$(on_off "$relays")" "$(on_off "$nat")" ;;
+    esac
+}
+
+on_off() {
+    if [[ $1 == true ]]; then echo on; else echo off; fi
+}
+
+# The devices the folder is shared with: each one's name and ID, how this device reaches
+# it, and how much of the folder it has.
+device_status() {
+    local self list connections stats id device_name connection seen completion state percent text known
+    { self=$(syncthing_run device-id) && list=$(st config folders "$folder_id" devices list) &&
+        connections=$(rest /rest/system/connections) && stats=$(rest /rest/stats/device); } || return
+    local ids=()
+    while IFS= read -r id; do
+        [[ -z $id || $id == "$self" ]] || ids+=("$id")
+    done <<<"$list"
+    if ((${#ids[@]} == 0)); then
+        show Devices none
+        return
+    fi
+    echo "Devices:"
+    for id in "${ids[@]}"; do
+        device_name=$(st config devices "$id" name get) || return
+        connection=$(object "$id" <<<"$connections")
+        seen="" known=1
+        if [[ $(field connected <<<"$connection") == true ]]; then
+            text="connected $(connection_kind "$(field type <<<"$connection")") at $(field address <<<"$connection")"
+        else
+            seen=$(object "$id" <<<"$stats" | field lastSeen)
+            # Syncthing's time for never: 1970-01-01, or the last day of 1969 in a time zone
+            # west of UTC.
+            if [[ -z $seen || $seen == 1970-* || $seen == 1969-* ]]; then
+                text="not connected, never seen" known=""
+            else
+                text="not connected, last seen $seen"
+            fi
+        fi
+        if [[ -n $known ]]; then
+            completion=$(rest "/rest/db/completion?folder=$folder_id&device=$id") || return
+            state=$(field remoteState <<<"$completion")
+            percent=$(field completion <<<"$completion")
+            [[ $percent =~ ^[0-9]+(\.[0-9]+)?$ ]] || percent=0
+            if [[ $state == notSharing ]]; then
+                text+="; does not share the folder"
+            elif [[ -n $seen ]]; then
+                text+="; has ${percent%.*}% of the folder, as far as this device knows"
+            else
+                text+="; has ${percent%.*}% of the folder"
+            fi
+        fi
+        printf '  %s\n    %s\n' "${device_name:+$device_name }$id" "$text"
+    done
+}
+
+# How a connection of Syncthing's TYPE, such as tcp-client or relay-server, reaches the
+# device.
+connection_kind() {
+    if [[ $1 == relay-* ]]; then echo "through a relay"; else echo directly; fi
+}
+
+# Whether a newer release is out, unless this claude-sync runs from a checkout.
+release_status() {
+    [[ $claude_sync_version != dev ]] || return 0
+    # Bounded, so a network that drops packets cannot hold status up.
+    if ! check_releases --max-time 10 2>/dev/null; then
+        show "Newer release" "could not check"
+        return
+    fi
+    if [[ -n $release_safe ]]; then
+        local how="run claude-sync upgrade"
+        ! rpm_package "$(installed_file)" >/dev/null || how=$rpm_upgrade
+        show "Newer release" "claude-sync ${release_safe#v}; $how"
+    fi
+    if [[ -n $release_breaking ]]; then
+        show "Newer release" "claude-sync ${release_breaking#v}, a breaking release; its release notes say how to upgrade: $(release_url "$release_breaking")"
+    fi
+    [[ -n $release_safe$release_breaking ]] || show "Newer release" none
+}
+
 upgrade() {
     (($# == 0)) || die "upgrade takes no arguments"
     [[ $claude_sync_version != dev ]] ||
         die "this claude-sync runs from a checkout (version dev); update it with git, then run setup to apply it"
-    local file
-    file=$(readlink -f -- "${BASH_SOURCE[0]}")
-    if command -v rpm >/dev/null && rpm -qf -- "$file" >/dev/null 2>&1; then
-        die "$file belongs to the RPM package $(rpm -qf -- "$file"): upgrade it with dnf as you installed it, then run CLAUDE_SYNC_NAME=NAME claude-sync setup for each running instance NAME that claude-sync list shows"
+    local file package
+    file=$(installed_file)
+    if package=$(rpm_package "$file"); then
+        die "$file belongs to the RPM package $package: $rpm_upgrade"
     fi
     command -v curl >/dev/null || die "curl is required"
     command -v sha256sum >/dev/null || die "sha256sum is required"
-    check_releases
+    check_releases || die "cannot get the list of claude-sync's releases from $releases_api"
     if [[ -n $release_safe ]]; then
         install_release "$release_safe" "$file"
         echo "Installed claude-sync ${release_safe#v} in place of $claude_sync_version."
@@ -1713,6 +1916,10 @@ case ${1:-help} in
     restore)
         shift
         restore "$@"
+        ;;
+    status)
+        shift
+        status "$@"
         ;;
     list)
         shift

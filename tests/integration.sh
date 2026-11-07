@@ -17,6 +17,8 @@ readonly prefix
 readonly net=${prefix}net a=${prefix}a b=${prefix}b c=${prefix}c d=${prefix}d e=${prefix}e g=${prefix}g k=${prefix}k
 readonly j=${prefix}j l=${prefix}l m=${prefix}m n=${prefix}n p=${prefix}p q=${prefix}q s=${prefix}s t=${prefix}t
 readonly hu=${prefix}hu
+readonly sx=${prefix}sx sy=${prefix}sy sz=${prefix}sz vol_sx=${prefix}sx-data vol_sy=${prefix}sy-data
+readonly owner_sx=1470:1470 owner_sy=2580:2580
 readonly v=${prefix}v w=${prefix}w vol_v=${prefix}v-data owner_v=3690:3690
 readonly listener=${prefix}listener foreign=${prefix}foreign h=${prefix}h host_image=${prefix}host
 readonly vol_a=${prefix}a-data vol_b=${prefix}b-data vol_missing=${prefix}missing
@@ -430,8 +432,8 @@ files_in() {
 
 cleanup() {
     local x
-    for x in "$a" "$b" "$c" "$d" "$e" "$g" "$k" "$j" "$l" "$m" "$n" "$p" "$q" "$t" "$v" "$w" "$h" "$hu" "$bad_name" \
-        "$listener" "$foreign"; do
+    for x in "$a" "$b" "$c" "$d" "$e" "$g" "$k" "$j" "$l" "$m" "$n" "$p" "$q" "$t" "$v" "$w" "$h" "$hu" "$sx" "$sy" "$sz" \
+        "$bad_name" "$listener" "$foreign"; do
         guard "$x"
         docker rm --force -v "$x" >/dev/null 2>&1 || true
     done
@@ -439,7 +441,7 @@ cleanup() {
     docker image rm "$host_image" >/dev/null 2>&1 || true
     for x in "$a-config" "$b-config" "$c-config" "$d-config" "$e-config" "$g-config" "$k-config" \
         "$j-config" "$l-config" "$m-config" "$n-config" "$p-config" "$q-config" "$s-config" "$t-config" "$v-config" \
-        "$w-config" "$bad_name-config" "$foreign-config" \
+        "$w-config" "$sx-config" "$sy-config" "$bad_name-config" "$foreign-config" "$vol_sx" "$vol_sy" \
         "$vol_a" "$vol_b" "$vol_c" "$vol_d" "$vol_e" "$vol_g" "$vol_j" "$vol_l" "$vol_m" "$vol_n" "$vol_p" \
         "$vol_q" "$vol_r" "$vol_t" "$vol_v" "$vol_q_missing" "$vol_missing" "$vol_root"; do
         guard "$x"
@@ -476,7 +478,7 @@ on_exit() {
     fi
     wait 2>/dev/null || true
     if ((status != 0)); then
-        for node in "$a" "$b" "$c" "$d" "$e" "$g" "$j" "$l" "$m" "$n" "$p" "$q" "$t" "$v" "$h" "$hu"; do
+        for node in "$a" "$b" "$c" "$d" "$e" "$g" "$j" "$l" "$m" "$n" "$p" "$q" "$t" "$v" "$sx" "$sy" "$sz" "$h" "$hu"; do
             docker logs --tail 30 "$node" 2>&1 | sed "s/^/[$node] /" || true
         done
         for out in "$scratch"/join-*.out; do
@@ -1899,6 +1901,123 @@ EOF
         grep -qF "later commands act on the default instance, claude-sync." <<<"$out"
 }
 
+# status of instance NODE from the 0.4.0 build in $sdir, with the fake releases in LIST.
+status_of() {
+    CLAUDE_SYNC_RELEASES_API="file://$sdir/$2" CLAUDE_SYNC_NAME=$1 "$sdir/claude-sync" status
+}
+
+# Whether status of NODE prints a line that matches the extended regular expression RE.
+status_says() {
+    status_of "$1" releases.json | grep -E -- "$2" >/dev/null
+}
+
+# SX and SY: what status shows of an instance as it pairs and stops; SZ: of the host's own
+# Syncthing.
+group_status() {
+    echo "# status"
+    # This group's files; the helpers above use it.
+    sdir=$scratch/status
+    mkdir -p "$sdir/rpm" "$sdir/down"
+    "$root/packaging/build.sh" 0.4.0 "$sdir/claude-sync"
+    releases_json "file://$sdir" >"$sdir/releases.json"
+    # shellcheck disable=SC2016 # expanded by the fake rpm
+    printf '#!/bin/sh\n[ "$1" = -qf ] && echo claude-sync-0.4.0-1.noarch\n' >"$sdir/rpm/rpm"
+    printf '#!/bin/sh\nexit 1\n' >"$sdir/down/docker"
+    chmod +x "$sdir/rpm/rpm" "$sdir/down/docker"
+
+    out=$(status_of "$sx" releases.json) && status=0 || status=$?
+    check "status of an instance not set up says how to set it up" grep -qF \
+        "not set up on this host; CLAUDE_SYNC_NAME=$sx claude-sync setup --volume NAME or --path DIR sets it up" <<<"$out"
+    check "  succeeding" [ "$status" = 0 ]
+    check "  naming what chose the instance" grep -qE "^Instance: +$sx, named by CLAUDE_SYNC_NAME\$" <<<"$out"
+    check "  with the installed version" grep -qE '^Installed: +claude-sync 0\.4\.0$' <<<"$out"
+    check "  the newest release that is not breaking, with how to upgrade" \
+        grep -qE '^Newer release: +claude-sync 0\.4\.1; run claude-sync upgrade$' <<<"$out"
+    check "  and the newest breaking one, with its notes" grep -qF \
+        "claude-sync 0.5.0, a breaking release; its release notes say how to upgrade: file://$sdir/releases/tag/v0.5.0" \
+        <<<"$out"
+    check "  and says nothing on stderr" [ -z "$(status_of "$sx" releases.json 2>&1 >/dev/null)" ]
+    check "status when docker cannot be reached says so" fails_with "docker cannot be reached" \
+        env PATH="$sdir/down:$PATH" CLAUDE_SYNC_RELEASES_API="file://$sdir/releases.json" \
+        CLAUDE_SYNC_NAME="$sx" "$sdir/claude-sync" status
+    check "status takes no arguments" fails_with "status takes no arguments" \
+        claude_sync "$sx" status --volume "$vol_sx"
+
+    docker volume create "$vol_sx" >/dev/null
+    docker volume create "$vol_sy" >/dev/null
+    # A conflict copy, and one in the trash can, which is an old version, not a conflict.
+    in_target "type=volume,src=$vol_sx" "echo x >/t/notes.md &&
+        echo older >/t/notes.sync-conflict-20261107-120000-AAAAAAA.md && mkdir /t/.stversions &&
+        echo old >/t/.stversions/notes.sync-conflict-20261101-120000-AAAAAAA.md && chown -R $owner_sx /t"
+    in_target "type=volume,src=$vol_sy" "chown $owner_sy /t"
+    claude_sync "$sx" setup --volume "$vol_sx" --private >/dev/null 2>&1
+    claude_sync "$sy" setup --volume "$vol_sy" --private >/dev/null 2>&1
+    id_sx=$(docker exec -u "$owner_sx" "$sx" syncthing device-id)
+    id_sy=$(docker exec -u "$owner_sy" "$sy" syncthing device-id)
+    claude_sync "$sx" pair "$id_sy" --keep --address "tcp://$sy:22000" >/dev/null 2>&1
+    pair_bounded "$sy" "$id_sx" --address "tcp://$sx:22000" >/dev/null 2>&1
+
+    config_sx=$(st "$sx" "$owner_sx" config dump-json)
+    out=$(status_of "$sx" releases.json) && status=0 || status=$?
+    check "status of a running instance succeeds" [ "$status" = 0 ]
+    check "  shows where Syncthing runs" grep -qE "^Syncthing: +in container $sx\$" <<<"$out"
+    check "  what it syncs" grep -qE "^Syncs: +volume $vol_sx\$" <<<"$out"
+    check "  its web UI" grep -qE '^Web UI: +http://127\.0\.0\.1:8384$' <<<"$out"
+    check "  this device's ID" grep -qE "^Device ID: +$id_sx\$" <<<"$out"
+    check "  the sync port" grep -qE '^Sync port: +22000$' <<<"$out"
+    check "  that it is private" grep -qE '^Network: +private$' <<<"$out"
+    check "  the conflict copies, leaving out the trash can" grep -qE '^Conflict copies: +1$' <<<"$out"
+    check "  that a checkout set it up, with the setup that applies this version" grep -qE \
+        "^Set up by: +claude-sync dev; run CLAUDE_SYNC_NAME=$sx claude-sync setup to apply 0\.4\.0\$" <<<"$out"
+    check "  and the paired device by its ID" grep -qE "^  (.* )?$id_sy\$" <<<"$out"
+    check "  changing nothing in Syncthing" [ "$(st "$sx" "$owner_sx" config dump-json)" = "$config_sx" ]
+    check "status shows the folder's state" wait_for status_says "$sx" '^Folder: +idle$'
+    check "  and a paired device connected, how, and all it has" \
+        wait_for status_says "$sx" "^    connected directly at [^ ]+:22000; has 100% of the folder\$"
+    out=$(status_of "$sx" missing.json) && status=0 || status=$?
+    check "status without the list of releases says it could not check" \
+        grep -qE '^Newer release: +could not check$' <<<"$out"
+    check "  and shows the rest" grep -qE "^Device ID: +$id_sx\$" <<<"$out"
+    check "  succeeding" [ "$status" = 0 ]
+    check "status of an RPM install says to upgrade with dnf" \
+        grep -qE '^Newer release: +claude-sync 0\.4\.1; upgrade it with dnf' \
+        <<<"$(env PATH="$sdir/rpm:$PATH" CLAUDE_SYNC_RELEASES_API="file://$sdir/releases.json" \
+            CLAUDE_SYNC_NAME="$sx" "$sdir/claude-sync" status)"
+    check "a relayed connection reads as one" [ "$(calls connection_kind relay-client)" = "through a relay" ]
+    check "  and a direct one as direct" [ "$(calls connection_kind tcp-server)" = directly ]
+
+    docker stop "$sy" >/dev/null
+    check "status shows when a device it no longer reaches was last seen" wait_for status_says "$sx" \
+        '^    not connected, last seen [0-9-]+T[0-9:]+Z; has 100% of the folder, as far as this device knows$'
+    out=$(status_of "$sy" releases.json) && status=0 || status=$?
+    check "status of a stopped instance says how to start it" grep -qE \
+        "^Syncthing: +in container $sy, stopped; CLAUDE_SYNC_NAME=$sy claude-sync setup starts it\$" <<<"$out"
+    check "  succeeding" [ "$status" = 0 ]
+    check "  and leaves it stopped" [ "$(docker inspect -f '{{.State.Running}}' "$sy")" = false ]
+
+    echo "# status, on the host's Syncthing"
+    docker run -d --name "$sz" --network "$net" --user user --entrypoint env "$host_image" \
+        -u STHOMEDIR -u STGUIADDRESS HOME=/home/user syncthing serve --no-browser >/dev/null
+    docker cp -q "$sdir/claude-sync" "$sz:/home/user/"
+    docker exec -u 0 "$sz" chown user /home/user/claude-sync
+    wait_for as_user "$sz" syncthing cli show version
+    as_user "$sz" mkdir claude
+    as_user "$sz" ./claude-sync setup --path claude --use-host-syncthing >/dev/null
+    # A device on the unpaired list, which a command that acts on the instance would remove; SY, stopped, never
+    # connects.
+    as_user "$sz" syncthing cli config devices add --device-id "$id_sy"
+    as_user "$sz" sh -c "mkdir claude/.claude-sync-unpaired && : >claude/.claude-sync-unpaired/$id_sy"
+    out=$(as_user "$sz" env CLAUDE_SYNC_RELEASES_API=file:///nonexistent ./claude-sync status)
+    check "status shows the host's own Syncthing" grep -qE '^Syncthing: +your own, on this host$' <<<"$out"
+    check "  the directory it syncs" grep -qE '^Syncs: +directory /home/user/claude$' <<<"$out"
+    check "  its web UI" grep -qE '^Web UI: +http://127\.0\.0\.1:8384$' <<<"$out"
+    check "  that it is public" grep -qE '^Network: +public$' <<<"$out"
+    check "  the version that set it up" grep -qE '^Set up by: +claude-sync 0\.4\.0$' <<<"$out"
+    check "  and leaves the unpaired list unapplied" as_user "$sz" sh -c \
+        "syncthing cli config devices list | grep -x $id_sy"
+}
+
+
 run_group chain
 run_group instances
 run_group stuck
@@ -1906,6 +2025,7 @@ run_group refusals
 run_group upgrade
 run_group backups
 run_group select
+run_group status
 # Each group's output as it ends.
 while ((${#group_of[@]})); do
     wait -n -p done_pid || true
