@@ -1012,9 +1012,8 @@ backup() {
     detect_mode
     # Each archive would sync to every device and hold the ones before it: writing through a
     # pipe to gzip, tar cannot tell its own archive from the folder's files. Checked before
-    # mkdir, whose directory would sync too. Not checked in a container, whose folder is a
-    # volume or a path on the Docker host, which may not be this machine.
-    if [[ $mode == host ]] && path_within "$(planned_path "$dir")" "$(real_path "$folder_path")"; then
+    # mkdir, whose directory would sync too.
+    if in_synced_folder "$dir"; then
         die "$dir is in the synced folder; give backup a directory outside it"
     fi
     mkdir -p -- "$dir"
@@ -1043,6 +1042,29 @@ backup() {
     echo "Backed up to $archive."
     remove_stopped_backups "$dir"
     prune "$dir" "$archive" "$weekly" "$monthly"
+}
+
+# Whether DIR, or the directory mkdir -p would make of it, is the synced folder or inside it.
+in_synced_folder() {
+    if [[ $mode == host ]]; then
+        path_within "$(planned_path "$1")" "$(real_path "$folder_path")"
+        return
+    fi
+    # The container's folder is a volume or a path on the Docker host, which may not be this
+    # machine, so no path here compares with it. A file made in DIR's nearest existing
+    # directory is looked for from inside the container instead.
+    local dir=$1 probe found
+    while [[ ! -d $dir ]]; do dir=$(dirname -- "$dir"); done
+    probe=$dir/.$name-probe.$$
+    # Not writable: then backup cannot make DIR or write in it either, and fails there.
+    : 2>/dev/null >"$probe" || return 1
+    # shellcheck disable=SC2064 # expanded now: probe is local
+    trap "rm -f -- $(printf %q "$probe")" EXIT
+    found=$(docker exec -u "$owner" "$name" find "$folder_path" -name "${probe##*/}") ||
+        die "could not search the synced folder for $1; find's message is above"
+    rm -f -- "$probe"
+    trap - EXIT
+    [[ -n $found ]]
 }
 
 # Removes the temporary files that this instance's backups into DIR left there when stopped

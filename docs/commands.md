@@ -98,9 +98,10 @@ there. Syncthing and Claude Code keep running meanwhile, so a file written while
 reads it may go in partly written, and a file removed meanwhile is left out; if `tar`
 reports an error, rerun `backup`. With your own Syncthing, `backup` uses this host's `tar`.
 
-Keep the directory outside the synced folder: there, the archives would sync to every
-device, and each would hold the ones before it. With your own Syncthing, `backup` refuses
-a directory in the folder.
+`backup` refuses a directory in the synced folder: there, the archives would sync to every
+device, and each would hold the ones before it. With claude-sync's container, it checks
+by making a hidden empty file in the directory, or in its nearest existing parent, and
+looking for it from inside the container, then removes the file.
 
 Then `backup` removes this instance's older archives in the directory, keeping the newest
 archive of each of the last `--keep-weekly` weeks that have one, and of each of the last
@@ -165,6 +166,7 @@ restore with `tar` alone.
 | `paths containing a comma` or `a newline are not supported` | Choose or rename a directory without one |
 | `is on the list of unpaired devices` | Run `pair` for that device on a device that already syncs, then rerun `pair` here |
 | `is in the synced folder` | Give `backup` a directory outside the synced folder |
+| `could not search the synced folder` | find's message above names the directory. If the folder's owner cannot read it, `chown` it |
 | `tar could not archive the synced folder` | tar's message above names the file. If the folder's owner cannot read it, `chown` it; if it was being written at that moment, rerun `backup` |
 | `cannot read ARCHIVE as a backup` | The file is not a whole gzip tar archive, such as a copy cut short; copy it again |
 | `could not restore all of` | tar's message above says why, such as a full disk. The files restored so far stay; fix it and rerun `restore` |

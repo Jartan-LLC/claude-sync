@@ -1246,6 +1246,28 @@ group_backups() {
     check "the archive holds the login" in_archive "$archive" ./.credentials.json
     check "  and the trash can" in_archive "$archive" ./.stversions/settings.json
     check "backup leaves the folder as it was" [ "$(volume_tree "$mount_n")" = "$original" ]
+    # The folder is a volume, which no directory here is in: this docker runs the search for
+    # backup's probe in a directory here instead of the folder.
+    mkdir -p "$scratch/probe-bin" "$scratch/folder/sub"
+    cat >"$scratch/probe-bin/docker" <<EOF
+#!/bin/sh
+if [ "\$1" = exec ] && [ "\$5" = find ]; then
+    shift 6
+    exec find "$scratch/folder" "\$@"
+fi
+exec "$(command -v docker)" "\$@"
+EOF
+    chmod +x "$scratch/probe-bin/docker"
+    # shellcheck disable=SC2329 # called below; ShellCheck cannot follow run_group
+    backup_in_folder() {
+        env PATH="$scratch/probe-bin:$PATH" CLAUDE_SYNC_NAME="$n" "$bin" backup "$@"
+    }
+    check "a container backup into its synced folder is refused" fails_with "is in the synced folder" \
+        backup_in_folder "$scratch/folder/sub"
+    check "  and into a directory in it not made yet" fails_with "is in the synced folder" \
+        backup_in_folder "$scratch/folder/sub/backups"
+    check "  without making it" [ ! -e "$scratch/folder/sub/backups" ]
+    check "  or leaving its probe there" [ "$(files_in "$scratch/folder/sub")" = 0 ]
     # Files that come and go as backup reads the folder, as temporary files do. Behind large
     # files, so tar lists some that are gone by the time it reaches them. In a directory
     # Syncthing ignores.
