@@ -788,7 +788,7 @@ setup() {
     done
     check_instance
     if [[ $backup == /* ]] && ! user_systemd; then
-        die "--backup-dir needs systemd's user manager (systemctl --user), which is not running for $(id -un) here; schedule claude-sync backup DIR another way, such as with cron"
+        die "--backup-dir needs systemd's user manager (systemctl --user), which is not running for $(id -un) here; schedule CLAUDE_SYNC_NAME=$name claude-sync backup DIR another way, such as with cron"
     fi
     [[ $backup != off ]] || check_unschedule
     if [[ -z $kind ]] && ! current_setup; then
@@ -1781,11 +1781,10 @@ scheduled_backup_dir() {
 }
 
 # Applies setup's BACKUP to this instance's daily backup: a DIR installs it there, off
-# removes it, and empty keeps it, rewritten for this claude-sync. Called before setup records
-# the version, so that after a failure, which puts back the units it replaced, upgrade runs
-# setup again.
+# removes it, and empty keeps it, rewritten for this claude-sync. Runs before write_stamp: a
+# failure leaves the instance stale, so upgrade sets it up again.
 schedule_backup() {
-    local dir=$1 asked="" path unit bin header service timer saved="" ext
+    local dir=$1 asked="" path unit bin header service timer saved="" ext was_enabled=""
     [[ -z $1 ]] || asked=1
     case $dir in
         off)
@@ -1794,8 +1793,8 @@ schedule_backup() {
             ;;
         '')
             dir=$(scheduled_backup_dir) || return 0
-            # Only a warning, as upgrade runs this for every instance. DIR was checked when
-            # given; a target set up again around it since can hold it.
+            # Only a warning, as upgrade runs this for every instance. A target set up again
+            # since DIR was given can hold it.
             (check_outside_synced_folder "$dir") ||
                 printf 'claude-sync: the daily backup into %s fails each day until what is above is fixed, or %s --backup-dir gives it another DIR\n' \
                     "$dir" "$(setup_command "$name")" >&2
@@ -1809,7 +1808,9 @@ schedule_backup() {
     path=$(backup_unit)
     unit=${path##*/}
     bin=$(readlink -f -- "${BASH_SOURCE[0]}")
-    header="# Written by claude-sync setup, which replaces it; $(setup_command "$name") --no-backup removes it."
+    # Not setup_command, which changes with the selection: the units would change with it,
+    # and setup reloads units that changed.
+    header="# Written by claude-sync setup, which replaces it; CLAUDE_SYNC_NAME=$name claude-sync setup --no-backup removes it."
     service="$header
 [Unit]
 Description=claude-sync backup of instance $name
@@ -1846,6 +1847,9 @@ WantedBy=timers.target"
             }
         done
     fi
+    if [[ -n $asked && -e $path.timer ]] && systemctl --user is-enabled --quiet "$unit.timer" 2>/dev/null; then
+        was_enabled=1
+    fi
     if ! (
         # set -e is off in an if's condition, so each failure exits by hand.
         [[ -z $saved ]] || {
@@ -1856,6 +1860,11 @@ WantedBy=timers.target"
         # Only when asked: a timer the user disabled stays so through setup and upgrade.
         [[ -z $asked ]] || user_systemctl enable --now "$unit.timer"
     ); then
+        # enable --now enables the timer before starting it, so a failed start leaves it
+        # enabled. Before the put-back, while the units it enabled are on disk.
+        if [[ -n $asked && -z $was_enabled ]]; then
+            systemctl --user disable "$unit.timer" >/dev/null 2>&1 || true
+        fi
         if [[ -n $saved ]]; then
             for ext in service timer; do
                 if [[ -e $saved/$unit.$ext ]]; then
@@ -1865,8 +1874,8 @@ WantedBy=timers.target"
                 fi
             done
             rm -rf -- "$saved"
-            # Best effort, after the failure reported above: if the reload went through and
-            # enable failed, systemd has loaded the units this run wrote, not those put back.
+            # Best effort, as the failure is reported above: systemd may hold the units this
+            # run wrote.
             systemctl --user daemon-reload >/dev/null 2>&1 || true
         fi
         exit 1

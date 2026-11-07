@@ -1820,6 +1820,12 @@ EOF
     echo "# setup --backup-dir"
     check "--backup-dir with --no-backup is refused" fails_with "only one of --backup-dir or --no-backup" \
         claude_sync "$u" setup --volume "$vol_u" --backup-dir "$tm/backups" --no-backup
+    check "  and so is --no-backup with --backup-dir" fails_with "only one of --backup-dir or --no-backup" \
+        claude_sync "$u" setup --volume "$vol_u" --no-backup --backup-dir "$tm/backups"
+    check "--backup-dir with no value is refused" fails_with "--backup-dir needs a value" \
+        claude_sync "$u" setup --volume "$vol_u" --backup-dir
+    check "a DIR containing a newline is refused" fails_with "paths containing a newline are not supported" \
+        claude_sync "$u" setup --volume "$vol_u" --backup-dir "$tm/a"$'\n'"b"
     check "--backup-dir without systemd's user manager is refused" fails_with "needs systemd's user manager" \
         env SYSTEMCTL_STATE=offline CLAUDE_SYNC_NAME="$u" "$bin" setup --volume "$vol_u" --backup-dir "$tm/backups"
     check "  before setting anything up" fails docker container inspect "$u"
@@ -1836,11 +1842,16 @@ EOF
     check "  writing no unit" [ ! -e "$units" ]
     check "  and not making DIR" [ ! -e "$tm/synced" ]
     docker exec -u "$owner_u" "$u" rm /var/syncthing/config/claude-sync-version
+    rm -f -- "$SYSTEMCTL_CALLS"
     check "setup stops when systemd fails to enable the timer" \
         fails_with "systemctl --user enable --now $u-backup.timer failed: Failed to enable" \
         env SYSTEMCTL_FAIL=enable CLAUDE_SYNC_NAME="$u" "$bin" setup --backup-dir "$tm/backups"
     check "  before recording its version" fails stamp_of "$u"
     check "  removing the units it wrote" [ -z "$(ls -A "$units")" ]
+    check "  after disabling the timer, which enable may have left enabled" [ "$(systemctl_calls)" = "--user daemon-reload
+--user enable --now $u-backup.timer
+--user disable $u-backup.timer
+--user daemon-reload" ]
     out=$(claude_sync "$u" setup)
     check "  so that setup after it does not say it backs up" fails grep -qF "Backs up to" <<<"$out"
     mkdir "$tm/tmp"
@@ -1967,6 +1978,15 @@ EOF
     units_before=$(as_user "$y" cat "$y_units.service" "$y_units.timer")
     y_sync setup >/dev/null
     check "setup there keeps it" [ "$(as_user "$y" cat "$y_units.service" "$y_units.timer")" = "$units_before" ]
+    # Another instance selected, as upgrade finds it when it sets up each instance by name.
+    as_user "$y" mkdir -p .config/claude-sync
+    as_user "$y" sh -c 'echo other >.config/claude-sync/instance'
+    # shellcheck disable=SC2016 # expanded by the fixture's shell
+    as_user "$y" CLAUDE_SYNC_NAME=claude-sync sh -c 'PATH=/home/user/stub:$PATH SYSTEMCTL_CALLS=/home/user/calls exec "$@"' \
+        sh timeout 300 /opt/claude-sync/claude-sync setup >/dev/null
+    check "  as it does with another instance selected" \
+        [ "$(as_user "$y" cat "$y_units.service" "$y_units.timer")" = "$units_before" ]
+    as_user "$y" rm .config/claude-sync/instance
     y_sync setup --no-backup >/dev/null
     check "setup --no-backup there removes it" [ -z "$(as_user "$y" ls -A .config/systemd/user)" ]
     y_sync setup --backup-dir backups >/dev/null

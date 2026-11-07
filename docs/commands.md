@@ -168,7 +168,8 @@ systemd. It keeps `backup`'s default `--keep-weekly` and `--keep-monthly`. The t
 while you are logged in, and a day missed while you were logged out runs at your next
 login. Each instance has a timer of its own, named after it: `claude-sync-backup.timer`
 for the default instance. Later runs of `setup` keep it; `setup --no-backup` and
-`uninstall` remove it.
+`uninstall` remove it. A timer you disabled stays disabled until you give `--backup-dir`
+again.
 
 The timer runs `backup` in systemd's environment, which lacks what only your shell sets.
 If `backup` needs such a variable, such as `DOCKER_HOST` for rootless Docker, or a `PATH`
