@@ -821,7 +821,8 @@ EOF
         wait_for on_host sh -c "syncthing cli config devices list | grep -qx $id_d"
     ids=$(on_host syncthing cli config dump-json |
         jq -r --arg d "$id_d" '.devices[] | select(.introducer and .deviceID != $d) | .deviceID')
-    mapfile -t introducers <<<"$ids"
+    introducers=()
+    [[ -z $ids ]] || mapfile -t introducers <<<"$ids"
     for x in "${introducers[@]}"; do
         on_host syncthing cli config devices "$x" introducer set false
     done
