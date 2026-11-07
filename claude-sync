@@ -1739,8 +1739,8 @@ user_systemctl() {
     out=$(systemctl --user "$@" 2>&1) || die "systemctl --user $* failed: $out"
 }
 
-# Where systemctl looks for this user's units. A relative XDG_CONFIG_HOME is ignored, as the
-# XDG spec says.
+# Where systemctl, run with this environment, looks for this user's units. A relative
+# XDG_CONFIG_HOME is ignored, as the XDG spec says.
 user_unit_dir() {
     if [[ ${XDG_CONFIG_HOME:-} == /* ]]; then
         echo "$XDG_CONFIG_HOME/systemd/user"
@@ -1775,7 +1775,7 @@ backup_unit() {
 }
 
 # The DIR this instance's daily backup writes to. Its service unit is the only record of it:
-# the timer is on while that file exists. Fails when there is none.
+# the daily backup is set up while that file exists. Fails when there is none.
 scheduled_backup_dir() {
     local line
     line=$(grep -m 1 '^ExecStart=' "$(backup_unit).service" 2>/dev/null) || return 1

@@ -1765,8 +1765,8 @@ EOF
     check "  and keeps Q's file that the archive lacks" in_target "$mount_q" "grep -qx newer /t/newer.md"
 }
 
-# The calls the stub systemctl got since the last reset, apart from is-system-running, which
-# changes nothing.
+# The calls the stub systemctl got since the last reset, apart from is-system-running and
+# is-enabled, which change nothing.
 systemctl_calls() {
     grep -v -e '^--user is-system-running$' -e '^--user is-enabled ' "$SYSTEMCTL_CALLS" 2>/dev/null || true
 }
