@@ -522,9 +522,10 @@ setup() {
         [[ $target != *$'\n'* ]] || die "paths containing a newline are not supported"
         target=$(clean_path "$target")
     fi
-    # Under the default name, pair, unpair and uninstall would act on a container instead of
-    # the Syncthing that already syncs claude-sync's folder. With --path, under any name,
-    # the container would also be a second device on files a folder of that Syncthing syncs.
+    # Under the default name, pair, unpair, backup and uninstall would act on a container
+    # instead of the Syncthing that already syncs claude-sync's folder. With --path, under any
+    # name, the container would also be a second device on files a folder of that Syncthing
+    # syncs.
     if host_syncthing_configured; then
         local fid fpath real_target=""
         [[ $kind != path ]] || real_target=$(real_path "$target")
@@ -665,8 +666,9 @@ compose_image() {
     echo "$image"
 }
 
-# Prints the UID:GID that owns a target. Takes IMAGE, the MOUNT that puts the target at
-# /target, and TARGET, the target's name in messages.
+# Prints the UID:GID that owns a target, or dies if it cannot read the target or root owns
+# it. Takes IMAGE, the MOUNT that puts the target at /target, and TARGET, the target's name
+# in messages.
 read_owner() {
     local owner
     owner=$(docker run --rm --entrypoint stat --mount "$2" "$1" -c %u:%g /target) ||

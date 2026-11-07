@@ -1295,9 +1295,9 @@ EOF
     check "  but not for another error" fails_with "could not search the synced folder" \
         env FIND_SAYS="find: /var/syncthing/claude/jobs: Permission denied" \
         PATH="$scratch/probe-bin:$PATH" CLAUDE_SYNC_NAME="$n" "$bin" backup "$scratch/unsearched"
-    # Files that come and go as backup reads the folder, as temporary files do. Behind large
-    # files, so tar lists some that are gone by the time it reaches them. In a directory
-    # Syncthing ignores.
+    # Files that come and go as backup reads the folder, as temporary files do. Beside large
+    # files, so tar reads for long enough that files it listed go before it opens them. In a
+    # directory Syncthing ignores.
     churn=/var/syncthing/claude/jobs/churn/tmp
     docker exec -u "$owner_n" "$n" sh -c "mkdir -p $churn && touch /tmp/churning &&
         for i in 1 2 3 4 5; do head -c 5000000 /dev/urandom >$churn/big\$i; done"
