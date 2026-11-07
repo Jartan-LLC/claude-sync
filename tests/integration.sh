@@ -1193,9 +1193,9 @@ group_upgrade() {
     releases_json "file://$up" >"$up/releases/releases.json"
     releases_json "file://$up" "file://$up/bad" >"$up/releases/bad.json"
     releases_json "file://$up/wrong" >"$up/releases/wrong.json"
-    # A release with no files, and one whose file is not there.
+    # A release with no files, and one whose claude-sync is not there, though its SHA-256 is.
     releases_json "file://$up" | sed '/browser_download_url/d' >"$up/releases/no-assets.json"
-    releases_json "file://$up/gone" >"$up/releases/gone.json"
+    releases_json "file://$up/gone" "file://$up" >"$up/releases/gone.json"
     readonly new=$up/releases/download/v0.4.1/claude-sync
     cp "$up/old/claude-sync" "$up/install/claude-sync"
     # A second name for the installed file: a rewrite in place would show through it.
@@ -1203,12 +1203,17 @@ group_upgrade() {
     # Lists only N's, P's and S's volumes, as `volume ls -q` gives them; S has no container.
     # Under any other instance's name, or under one of the names in CLAUDE_SYNC_TEST_REFUSE,
     # which makes that instance's setup fail, it lets through only reads and commands run in
-    # N's and P's containers.
+    # N's and P's containers. With CLAUDE_SYNC_TEST_DOCKER_DOWN set, every command fails, as
+    # with a daemon that is not running.
     cat >"$up/shim/docker" <<EOF
 #!/usr/bin/env bash
 real=$(command -v docker) n=$n p=$p s=$s
 EOF
     cat >>"$up/shim/docker" <<'EOF'
+if [[ -n ${CLAUDE_SYNC_TEST_DOCKER_DOWN:-} ]]; then
+    echo "docker shim: cannot connect to the Docker daemon" >&2
+    exit 1
+fi
 if [[ $1 == volume && $2 == ls ]]; then
     "$real" "$@" | grep -xF -e "$n-config" -e "$p-config" -e "$s-config" || true
     exit
@@ -1312,6 +1317,31 @@ EOF
     check "  succeeding" [ "$status" = 0 ]
     check "  and says every running instance runs it" \
         grep -qF "Every running instance already runs claude-sync 0.4.1" <<<"$out"
+
+    # As an instance set up by 0.1.1 or earlier.
+    docker exec -u "$owner_n" "$n" rm /var/syncthing/config/claude-sync-version
+    check "an instance with no stamp counts as set up by an older claude-sync" \
+        fails_with "last set up by an older claude-sync; run CLAUDE_SYNC_NAME=$n claude-sync setup" \
+        env CLAUDE_SYNC_NAME="$n" "$new" pair not-a-device-id
+    # Where the stamp goes, a directory, which setup cannot write to.
+    docker exec -u "$owner_n" "$n" mkdir /var/syncthing/config/claude-sync-version
+    check "setup says when it cannot record the version" \
+        fails_with "cannot record the version in instance $n" env CLAUDE_SYNC_NAME="$n" "$new" setup
+    docker exec -u "$owner_n" "$n" rmdir /var/syncthing/config/claude-sync-version
+    out=$(upgrade_here releases.json) && status=0 || status=$?
+    check "upgrade reapplies an instance with no stamp" [ "$(stamp_of "$n")" = 0.4.1 ]
+    check "  succeeding" [ "$status" = 0 ]
+    check "  naming it" grep -qF "to instance $n" <<<"$out"
+    docker exec -u "$owner_n" "$n" sh -c 'echo dev >/var/syncthing/config/claude-sync-version'
+    check "an instance a checkout set up counts as older too" \
+        fails_with "last set up by claude-sync dev; run CLAUDE_SYNC_NAME=$n claude-sync setup" \
+        env CLAUDE_SYNC_NAME="$n" "$new" pair not-a-device-id
+    out=$(with_releases releases.json env CLAUDE_SYNC_TEST_DOCKER_DOWN=1 "$up/install/claude-sync" upgrade 2>&1) &&
+        status=0 || status=$?
+    check "upgrade when docker cannot list the instances fails" [ "$status" != 0 ]
+    check "  saying so" grep -qF "docker cannot list the instances in containers" <<<"$out"
+    check "  and not that there is none" fails grep -qF "no instance is set up" <<<"$out"
+    check "  leaving them as they were" [ "$(stamp_of "$n")" = dev ]
     docker stop "$n" >/dev/null
     # Syncthing state that no container uses, labelled as setup labels it.
     docker volume create --label claude-sync=config "$s-config" >/dev/null
@@ -1336,6 +1366,9 @@ EOF
     as_user "$hu" bin/claude-sync setup --path claude --use-host-syncthing >/dev/null
     check "setup stamps the host's Syncthing too" \
         [ "$(as_user "$hu" cat .local/state/syncthing/claude-sync-version)" = 0.4.0 ]
+    check "a newer claude-sync says the host's Syncthing needs its setup" \
+        fails_with "last set up by claude-sync 0.4.0; run claude-sync setup to apply 0.4.1" \
+        as_user "$hu" bash /opt/releases/download/v0.4.1/claude-sync pair not-a-device-id
     check "upgrade there" as_user "$hu" env CLAUDE_SYNC_RELEASES_API=file:///opt/releases/releases.json \
         timeout 300 bin/claude-sync upgrade
     check "  installs the release" [ "$(as_user "$hu" bin/claude-sync version)" = "claude-sync 0.4.1" ]

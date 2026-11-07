@@ -34,6 +34,8 @@ readonly releases_api=${CLAUDE_SYNC_RELEASES_API:-https://api.github.com/repos/J
 owner=""
 compose_files=()
 probe_error=""
+# Set by check_releases.
+releases="" release_safe="" release_breaking=""
 # Set by use_host for the Syncthing on this host.
 mode=container where="in container $name" api_url="" api_key="" api_tls=()
 
@@ -57,7 +59,8 @@ Usage:
                                     a free port when 22000 is taken, and keeps it.
                                     Can't be combined with --use-host-syncthing
   claude-sync setup                 Apply this version to the instance already set up,
-                                    keeping its target, ports and settings; flags as above
+                                    keeping its target, and its ports and --private
+                                    unless given again
   claude-sync upgrade               Install the newest release that is not breaking, then
                                     apply it to every running instance on this host.
                                     Not for an RPM install: upgrade that with dnf, then
@@ -362,34 +365,52 @@ host_folders() {
 }
 
 # This host's claude-sync instances, one per line as the instance's name, a tab and its
-# kind: container, stopped (its container is not running), state-only (its Syncthing state
-# is left but no container of claude-sync's uses it) or host (claude-sync's folder in the
-# Syncthing of this user on this host, which is always the default name's).
+# status: container (running), stopped (its container is not running), state-only (its
+# Syncthing state is left but no container of claude-sync's uses it) or host
+# (claude-sync's folder in the Syncthing of this user on this host, which is always the
+# default name's). Fails, after listing the rest, when docker cannot list the volumes.
 instances() {
-    local volume instance
+    local volumes volume instance unlisted=0
     if command -v docker >/dev/null; then
-        while IFS= read -r volume; do
-            instance=${volume%-config}
-            [[ $instance != "$volume" ]] || continue
-            if ! docker container inspect "$instance" >/dev/null 2>&1 || ! ours_container "$instance"; then
-                printf '%s\tstate-only\n' "$instance"
-            elif [[ $(docker container inspect --format '{{.State.Running}}' "$instance") == true ]]; then
-                printf '%s\tcontainer\n' "$instance"
-            else
-                printf '%s\tstopped\n' "$instance"
-            fi
-        done < <(docker volume ls -q --filter "label=$label" | sort)
+        if volumes=$(docker volume ls -q --filter "label=$label"); then
+            while IFS= read -r volume; do
+                instance=${volume%-config}
+                [[ $instance != "$volume" ]] || continue
+                if ! docker container inspect "$instance" >/dev/null 2>&1 || ! ours_container "$instance"; then
+                    printf '%s\tstate-only\n' "$instance"
+                elif [[ $(docker container inspect --format '{{.State.Running}}' "$instance") == true ]]; then
+                    printf '%s\tcontainer\n' "$instance"
+                else
+                    printf '%s\tstopped\n' "$instance"
+                fi
+            done < <(sort <<<"$volumes")
+        else
+            unlisted=1
+        fi
         # setup refuses a host instance beside a container of the default name.
-        ! docker container inspect "$default_name" >/dev/null 2>&1 || return 0
+        if docker container inspect "$default_name" >/dev/null 2>&1; then
+            return "$unlisted"
+        fi
     fi
     if host_folders | cut -f 1 | grep -qxF "$folder_id"; then
         printf '%s\thost\n' "$default_name"
     fi
+    return "$unlisted"
 }
 
-# The version of claude-sync that last set up the instance NAME of kind KIND, as
-# instances gives them. Fails when there is none: it predates the stamp, or its container
-# is not running.
+# The file in which an instance whose Syncthing runs in PLACE, container or host, records
+# its version; for a container, a path inside it.
+stamp_file() {
+    local config
+    case $1 in
+        container) echo "/var/syncthing/config/$stamp" ;;
+        host) config=$(host_config_file) && echo "${config%/*}/$stamp" ;;
+    esac
+}
+
+# The version of claude-sync that last set up the instance NAME, whose Syncthing runs in
+# PLACE, container or host. Fails when there is none: it predates the stamp, or its
+# container is not running.
 instance_version() {
     local file
     file=$(stamp_file "$2") || return 1
@@ -400,31 +421,23 @@ instance_version() {
     esac
 }
 
-# The file in which an instance of KIND, container or host, records its version; for a
-# container, a path inside it.
-stamp_file() {
-    local config
-    case $1 in
-        container) echo "/var/syncthing/config/$stamp" ;;
-        host) config=$(host_config_file) && echo "${config%/*}/$stamp" ;;
-    esac
-}
-
-# Records this version in this instance, of KIND, once it is set up.
+# Records this version in the instance NAME, whose Syncthing runs in PLACE, once it is set
+# up.
 write_stamp() {
     local file
-    file=$(stamp_file "$1") || die "cannot record the version in instance $name"
-    case $1 in
-        container) docker exec -i -u "$owner" "$name" sh -c "cat >$file" <<<"$claude_sync_version" ;;
+    file=$(stamp_file "$2") || die "cannot record the version in instance $1"
+    case $2 in
+        container) docker exec -i -u "$owner" "$1" sh -c "cat >$file" <<<"$claude_sync_version" ;;
         host) printf '%s\n' "$claude_sync_version" >"$file" ;;
-    esac || die "cannot record the version in instance $name"
+    esac || die "cannot record the version in instance $1"
 }
 
-# Whether an instance that claude-sync version STAMP set up, or one that predates the
-# stamp when STAMP is empty, needs this version's setup. Only a release can tell.
+# Whether an instance that claude-sync version STAMP set up needs this version's setup.
+# An empty STAMP, from before the stamp, or one that is not a version, as `dev` from a
+# checkout, says nothing, so that instance does. Only a release can tell.
 stale() {
     parse_version "$claude_sync_version" || return 1
-    [[ -z $1 ]] || version_older "$1" "$claude_sync_version"
+    [[ -z $1 ]] || ! parse_version "$1" || version_older "$1" "$claude_sync_version"
 }
 
 # The command that sets up the instance NAME again, for messages.
@@ -436,9 +449,9 @@ setup_command() {
 
 # Tells when an older claude-sync set this instance up.
 warn_stale() {
-    local kind=container version by="an older claude-sync"
-    [[ $mode != host ]] || kind=host
-    version=$(instance_version "$name" "$kind") || version=""
+    local place=container version by="an older claude-sync"
+    [[ $mode != host ]] || place=host
+    version=$(instance_version "$name" "$place") || version=""
     stale "$version" || return 0
     [[ -z $version ]] || by="claude-sync $version"
     printf 'claude-sync: this instance was last set up by %s; run %s to apply %s\n' \
@@ -791,7 +804,7 @@ setup() {
         fi
     fi
     printf 'This device ID: %s\n' "$(docker exec -u "$owner" "$name" syncthing device-id)"
-    write_stamp container
+    write_stamp "$name" container
 }
 
 # Moves the sync port to PORT, if given and new.
@@ -859,7 +872,7 @@ setup_host() {
     tell_busy
 
     printf 'The Syncthing on this host syncs %s.\nThis device ID: %s\n' "$target" "$(syncthing_run device-id)"
-    write_stamp host
+    write_stamp "$name" host
 }
 
 pair() {
@@ -1129,6 +1142,7 @@ upgrade() {
         die "$file belongs to the RPM package $(rpm -qf -- "$file"): upgrade it with dnf as you installed it, then run claude-sync setup"
     fi
     command -v curl >/dev/null || die "curl is required"
+    command -v sha256sum >/dev/null || die "sha256sum is required"
     check_releases
     if [[ -n $release_safe ]]; then
         install_release "$release_safe" "$file"
@@ -1167,10 +1181,12 @@ install_release() {
 # Runs FILE's setup, with no target, for every running instance that an older version set
 # up, carrying on past one that fails.
 apply_everywhere() {
-    local file=$1 instance kind version found="" running="" applied="" failed=()
-    while IFS=$'\t' read -r instance kind; do
+    local file=$1 list instance status version unlisted="" found="" running="" applied="" failed=()
+    list=$(instances) || unlisted=1
+    while IFS=$'\t' read -r instance status; do
+        [[ -n $instance ]] || continue
         found=1
-        case $kind in
+        case $status in
             stopped)
                 printf 'Instance %s is stopped, so upgrade leaves it stopped; %s starts it with claude-sync %s.\n' \
                     "$instance" "$(setup_command "$instance")" "$claude_sync_version"
@@ -1183,20 +1199,24 @@ apply_everywhere() {
                 ;;
         esac
         running=1
-        version=$(instance_version "$instance" "$kind") || version=""
+        version=$(instance_version "$instance" "$status") || version=""
         stale "$version" || continue
         applied=1
         printf 'Applying claude-sync %s to instance %s:\n' "$claude_sync_version" "$instance"
         # Its stdin would otherwise be the rest of the list.
         CLAUDE_SYNC_NAME=$instance "$file" setup </dev/null || failed+=("$instance")
-    done < <(instances)
-    if [[ -z $found ]]; then
+    done <<<"$list"
+    if [[ -n $unlisted ]]; then
+        # A daemon that is not running, or a user outside the docker group, would otherwise
+        # pass for a host with no instance in a container.
+        printf 'claude-sync: docker cannot list the instances in containers, so none of those was upgraded; once docker works, rerun claude-sync upgrade\n' >&2
+    elif [[ -z $found ]]; then
         echo "claude-sync $claude_sync_version is installed; no instance is set up on this host yet."
     elif [[ -n $running && -z $applied ]]; then
         echo "Every running instance already runs claude-sync $claude_sync_version."
     fi
     case ${#failed[@]} in
-        0) ;;
+        0) [[ -z $unlisted ]] || exit 1 ;;
         1) die "setup failed for instance ${failed[0]}; fix what it says, then rerun claude-sync upgrade" ;;
         *) die "setup failed for instances ${failed[*]}; fix what each says, then rerun claude-sync upgrade" ;;
     esac

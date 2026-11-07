@@ -53,8 +53,9 @@ they are unless given again. With your own Syncthing, it applies to claude-sync'
 there. With no instance set up, it prints the usage.
 
 Each instance records the version of claude-sync that last set it up. When that version
-is older than the one installed, or the instance has no record, as one set up by 0.1.1 or
-earlier, `pair` and `unpair` say so, with the `setup` command to run.
+is older than the one installed, `pair` and `unpair` say so, with the `setup` command to
+run. They also do when the instance has no record, as one set up by 0.1.1 or earlier, or
+records `dev`, as one set up from a checkout.
 
 ## upgrade
 
@@ -64,13 +65,14 @@ claude-sync upgrade
 
 `upgrade` replaces the installed claude-sync with the newest release that is not breaking,
 then has the new version run `setup`, with no target, for every running instance on this
-host whose recorded version is older, or that has none: each instance under its
-`CLAUDE_SYNC_NAME`, and claude-sync's folder in your own Syncthing. Run again with nothing
-new to install, it applies only to instances an earlier run left behind. It names a
-stopped instance and leaves it stopped; `setup` under that instance's name starts it with
-the new version. It also names an instance whose Syncthing state is left in its config
-volume with no container; `setup` under that name, with `--volume` or `--path`, uses that
-state again.
+host whose recorded version is older, missing or `dev`: each instance under its
+`CLAUDE_SYNC_NAME`, and claude-sync's folder in your own Syncthing. If your Syncthing is
+not running, `setup` cannot reach it and `upgrade` fails for that folder: start your
+Syncthing and run `upgrade` again. Run again with nothing new to install, it applies only
+to instances an earlier run left behind. It names a stopped instance and leaves it
+stopped; `setup` under that instance's name starts it with the new version. It also names
+an instance whose Syncthing state is left in its config volume with no container; `setup`
+under that name, with `--volume` or `--path`, uses that state again.
 
 - It downloads the release's `claude-sync` from GitHub and checks it against the release's
   `claude-sync.sha256`, then moves it over the installed file, so a command still running
@@ -83,7 +85,8 @@ state again.
   release that is not breaking is still installed. Pre-releases are left out.
 - It refuses an RPM install, which `dnf` upgrades (see [Upgrade](../README.md#upgrade)),
   and a claude-sync run from a checkout, whose version is `dev`.
-- It needs curl, and write access to the directory claude-sync is installed in.
+- It needs curl and sha256sum, and write access to the directory claude-sync is installed
+  in.
 
 ## Several instances on one host
 
@@ -152,7 +155,8 @@ With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninsta
 | `this instance was last set up by` | Run the `setup` command the message gives, to apply the installed version |
 | `runs from a checkout` | Update the checkout with git, then run `setup` to apply it |
 | `belongs to the RPM package` | Upgrade with `dnf` as in [Upgrade](../README.md#upgrade) |
-| `cannot get the list of claude-sync's releases` | Check that this host reaches `api.github.com`; GitHub also allows only 60 such requests an hour from one address without a login |
+| `cannot get the list of claude-sync's releases` | Check that this host reaches `api.github.com`; GitHub also [limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api) how many such requests one address can make without a login |
 | `cannot write to` ... `where claude-sync is` | Run `upgrade` as the user who owns that directory |
 | `does not match the release's SHA-256` or `is not version` | Nothing was changed; run `upgrade` again later, and report it if it keeps failing |
 | `setup failed for instance` | Fix what that instance's `setup` printed above, then rerun `upgrade` |
+| `docker cannot list the instances in containers` | Start Docker, and check that `docker ps` works as this user; then rerun `upgrade` |
