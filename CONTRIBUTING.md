@@ -78,8 +78,9 @@ new list when it runs `setup` from a claude-sync that has it (see the README's
    `git fetch origin && git tag vX.Y.Z origin/main && git push origin vX.Y.Z`. A tag with a
    pre-release part, such as `v0.2.0-rc.1`, is published as a pre-release.
 3. If the release is breaking (step 1), add to its notes on GitHub how to upgrade to it by
-   hand: download claude-sync as in the README's Install section, run `claude-sync setup`
-   for each instance, and do any other step the release needs. `claude-sync upgrade` links
+   hand: download claude-sync as in the README's Install section, run
+   `CLAUDE_SYNC_NAME=NAME claude-sync setup` for each instance NAME, and do any other step
+   the release needs. `claude-sync upgrade` links
    a breaking release's notes instead of installing it, and the generated notes list only
    the merged PRs.
 
