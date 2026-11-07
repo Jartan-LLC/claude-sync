@@ -32,8 +32,8 @@ selected_instance() {
     head -n 1 -- "$file" 2>/dev/null || true
 }
 
-# What chose the instance: CLAUDE_SYNC_NAME, which wins so scripts and the tests are not
-# steered by a selection, then the selection, else the default.
+# What chose the instance: CLAUDE_SYNC_NAME, which wins so neither scripts nor upgrade's
+# setup of each instance follow a selection, then the selection, else the default.
 if [[ -n ${CLAUDE_SYNC_NAME:-} ]]; then
     name_from=variable
 elif CLAUDE_SYNC_NAME=$(selected_instance); then
@@ -1291,7 +1291,7 @@ upgrade() {
     local file
     file=$(readlink -f -- "${BASH_SOURCE[0]}")
     if command -v rpm >/dev/null && rpm -qf -- "$file" >/dev/null 2>&1; then
-        die "$file belongs to the RPM package $(rpm -qf -- "$file"): upgrade it with dnf as you installed it, then run CLAUDE_SYNC_NAME=NAME claude-sync setup for each instance NAME that claude-sync list shows"
+        die "$file belongs to the RPM package $(rpm -qf -- "$file"): upgrade it with dnf as you installed it, then run CLAUDE_SYNC_NAME=NAME claude-sync setup for each running instance NAME that claude-sync list shows"
     fi
     command -v curl >/dev/null || die "curl is required"
     command -v sha256sum >/dev/null || die "sha256sum is required"
