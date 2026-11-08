@@ -45,6 +45,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   login. Later runs of `setup` and `upgrade` keep it; `setup --no-backup` and `uninstall`
   remove it. Hosts without systemd's user manager, such as macOS, refuse it.
 
+### Changed
+
+- A mistake that the command line alone shows now exits 2 and still says what is wrong. A
+  missing argument, which prints the usage, already exited 2. Other mistakes exited 1, as
+  any failure does: an unknown argument, a missing or empty value, options that cannot go
+  together, a value of the wrong form, or an argument to `list`, `status`, `uninstall` or
+  `upgrade`. Other failures still exit 1, among them a check of this host that runs before
+  the mistake is found: `pair` with a malformed device ID on a device not set up says to
+  run setup first.
+
 ### Fixed
 
 - `claude-sync upgrade`, and `setup` when it would schedule the daily backup, both new since
