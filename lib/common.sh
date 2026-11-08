@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Helpers that know nothing of Syncthing or Docker.
+# Helpers that need neither Docker nor Syncthing, and those for claude-sync's own file.
 
 die() {
     printf 'claude-sync: %s\n' "$*" >&2
