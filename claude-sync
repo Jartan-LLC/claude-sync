@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Keep ~/.claude in sync across devices with Syncthing. See README.md.
+# shellcheck source-path=SCRIPTDIR
 set -euo pipefail
 
 readonly claude_sync_file=${BASH_SOURCE[0]-}
@@ -13,6 +14,8 @@ asset() {
     cat -- "$here/$1"
 }
 # END ASSETS
+# BEGIN SOURCES: packaging/build.sh puts these files here, in this order.
+# END SOURCES
 readonly default_name=claude-sync
 
 # Where `claude-sync use` keeps the selected instance. Fails when there is no home to

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds the single-file claude-sync: the script with its version and its own files built
-# in, so it runs without this repository.
+# Builds the single-file claude-sync: the script with its version, its own files and the
+# lib files its SOURCES block lists built in, so it runs without this repository.
 # Usage: packaging/build.sh VERSION OUT
 set -euo pipefail
 
@@ -20,9 +20,35 @@ readonly version=$1 out=$2
 [[ $version =~ ^[0-9A-Za-z][0-9A-Za-z.+~-]*$ ]] || die "not a version: $version"
 
 src=$root/claude-sync
-for marker in '^# BEGIN ASSETS' '^# END ASSETS$'; do
+readonly markers=('^# BEGIN ASSETS' '^# END ASSETS$' '^# BEGIN SOURCES' '^# END SOURCES$')
+at=()
+for marker in "${markers[@]}"; do
     [[ $(grep -c -- "$marker" "$src") == 1 ]] || die "claude-sync needs exactly one line matching $marker"
+    at+=("$(grep -n -- "$marker" "$src" | cut -d: -f1)")
 done
+((at[0] < at[1] && at[1] < at[2] && at[2] < at[3])) || die "claude-sync's markers are out of order: ${markers[*]}"
+
+sources=()
+while IFS= read -r line; do
+    [[ $line =~ ^source\ \"\$here/(lib/[a-z0-9_-]+\.sh)\"$ ]] ||
+        die "not a source line in claude-sync's SOURCES block: $line"
+    f=${BASH_REMATCH[1]}
+    [[ " ${sources[*]} " != *" $f "* ]] || die "$f is listed twice"
+    [[ -f $root/$f ]] || die "$f is listed but missing"
+    [[ -z $(tail -c 1 -- "$root/$f") ]] || die "$f does not end with a newline"
+    sources+=("$f")
+done < <(sed -n '/^# BEGIN SOURCES/,/^# END SOURCES$/{/^# BEGIN SOURCES/d;/^# END SOURCES$/d;p;}' "$src")
+# With no lib file, an unmatched glob would otherwise reach grep as a literal file name.
+shopt -s nullglob
+libs=("$root"/lib/*.sh)
+for f in "${libs[@]}"; do
+    f=lib/${f##*/}
+    [[ " ${sources[*]} " == *" $f "* ]] || die "$f is not listed in claude-sync's SOURCES block"
+done
+# A later definition silently replaces the earlier one, and neither bash -n nor shellcheck
+# reports it.
+dups=$(grep -ho '^[a-z_][a-z0-9_]*() {' "$src" "${libs[@]}" | sort | uniq -d)
+[[ -z $dups ]] || die "functions defined twice in claude-sync and lib/: $dups"
 
 # shellcheck disable=SC2016 # each $1 is the built script's, not this one's
 block() {
@@ -49,7 +75,11 @@ trap 'rm -f -- "$out.tmp"' EXIT
 {
     sed '/^# BEGIN ASSETS/,$d' "$src"
     block
-    sed '1,/^# END ASSETS$/d' "$src"
+    sed -n '/^# END ASSETS$/,/^# BEGIN SOURCES/{/^# END ASSETS$/d;/^# BEGIN SOURCES/d;p;}' "$src"
+    for f in "${sources[@]}"; do
+        cat -- "$root/$f"
+    done
+    sed '1,/^# END SOURCES$/d' "$src"
 } >"$out.tmp"
 chmod 755 "$out.tmp"
 bash -n "$out.tmp"

@@ -41,6 +41,21 @@ make build VERSION=0.0.0-test
 CLAUDE_SYNC_BIN=$PWD/dist/claude-sync CLAUDE_SYNC_BIN_VERSION=0.0.0-test make test
 ```
 
+`claude-sync` holds the command line; the rest of the program lives in `lib/*.sh`. The
+checkout's `claude-sync` loads each of them with a `source` line in its SOURCES block, from
+the directory it sits in, symlinks resolved; `packaging/build.sh` puts the same files, in
+the same order, into the built file. So:
+
+- A new lib file needs its `source "$here/lib/NAME.sh"` line in the SOURCES block.
+  `build.sh` refuses a lib file that is not listed, a listed file that is missing, and a
+  function defined in two files, where the later definition would silently win.
+- Top-level code that reads a global or calls a function defined in another file needs that
+  file listed first. A global read before it is set fails at startup under `set -u`.
+- Lib files hold only definitions and plain top-level assignments, and their top-level code
+  ends with status 0.
+- Code that needs claude-sync's own path reads `claude_sync_file`, never `BASH_SOURCE`, which
+  in a function names the lib file in a checkout.
+
 ## Updating the ignore list
 
 `stignore` keeps out of sync what is meaningless or harmful on another machine, and Claude
