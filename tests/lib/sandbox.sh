@@ -53,7 +53,8 @@ own_volumes() {
 }
 
 # The volume Docker made for the image's VOLUME, /var/syncthing, in container NAME, as long as
-# NAME mounts it there; nothing when NAME mounts something else there.
+# NAME mounts it there; nothing when NAME mounts something else there. Apart from claude-sync's
+# own anonymous_volume, so that cleanup does not hang on the code under test.
 anonymous_volume() {
     local volume
     volume=$(docker container inspect \

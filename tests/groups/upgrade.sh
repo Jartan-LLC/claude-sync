@@ -260,17 +260,20 @@ EOF
     check "  and removes the rest of the instance" fails docker volume inspect "$n-config"
     remove_container "$held"
 
-    echo "# the suite's cleanup, of a container Compose recreated"
+    echo "# a container Compose recreated, to claude-sync and the suite's cleanup"
     # As Compose leaves it: the anonymous volume mounted by name.
     handed=$(docker volume create --label com.docker.volume.anonymous)
     docker create --name "$recreated" --mount "type=volume,src=$handed,dst=/var/syncthing" "$image" >/dev/null
-    remove_container "$recreated"
-    check "removes the container" fails docker container inspect "$recreated"
-    check "  and its anonymous volume" fails docker volume inspect "$handed"
     docker volume create "$vol_named" >/dev/null
     docker create --name "$named" --mount "type=volume,src=$vol_named,dst=/var/syncthing" "$image" >/dev/null
+    check "claude-sync finds the anonymous volume of a container Compose recreated" \
+        [ "$(calls anonymous_volume "$recreated")" = "$handed" ]
+    check "  but not a volume mounted there that is not anonymous" [ -z "$(calls anonymous_volume "$named")" ]
+    remove_container "$recreated"
+    check "the suite's cleanup removes it" fails docker container inspect "$recreated"
+    check "  and its anonymous volume" fails docker volume inspect "$handed"
     remove_container "$named"
-    check "  but not a volume mounted there that is not anonymous" docker volume inspect "$vol_named"
+    check "  and keeps one mounted there that is not anonymous" docker volume inspect "$vol_named"
 
     echo "# upgrade, on the host's Syncthing"
     start_host_fixture "$hu"
