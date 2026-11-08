@@ -103,6 +103,10 @@ setup() {
         esac
     done
     check_instance
+    # Here as well as in schedule_backup, so that setup refuses before it changes anything.
+    if backup_dir_to_schedule "$backup" >/dev/null; then
+        check_running_from_file
+    fi
     if [[ $backup == /* ]] && ! user_systemd; then
         die "--backup-dir needs systemd's user manager (systemctl --user), which is not running for $(id -un) here; schedule CLAUDE_SYNC_NAME=$name claude-sync backup DIR another way, such as with cron"
     fi

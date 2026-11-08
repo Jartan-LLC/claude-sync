@@ -63,31 +63,39 @@ scheduled_backup_dir() {
     unit_unquote "${line%\"}"
 }
 
+# The DIR that schedule_backup BACKUP sets this instance's daily backup up for: BACKUP when
+# it is a DIR, the scheduled one when it is empty. Fails when it sets none up: BACKUP is off,
+# or empty with no daily backup scheduled.
+backup_dir_to_schedule() {
+    case $1 in
+        off) return 1 ;;
+        '') scheduled_backup_dir ;;
+        *) printf '%s\n' "$1" ;;
+    esac
+}
+
 # Applies setup's BACKUP to this instance's daily backup: a DIR installs it there, off
 # removes it, and empty keeps it, rewritten for this claude-sync. Runs before write_stamp: a
 # failure leaves the instance stale, so upgrade sets it up again.
 schedule_backup() {
-    local dir=$1 asked="" path unit bin header service timer saved="" ext was_enabled=""
-    [[ -z $1 ]] || asked=1
-    case $dir in
-        off)
-            unschedule_backup
-            return
-            ;;
-        '')
-            dir=$(scheduled_backup_dir) || return 0
-            # Only a warning, as upgrade runs this for every instance. A target set up again
-            # since DIR was given can hold it.
-            (check_outside_synced_folder "$dir") ||
-                printf 'claude-sync: the daily backup into %s fails each day until what is above is fixed, or %s --backup-dir gives it another DIR\n' \
-                    "$dir" "$(setup_command "$name")" >&2
-            ;;
-        *)
-            # Checked now, or each daily run would fail where nobody looks.
-            check_outside_synced_folder "$dir"
-            mkdir -p -- "$dir"
-            ;;
-    esac
+    local dir asked="" path unit bin header service timer saved="" ext was_enabled=""
+    if [[ $1 == off ]]; then
+        unschedule_backup
+        return
+    fi
+    dir=$(backup_dir_to_schedule "$1") || return 0
+    if [[ -n $1 ]]; then
+        asked=1
+        # Checked now, or each daily run would fail where nobody looks.
+        check_outside_synced_folder "$dir"
+        mkdir -p -- "$dir"
+    else
+        # Only a warning, as upgrade runs this for every instance. A target set up again
+        # since DIR was given can hold it.
+        (check_outside_synced_folder "$dir") ||
+            printf 'claude-sync: the daily backup into %s fails each day until what is above is fixed, or %s --backup-dir gives it another DIR\n' \
+                "$dir" "$(setup_command "$name")" >&2
+    fi
     path=$(backup_unit)
     unit=${path##*/}
     check_running_from_file
