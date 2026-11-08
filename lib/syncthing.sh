@@ -193,7 +193,7 @@ ours_container() {
 anonymous_volume() {
     local volume
     volume=$(docker container inspect --format "{{range .Mounts}}{{if and (eq .Type \"volume\") (eq .Destination \"$container_home\")}}{{.Name}}{{end}}{{end}}" "$1")
-    [[ -z $volume ]] && return
+    [[ -n $volume ]] || return 0
     # shellcheck disable=SC2016 # a Go template's variables
     docker volume inspect --format '{{range $key, $_ := .Labels}}{{if eq $key "com.docker.volume.anonymous"}}{{$.Name}}{{end}}{{end}}' "$volume"
 }

@@ -54,13 +54,13 @@ own_volumes() {
 
 # The volume Docker made for the image's VOLUME, /var/syncthing, in container NAME, as long as
 # NAME mounts it there; nothing when NAME mounts something else there. Apart from claude-sync's
-# own anonymous_volume, so that cleanup does not hang on the code under test.
-anonymous_volume() {
+# own anonymous_volume, so that cleanup does not depend on the code under test.
+anonymous_mount() {
     local volume
     volume=$(docker container inspect \
         --format '{{range .Mounts}}{{if and (eq .Type "volume") (eq .Destination "/var/syncthing")}}{{.Name}}{{end}}{{end}}' "$1") ||
         return
-    [[ -z $volume ]] && return
+    [[ -n $volume ]] || return 0
     # shellcheck disable=SC2016 # a Go template's variables
     docker volume inspect \
         --format '{{range $key, $_ := .Labels}}{{if eq $key "com.docker.volume.anonymous"}}{{$.Name}}{{end}}{{end}}' "$volume"
@@ -72,7 +72,7 @@ anonymous_volume() {
 remove_container() {
     local volume
     guard "$1"
-    volume=$(anonymous_volume "$1" 2>/dev/null) || true
+    volume=$(anonymous_mount "$1" 2>/dev/null) || true
     docker rm --force -v "$1" >/dev/null 2>&1 || true
     [[ -n $volume ]] && docker volume inspect "$volume" >/dev/null 2>&1 || return 0
     docker volume rm "$volume" >/dev/null || echo "cleanup left volume $volume, container $1's anonymous volume" >&2

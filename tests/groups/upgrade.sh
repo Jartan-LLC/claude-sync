@@ -247,10 +247,10 @@ EOF
 
     echo "# uninstall, of a container upgrade recreated"
     check "upgrade recreated P" [ "$(docker container inspect --format '{{.Id}}' "$p")" != "$container_p" ]
-    anonymous_p=$(anonymous_volume "$p")
+    anonymous_p=$(anonymous_mount "$p")
     claude_sync "$p" uninstall >/dev/null
     check "removes the container's anonymous volume" fails docker volume inspect "${anonymous_p:?}"
-    anonymous_n=$(anonymous_volume "$n")
+    anonymous_n=$(anonymous_mount "$n")
     # At /var/syncthing, where cleanup finds it should a check below stop the run.
     docker create --name "$held" --mount "type=volume,src=${anonymous_n:?},dst=/var/syncthing" "$image" >/dev/null
     out=$(claude_sync "$n" uninstall 2>&1) && status=0 || status=$?
