@@ -101,46 +101,16 @@ EOF
 }
 
 case ${1:-help} in
-    setup)
-        shift
-        setup "$@"
-        ;;
-    pair)
-        shift
-        pair "$@"
-        ;;
-    unpair)
-        shift
-        unpair "$@"
-        ;;
-    uninstall)
-        shift
-        uninstall "$@"
-        ;;
-    upgrade)
-        shift
-        upgrade "$@"
-        ;;
-    backup)
-        shift
-        backup "$@"
-        ;;
-    restore)
-        shift
-        restore "$@"
-        ;;
-    status)
-        shift
-        status "$@"
-        ;;
-    list)
-        shift
-        list "$@"
-        ;;
-    use)
-        shift
-        use "$@"
-        ;;
+    setup) setup "${@:2}" ;;
+    pair) pair "${@:2}" ;;
+    unpair) unpair "${@:2}" ;;
+    uninstall) uninstall "${@:2}" ;;
+    upgrade) upgrade "${@:2}" ;;
+    backup) backup "${@:2}" ;;
+    restore) restore "${@:2}" ;;
+    status) status "${@:2}" ;;
+    list) list "${@:2}" ;;
+    use) use "${@:2}" ;;
     version | --version) echo "claude-sync $claude_sync_version" ;;
     help | -h | --help) usage ;;
     *)
