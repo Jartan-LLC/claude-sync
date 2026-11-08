@@ -40,7 +40,7 @@ status() {
 locate_syncthing() {
     local kind="" target="" host=""
     if ! current_setup; then
-        if command -v docker >/dev/null && ! docker info >/dev/null 2>&1; then
+        if docker_unreachable; then
             die "docker cannot be reached, so status cannot tell whether instance $name runs in a container; once docker works, rerun claude-sync status"
         fi
         runs="not set up on this host; $(setup_command "$name") --volume NAME or --path DIR sets it up"

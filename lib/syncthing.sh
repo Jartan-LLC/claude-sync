@@ -144,6 +144,11 @@ container_exists() {
     command -v docker >/dev/null && docker container inspect "$1" >/dev/null 2>&1
 }
 
+# Whether docker is installed but does not answer: no daemon, or no permission to reach it.
+docker_unreachable() {
+    command -v docker >/dev/null && ! docker info >/dev/null 2>&1
+}
+
 running() {
     [[ $(docker container inspect --format '{{.State.Running}}' "$1" 2>/dev/null) == true ]]
 }

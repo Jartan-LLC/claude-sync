@@ -110,7 +110,7 @@ setup() {
     [[ $backup != off ]] || check_unschedule
     if [[ -z $kind ]] && ! current_setup; then
         # A daemon that is not running would otherwise pass for no instance in a container.
-        if command -v docker >/dev/null && ! docker info >/dev/null 2>&1; then
+        if docker_unreachable; then
             die "docker cannot be reached, so setup cannot tell whether instance $name runs in a container; once docker works, rerun $(setup_command "$name")"
         fi
         # An instance removed outside claude-sync leaves its timer firing at nothing.
