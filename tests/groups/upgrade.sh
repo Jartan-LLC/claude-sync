@@ -1,5 +1,13 @@
 # shellcheck shell=bash
-# group_upgrade and the helpers only it uses.
+# group_upgrade, the names of what it makes, and the helpers only it uses.
+
+readonly n=${prefix}n p=${prefix}p s=${prefix}s hu=${prefix}hu
+readonly vol_n=${prefix}n-data vol_p=${prefix}p-data
+readonly owner_n=1357:1357 owner_p=2468:2468
+readonly mount_n=type=volume,src=$vol_n mount_p=type=volume,src=$vol_p
+own_instances "$n" "$p" "$s"
+own_containers "$hu"
+own_volumes "$vol_n" "$vol_p"
 
 # The newest releases in LIST, to the 0.4.0 build: the one that is not breaking and the
 # one that is.

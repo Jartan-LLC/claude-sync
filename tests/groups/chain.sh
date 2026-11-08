@@ -1,5 +1,14 @@
 # shellcheck shell=bash
-# group_chain and the helpers only it uses.
+# group_chain, the names of what it makes, and the helpers only it uses.
+
+readonly a=${prefix}a b=${prefix}b c=${prefix}c d=${prefix}d h=${prefix}h
+readonly vol_a=${prefix}a-data vol_b=${prefix}b-data vol_c=${prefix}c-data vol_d=${prefix}d-data
+# Not Syncthing's default 1000, so a match proves the owner was read from the target.
+readonly owner_a=1234:1234 owner_b=2345:2345 owner_c=3456:3456 owner_d=4567:4567
+readonly mount_a=type=volume,src=$vol_a mount_b=type=volume,src=$vol_b mount_c=type=volume,src=$vol_c
+own_instances "$a" "$b" "$c" "$d"
+own_containers "$h"
+own_volumes "$vol_a" "$vol_b" "$vol_c" "$vol_d"
 
 # HTTP status of A's index entry for a file: 200 when indexed, 404 when not.
 index_status() {

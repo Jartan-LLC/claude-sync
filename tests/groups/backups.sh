@@ -1,5 +1,14 @@
 # shellcheck shell=bash
-# group_backups and the helpers only it uses.
+# group_backups, the names of what it makes, and the helpers only it uses.
+
+readonly q=${prefix}q t=${prefix}t
+readonly vol_q=${prefix}q-data vol_t=${prefix}t-data vol_r=${prefix}r-data vol_q_missing=${prefix}q-missing
+readonly owner_q=4680:4680 owner_t=5791:5791 owner_r=3579:3579
+readonly mount_q=type=volume,src=$vol_q mount_t=type=volume,src=$vol_t mount_r=type=volume,src=$vol_r
+own_instances "$q" "$t"
+own_volumes "$vol_q" "$vol_t" "$vol_r" "$vol_q_missing"
+long=projects/-work-$(printf '%060d' 0 | tr 0 x)/memory/a-note-whose-path-is-longer-than-a-tar-header.md
+readonly long
 
 # A directory tree as a restore must give it back: each entry's type, mode and path, and each
 # file's mtime and contents. Not owners, which come from the target. The same commands run

@@ -1,5 +1,9 @@
 # shellcheck shell=bash
-# group_select and the helpers only it uses.
+# group_select, the names of what it makes, and the helpers only it uses.
+
+readonly v=${prefix}v w=${prefix}w vol_v=${prefix}v-data owner_v=3690:3690
+own_instances "$v" "$w"
+own_volumes "$vol_v"
 
 # claude-sync as the user runs it, with no CLAUDE_SYNC_NAME, and the docker shim of
 # group_select.

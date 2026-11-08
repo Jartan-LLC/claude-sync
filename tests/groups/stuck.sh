@@ -1,5 +1,12 @@
 # shellcheck shell=bash
-# group_stuck and the helpers only it uses.
+# group_stuck, the names of what it makes, and the helpers only it uses.
+
+readonly j=${prefix}j l=${prefix}l
+readonly vol_j=${prefix}j-data vol_l=${prefix}l-data
+readonly owner_j=8901:8901 owner_l=9012:9012
+readonly mount_j=type=volume,src=$vol_j mount_l=type=volume,src=$vol_l
+own_instances "$j" "$l"
+own_volumes "$vol_j" "$vol_l"
 
 # Whether a node's Syncthing is scanning the folder, or waiting to.
 scanning() {

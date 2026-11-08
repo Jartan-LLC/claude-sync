@@ -1,5 +1,10 @@
 # shellcheck shell=bash
-# group_timer and the helpers only it uses.
+# group_timer, the names of what it makes, and the helpers only it uses.
+
+readonly u=${prefix}u y=${prefix}y vol_u=${prefix}u-data owner_u=8642:8642
+own_instances "$u"
+own_containers "$y"
+own_volumes "$vol_u"
 
 # The calls the stub systemctl got since the last reset, apart from is-system-running and
 # is-enabled, which change nothing.

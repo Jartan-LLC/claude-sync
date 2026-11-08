@@ -1,5 +1,12 @@
 # shellcheck shell=bash
-# group_instances and the helpers only it uses.
+# group_instances, the names of what it makes, and the helpers only it uses.
+
+readonly e=${prefix}e g=${prefix}g k=${prefix}k listener=${prefix}listener
+readonly vol_e=${prefix}e-data vol_g=${prefix}g-data
+readonly owner_e=6789:6789 owner_g=7890:7890
+own_instances "$e" "$g" "$k"
+own_containers "$listener"
+own_volumes "$vol_e" "$vol_g"
 
 # claude-sync for an instance in the listener's network namespace, where another program
 # holds Syncthing's default ports.
@@ -22,6 +29,8 @@ listens_soon() {
 # Two instances on one host, beside a program that holds the default ports.
 group_instances() {
     echo "# several instances on one host"
+    # For compose.busy.yaml, which joins the listener's network.
+    export CLAUDE_SYNC_TEST_LISTENER=$listener
     # E and G share a listener's network namespace, as two instances on one host where another
     # program holds Syncthing's default ports.
     docker run -d --name "$listener" --network "$net" --entrypoint sh "$image" \

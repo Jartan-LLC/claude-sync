@@ -1,5 +1,10 @@
 # shellcheck shell=bash
-# group_status and the helpers only it uses.
+# group_status, the names of what it makes, and the helpers only it uses.
+
+readonly sx=${prefix}sx sy=${prefix}sy sz=${prefix}sz vol_sx=${prefix}sx-data vol_sy=${prefix}sy-data
+readonly owner_sx=1470:1470 owner_sy=2580:2580
+own_instances "$sx" "$sy" "$sz"
+own_volumes "$vol_sx" "$vol_sy"
 
 # status of instance NODE from the 0.4.0 build in $sdir, with the fake releases in LIST.
 status_of() {

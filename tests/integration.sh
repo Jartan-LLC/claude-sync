@@ -15,37 +15,16 @@ readonly prefix
     echo "CLAUDE_SYNC_TEST_PREFIX must start with claude-sync-test-: $prefix" >&2
     exit 1
 }
-readonly net=${prefix}net a=${prefix}a b=${prefix}b c=${prefix}c d=${prefix}d e=${prefix}e g=${prefix}g k=${prefix}k
-readonly j=${prefix}j l=${prefix}l m=${prefix}m n=${prefix}n p=${prefix}p q=${prefix}q s=${prefix}s t=${prefix}t
-readonly hu=${prefix}hu
-readonly sx=${prefix}sx sy=${prefix}sy sz=${prefix}sz vol_sx=${prefix}sx-data vol_sy=${prefix}sy-data
-readonly owner_sx=1470:1470 owner_sy=2580:2580
-readonly v=${prefix}v w=${prefix}w vol_v=${prefix}v-data owner_v=3690:3690
-readonly u=${prefix}u y=${prefix}y vol_u=${prefix}u-data owner_u=8642:8642
-readonly listener=${prefix}listener foreign=${prefix}foreign h=${prefix}h host_image=${prefix}host
-readonly vol_a=${prefix}a-data vol_b=${prefix}b-data vol_missing=${prefix}missing
-readonly vol_root=${prefix}root-data vol_c=${prefix}c-data vol_d=${prefix}d-data
-readonly vol_e=${prefix}e-data vol_g=${prefix}g-data vol_j=${prefix}j-data vol_l=${prefix}l-data
-readonly vol_m=${prefix}m-data vol_n=${prefix}n-data vol_p=${prefix}p-data vol_q=${prefix}q-data vol_r=${prefix}r-data
-readonly vol_t=${prefix}t-data vol_q_missing=${prefix}q-missing
-# Not Syncthing's default 1000, so a match proves the owner was read from the target.
-readonly owner_a=1234:1234 owner_b=2345:2345 owner_c=3456:3456 owner_d=4567:4567
-readonly owner_e=6789:6789 owner_g=7890:7890 owner_j=8901:8901 owner_l=9012:9012 owner_m=5678:5678
-readonly owner_n=1357:1357 owner_p=2468:2468 owner_q=4680:4680 owner_r=3579:3579 owner_t=5791:5791
-readonly mount_a=type=volume,src=$vol_a mount_b=type=volume,src=$vol_b mount_c=type=volume,src=$vol_c
-readonly mount_j=type=volume,src=$vol_j mount_l=type=volume,src=$vol_l mount_m=type=volume,src=$vol_m
-readonly mount_n=type=volume,src=$vol_n mount_p=type=volume,src=$vol_p mount_r=type=volume,src=$vol_r
-readonly mount_q=type=volume,src=$vol_q mount_t=type=volume,src=$vol_t
+readonly net=${prefix}net host_image=${prefix}host
 image=$(sed -n 's/^ *image: *//p' "$root/compose.yaml")
 readonly image
 [[ -n $image ]] || {
     echo "no image in compose.yaml" >&2
     exit 1
 }
-readonly bad_name=${prefix}BAD
 export CLAUDE_SYNC_COMPOSE_OVERRIDE=$root/tests/compose.test.yaml
-# For the compose overlays, which join the test network or the listener's.
-export CLAUDE_SYNC_TEST_NET=$net CLAUDE_SYNC_TEST_LISTENER=$listener
+# For the compose overlay, which joins the test network.
+export CLAUDE_SYNC_TEST_NET=$net
 # claude-sync looks for a Syncthing of the user running it on this host; pointed at a
 # home that does not exist, it never reaches a developer's own.
 export STHOMEDIR=/nonexistent/${prefix}home
@@ -179,30 +158,16 @@ for file in "$root"/tests/groups/*.sh; do
     }
     groups+=("$group")
 done
+# A prefixed name no own_* call registers would outlive the run, and the next run would
+# reuse it: docker volume create takes an existing volume as it is.
+while read -r var; do
+    value=${!var:-}
+    [[ $value == "$prefix"* && -z ${registered[$value]:-} ]] || continue
+    [[ $value == "$prefix" || $value == "$net" || $value == "$host_image" ]] && continue
+    echo "$var=$value is not registered: add it to an own_* call beside it" >&2
+    exit 1
+done < <(compgen -v)
 
-# What each group makes, as the groups name it.
-own_instances "$a" "$b" "$c" "$d"
-own_containers "$h"
-own_volumes "$vol_a" "$vol_b" "$vol_c" "$vol_d"
-own_instances "$e" "$g" "$k"
-own_containers "$listener"
-own_volumes "$vol_e" "$vol_g"
-own_instances "$j" "$l"
-own_volumes "$vol_j" "$vol_l"
-own_instances "$m" "$bad_name" "$foreign"
-own_volumes "$vol_m" "$vol_root" "$vol_missing"
-own_instances "$n" "$p" "$s"
-own_containers "$hu"
-own_volumes "$vol_n" "$vol_p"
-own_instances "$q" "$t"
-own_volumes "$vol_q" "$vol_t" "$vol_r" "$vol_q_missing"
-own_instances "$u"
-own_containers "$y"
-own_volumes "$vol_u"
-own_instances "$v" "$w"
-own_volumes "$vol_v"
-own_instances "$sx" "$sy" "$sz"
-own_volumes "$vol_sx" "$vol_sy"
 
 # A relay on Docker's socket, such as a dev container's socat, can cut off a container's
 # output after half a second while the command still succeeds.
@@ -268,8 +233,6 @@ in_target "$mount_p" "chown $owner_p /t"
 in_target "$mount_a" "$fixture && chown -R $owner_a /t"
 # Q's fixture adds what an archive must carry as it is: a login only its owner reads, a
 # symlink, a path too long for tar's basic header, and a file in the trash can.
-long=projects/-work-$(printf '%060d' 0 | tr 0 x)/memory/a-note-whose-path-is-longer-than-a-tar-header.md
-readonly long
 in_target "$mount_q" "$fixture && chmod 600 .credentials.json && ln -s settings.json link.json &&
     mkdir -p .stversions \"\$(dirname '$long')\" && echo old >.stversions/settings.json && echo long >'$long' &&
     chown -R $owner_q /t"

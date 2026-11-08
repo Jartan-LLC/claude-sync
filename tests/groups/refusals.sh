@@ -1,5 +1,12 @@
 # shellcheck shell=bash
-# group_refusals and the helpers only it uses.
+# group_refusals, the names of what it makes, and the helpers only it uses.
+
+readonly m=${prefix}m bad_name=${prefix}BAD foreign=${prefix}foreign
+readonly vol_m=${prefix}m-data vol_root=${prefix}root-data vol_missing=${prefix}missing
+readonly owner_m=5678:5678
+readonly mount_m=type=volume,src=$vol_m
+own_instances "$m" "$bad_name" "$foreign"
+own_volumes "$vol_m" "$vol_root" "$vol_missing"
 
 relative_path_resolved() {
     local err
