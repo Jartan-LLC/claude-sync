@@ -335,15 +335,13 @@ group_chain() {
     check "  and C" wait_for in_target "$mount_c" '[ -e /t/from-d.md ]'
 
     echo "# setup --use-host-syncthing"
-    docker run -d --name "$h" --network "$net" --user user --entrypoint env "$host_image" \
-        -u STHOMEDIR -u STGUIADDRESS HOME=/home/user syncthing serve --no-browser >/dev/null
+    start_host_fixture "$h"
     docker exec -u 0 "$h" mkdir /opt/claude-sync
     stage=$(mktemp -d -p "$scratch")
     copy_under_test "$stage"
     chmod 755 "$stage"
     docker cp -q "$stage/." "$h:/opt/claude-sync"
     docker cp -q "$root/stignore" "$h:/opt/stignore"
-    wait_for on_host syncthing cli show version
     id_h=$(on_host syncthing device-id)
     # The user's own Syncthing: folders of their own, one shared with B, private options, and
     # a web UI address with no host.

@@ -198,8 +198,7 @@ EOF
     check "  saying so" grep -qF "Removed the daily backup to $tm/backups;" <<<"$out"
 
     echo "# --backup-dir with --use-host-syncthing"
-    docker run -d --name "$y" --network "$net" --user user --entrypoint env "$host_image" \
-        -u STHOMEDIR -u STGUIADDRESS HOME=/home/user syncthing serve --no-browser >/dev/null
+    start_host_fixture "$y"
     docker exec -u 0 "$y" mkdir /opt/claude-sync
     stage=$(mktemp -d -p "$scratch")
     copy_under_test "$stage"
@@ -207,7 +206,6 @@ EOF
     docker cp -q "$stage/." "$y:/opt/claude-sync"
     as_user "$y" mkdir stub claude
     docker cp -q "$tm/bin/systemctl" "$y:/home/user/stub/"
-    wait_for as_user "$y" syncthing cli show version
     # In the fixture's own ~/.config, with no XDG_CONFIG_HOME.
     y_sync() {
         # shellcheck disable=SC2016 # expanded by the fixture's shell

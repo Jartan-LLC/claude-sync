@@ -188,11 +188,9 @@ EOF
     check "  and leaves it stopped" [ "$(docker inspect -f '{{.State.Running}}' "$sy")" = false ]
 
     echo "# status, on the host's Syncthing"
-    docker run -d --name "$sz" --network "$net" --user user --entrypoint env "$host_image" \
-        -u STHOMEDIR -u STGUIADDRESS HOME=/home/user syncthing serve --no-browser >/dev/null
+    start_host_fixture "$sz"
     docker cp -q "$sdir/claude-sync" "$sz:/home/user/"
     docker exec -u 0 "$sz" chown user /home/user/claude-sync
-    wait_for as_user "$sz" syncthing cli show version
     as_user "$sz" mkdir claude
     as_user "$sz" ./claude-sync setup --path claude --use-host-syncthing >/dev/null
     # A device on the unpaired list, which a command that acts on the instance would remove; SY, stopped, never

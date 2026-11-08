@@ -57,3 +57,11 @@ listens() {
 stamp_of() {
     docker exec "$1" cat /var/syncthing/config/claude-sync-version
 }
+
+# Starts host fixture NAME: Syncthing running as `user` with Syncthing's defaults, as on a
+# host where the user runs their own. Returns once it answers.
+start_host_fixture() {
+    docker run -d --name "$1" --network "$net" --user user --entrypoint env "$host_image" \
+        -u STHOMEDIR -u STGUIADDRESS HOME=/home/user syncthing serve --no-browser >/dev/null
+    wait_for as_user "$1" syncthing cli show version
+}

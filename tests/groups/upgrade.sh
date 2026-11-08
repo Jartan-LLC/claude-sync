@@ -235,8 +235,7 @@ EOF
         grep -qF "Volume $s-config holds the Syncthing state of instance $s," <<<"$out"
 
     echo "# upgrade, on the host's Syncthing"
-    docker run -d --name "$hu" --network "$net" --user user --entrypoint env "$host_image" \
-        -u STHOMEDIR -u STGUIADDRESS HOME=/home/user syncthing serve --no-browser >/dev/null
+    start_host_fixture "$hu"
     docker exec -u 0 "$hu" mkdir -p /opt/releases /home/user/bin
     docker exec -u 0 "$hu" chown user /home/user/bin
     docker cp -q "$up/releases/download" "$hu:/opt/releases/"
@@ -244,7 +243,6 @@ EOF
     docker cp -q "$up/old/claude-sync" "$hu:/home/user/bin/"
     docker exec -u 0 "$hu" chown user /home/user/bin/claude-sync
     docker cp -q "$root/stignore" "$hu:/opt/stignore"
-    wait_for as_user "$hu" syncthing cli show version
     as_user "$hu" mkdir claude
     as_user "$hu" bin/claude-sync setup --path claude --use-host-syncthing >/dev/null
     check "list shows the host's Syncthing" grep -qE "^\* claude-sync +host Syncthing +directory /home/user/claude\$" \
