@@ -1,5 +1,6 @@
 # shellcheck shell=bash
-# The suite touches only objects with its prefix: guard refuses others, cleanup removes them.
+# The suite touches only objects with its prefix, and the anonymous volume of a container with
+# its prefix: guard refuses others, cleanup removes them.
 
 guard() {
     [[ $1 == "$prefix"* ]] || {
@@ -51,13 +52,39 @@ own_volumes() {
     register registered_volumes "$@"
 }
 
+# The volume container NAME has at /var/syncthing, the image's VOLUME, if it has Docker's
+# anonymous label; nothing for another volume there. Separate from claude-sync's own
+# anonymous_volume, so that cleanup does not depend on the code under test.
+anonymous_mount() {
+    local volume
+    volume=$(docker container inspect \
+        --format '{{range .Mounts}}{{if and (eq .Type "volume") (eq .Destination "/var/syncthing")}}{{.Name}}{{end}}{{end}}' "$1") ||
+        return
+    [[ -n $volume ]] || return 0
+    # shellcheck disable=SC2016 # a Go template's variables
+    docker volume inspect \
+        --format '{{range $key, $_ := .Labels}}{{if eq $key "com.docker.volume.anonymous"}}{{$.Name}}{{end}}{{end}}' "$volume"
+}
+
+# Removes container NAME and its anonymous volume, which docker rm -v leaves once Compose has
+# recreated the container: Compose hands the volume on to the new container by name. The
+# volume has a hash for a name, not the prefix; read from NAME's own mounts, it is this run's.
+remove_container() {
+    local volume
+    guard "$1"
+    volume=$(anonymous_mount "$1" 2>/dev/null) || true
+    docker rm --force -v "$1" >/dev/null 2>&1 || true
+    [[ -n $volume ]] || return 0
+    docker volume inspect "$volume" >/dev/null 2>&1 || return 0
+    docker volume rm "$volume" >/dev/null || echo "cleanup left volume $volume, container $1's anonymous volume" >&2
+}
+
 # Containers first, then the image and volumes they use, then the network: Docker refuses
 # to remove a volume or image in use, and `|| true` would hide it.
 cleanup() {
     local x
     for x in "${registered_containers[@]}"; do
-        guard "$x"
-        docker rm --force -v "$x" >/dev/null 2>&1 || true
+        remove_container "$x"
     done
     guard "$host_image"
     docker image rm "$host_image" >/dev/null 2>&1 || true

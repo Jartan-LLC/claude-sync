@@ -620,8 +620,7 @@ EOF
 
     echo "# uninstall"
     before=$(snapshot "$mount_a")
-    anonymous=$(docker container inspect \
-        --format '{{range .Mounts}}{{if eq .Destination "/var/syncthing"}}{{.Name}}{{end}}{{end}}' "$a")
+    anonymous=$(anonymous_mount "$a")
     claude_sync "$a" uninstall >/dev/null
     check "removes the container" fails docker container inspect "$a"
     check "  and the image's anonymous volume" fails docker volume inspect "${anonymous:?}"

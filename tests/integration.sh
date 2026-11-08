@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Integration tests: claude-sync against real Syncthing containers on throwaway targets.
-# Every container, volume, network and image this keeps is named claude-sync-test-*, and
-# cleanup refuses anything else: a dev container may share the host's live Docker daemon,
-# where a real ~/.claude volume lives.
+# Every container, volume, network and image this keeps is named claude-sync-test-*, or is
+# the anonymous volume such a container mounts, and cleanup refuses anything else: a dev
+# container may share the host's live Docker daemon, where a real ~/.claude volume lives.
 # shellcheck source-path=SCRIPTDIR/..
 set -euo pipefail
 

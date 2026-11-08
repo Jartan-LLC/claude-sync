@@ -24,8 +24,9 @@ and all of it must pass before merge.
 
 `make test` (`tests/integration.sh`) runs claude-sync against real Syncthing containers and
 needs Docker and bash 5.1 or newer. Every container, volume, network and image it keeps is
-named `claude-sync-test-*` and removed afterwards, and it removes nothing else, which matters
-when the dev container shares the host's Docker daemon. It never reaches a Syncthing of your
+named `claude-sync-test-*`, or is the anonymous volume such a container mounts at
+`/var/syncthing`, and is removed afterwards. It removes nothing else, which matters when the
+dev container shares the host's Docker daemon. It never reaches a Syncthing of your
 own. `CLAUDE_SYNC_TEST_PREFIX=claude-sync-test-NAME-` keeps a run's objects apart from
 another run's on the same daemon, and `CLAUDE_SYNC_TEST_FAIL_FAST=1` stops at the first
 failing check.

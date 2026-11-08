@@ -2,12 +2,13 @@
 # group_upgrade, the names of what it makes, and the helpers only it uses.
 
 readonly n=${prefix}n p=${prefix}p s=${prefix}s hu=${prefix}hu
-readonly vol_n=${prefix}n-data vol_p=${prefix}p-data
+readonly held=${prefix}held recreated=${prefix}recreated named=${prefix}named
+readonly vol_n=${prefix}n-data vol_p=${prefix}p-data vol_named=${prefix}named-home
 readonly owner_n=1357:1357 owner_p=2468:2468
 readonly mount_n=type=volume,src=$vol_n mount_p=type=volume,src=$vol_p
 own_instances "$n" "$p" "$s"
-own_containers "$hu"
-own_volumes "$vol_n" "$vol_p"
+own_containers "$hu" "$held" "$recreated" "$named"
+own_volumes "$vol_n" "$vol_p" "$vol_named"
 
 # The newest releases in LIST, to the 0.4.0 build: the one that is not breaking and the
 # one that is.
@@ -148,6 +149,7 @@ EOF
 
     CLAUDE_SYNC_NAME=$n "$up/old/claude-sync" setup --volume "$vol_n" --private >/dev/null
     CLAUDE_SYNC_NAME=$p "$up/old/claude-sync" setup --volume "$vol_p" --gui-port 8484 --sync-port 22100 >/dev/null
+    container_p=$(docker container inspect --format '{{.Id}}' "$p")
     id_n=$(docker exec -u "$owner_n" "$n" syncthing device-id)
     check "setup stamps the instance with its version" [ "$(stamp_of "$n")" = 0.4.0 ]
     check "a newer claude-sync says the instance needs its setup" \
@@ -242,6 +244,37 @@ EOF
     check "  succeeding" [ "$status" = 0 ]
     check "upgrade names Syncthing state no container uses" \
         grep -qF "Volume $s-config holds the Syncthing state of instance $s," <<<"$out"
+
+    echo "# uninstall, of a container upgrade recreated"
+    check "upgrade recreated P" [ "$(docker container inspect --format '{{.Id}}' "$p")" != "$container_p" ]
+    anonymous_p=$(anonymous_mount "$p")
+    claude_sync "$p" uninstall >/dev/null
+    check "removes the container's anonymous volume" fails docker volume inspect "${anonymous_p:?}"
+    anonymous_n=$(anonymous_mount "$n")
+    # At /var/syncthing, where cleanup finds it should a check below stop the run.
+    docker create --name "$held" --mount "type=volume,src=${anonymous_n:?},dst=/var/syncthing" "$image" >/dev/null
+    out=$(claude_sync "$n" uninstall 2>&1) && status=0 || status=$?
+    check "fails when another container uses that volume" [ "$status" != 0 ]
+    check "  naming it" grep -qF "kept volume $anonymous_n" <<<"$out"
+    check "  and how to remove it" grep -qF "docker volume rm $anonymous_n" <<<"$out"
+    check "  which stays" docker volume inspect "$anonymous_n"
+    check "  and removes the rest of the instance" fails docker volume inspect "$n-config"
+    remove_container "$held"
+
+    echo "# a container Compose recreated, to claude-sync and the suite's cleanup"
+    # As Compose leaves it: the anonymous volume mounted by name.
+    handed=$(docker volume create --label com.docker.volume.anonymous)
+    docker create --name "$recreated" --mount "type=volume,src=$handed,dst=/var/syncthing" "$image" >/dev/null
+    docker volume create "$vol_named" >/dev/null
+    docker create --name "$named" --mount "type=volume,src=$vol_named,dst=/var/syncthing" "$image" >/dev/null
+    check "claude-sync finds the anonymous volume of a container Compose recreated" \
+        [ "$(calls anonymous_volume "$recreated")" = "$handed" ]
+    check "  but not a volume mounted there that is not anonymous" [ -z "$(calls anonymous_volume "$named")" ]
+    remove_container "$recreated"
+    check "the suite's cleanup removes it" fails docker container inspect "$recreated"
+    check "  and its anonymous volume" fails docker volume inspect "$handed"
+    remove_container "$named"
+    check "  and keeps one mounted there that is not anonymous" docker volume inspect "$vol_named"
 
     echo "# upgrade, on the host's Syncthing"
     start_host_fixture "$hu"

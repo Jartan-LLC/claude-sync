@@ -2,9 +2,12 @@
 # Where the instance's Syncthing runs, how to reach it, and what --private and --public set.
 
 readonly folder_id=claude-sync
-# Syncthing's config and the synced folder inside the container, under the image's home,
-# /var/syncthing. The compose files take them from write_compose_files.
-readonly container_config=/var/syncthing/config container_folder=/var/syncthing/claude
+# The image's home. The image declares it a VOLUME, so Docker gives each container an
+# anonymous volume there.
+readonly container_home=/var/syncthing
+# Syncthing's config and the synced folder inside the container, under that home. The
+# compose files take them from write_compose_files.
+readonly container_config=$container_home/config container_folder=$container_home/claude
 # The synced folder as Syncthing sees it; with --use-host-syncthing, the directory itself.
 folder_path=$container_folder
 readonly trash_days=14
@@ -182,6 +185,17 @@ ours_volume() {
 
 ours_container() {
     [[ $(docker container inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' "$1") == "$1" ]]
+}
+
+# The volume the existing container NAME has at the image's home, if it has Docker's
+# anonymous label, as the volume Docker makes for the image's VOLUME does; Compose may have
+# handed that volume on to NAME when it recreated the container. Nothing for another volume.
+anonymous_volume() {
+    local volume
+    volume=$(docker container inspect --format "{{range .Mounts}}{{if and (eq .Type \"volume\") (eq .Destination \"$container_home\")}}{{.Name}}{{end}}{{end}}" "$1")
+    [[ -n $volume ]] || return 0
+    # shellcheck disable=SC2016 # a Go template's variables
+    docker volume inspect --format '{{range $key, $_ := .Labels}}{{if eq $key "com.docker.volume.anonymous"}}{{$.Name}}{{end}}{{end}}' "$volume"
 }
 
 # The volume name or host path the existing container NAME syncs, if any.

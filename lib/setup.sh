@@ -398,11 +398,12 @@ setup_host() {
 uninstall() {
     (($# == 0)) || die_usage "uninstall takes no arguments"
     check_instance
-    local container="" volume=""
+    local container="" volume="" anonymous="" kept=""
     if command -v docker >/dev/null; then
         if docker container inspect "$name" >/dev/null 2>&1; then
             ours_container "$name" || die "container $name was not created by claude-sync; not removing it"
             container=1
+            anonymous=$(anonymous_volume "$name")
         fi
         if docker volume inspect "$name-config" >/dev/null 2>&1; then
             ours_volume "$name-config" || die "volume $name-config was not created by claude-sync; not removing it"
@@ -411,10 +412,15 @@ uninstall() {
     fi
     check_unschedule
     if [[ -n $container ]]; then
-        # -v: the image declares a volume, left behind otherwise. Volumes mounted by name,
-        # such as the synced one, are kept.
+        # -v removes the volume Docker made for the image's VOLUME, unless Compose has since
+        # recreated the container, handing that volume on to it by name. Other volumes
+        # mounted by name, such as the synced one, are kept.
         docker rm --force -v "$name" >/dev/null
         echo "Removed container $name."
+        if [[ -n $anonymous ]] && docker volume inspect "$anonymous" >/dev/null 2>&1 &&
+            ! docker volume rm "$anonymous" >/dev/null; then
+            kept=$anonymous
+        fi
     fi
     if [[ -n $volume ]]; then
         docker volume rm "$name-config" >/dev/null
@@ -442,4 +448,7 @@ uninstall() {
         rm -f -- "$(selection_file)"
         echo "Instance $name is no longer selected; later commands act on the default instance, $default_name."
     fi
+    # Last, after the rest is removed: with the container gone, a rerun would not find this
+    # volume.
+    [[ -z $kept ]] || die "kept volume $kept, which held the container's $container_home; once no container uses it, remove it with: docker volume rm $kept"
 }
