@@ -129,7 +129,8 @@ on_exit() {
     fi
     wait 2>/dev/null || true
     if ((status != 0)); then
-        for node in "$a" "$b" "$c" "$d" "$e" "$g" "$j" "$l" "$m" "$n" "$p" "$q" "$t" "$v" "$sx" "$sy" "$sz" "$h" "$hu" "$u" "$y"; do
+        for node in "${registered_containers[@]}"; do
+            docker container inspect "$node" >/dev/null 2>&1 || continue
             docker logs --tail 30 "$node" 2>&1 | sed "s/^/[$node] /" || true
         done
         for out in "$scratch"/join-*.out; do
@@ -178,6 +179,30 @@ for file in "$root"/tests/groups/*.sh; do
     }
     groups+=("$group")
 done
+
+# What each group makes, as the groups name it.
+own_instances "$a" "$b" "$c" "$d"
+own_containers "$h"
+own_volumes "$vol_a" "$vol_b" "$vol_c" "$vol_d"
+own_instances "$e" "$g" "$k"
+own_containers "$listener"
+own_volumes "$vol_e" "$vol_g"
+own_instances "$j" "$l"
+own_volumes "$vol_j" "$vol_l"
+own_instances "$m" "$bad_name" "$foreign"
+own_volumes "$vol_m" "$vol_root" "$vol_missing"
+own_instances "$n" "$p" "$s"
+own_containers "$hu"
+own_volumes "$vol_n" "$vol_p"
+own_instances "$q" "$t"
+own_volumes "$vol_q" "$vol_t" "$vol_r" "$vol_q_missing"
+own_instances "$u"
+own_containers "$y"
+own_volumes "$vol_u"
+own_instances "$v" "$w"
+own_volumes "$vol_v"
+own_instances "$sx" "$sy" "$sz"
+own_volumes "$vol_sx" "$vol_sy"
 
 # A relay on Docker's socket, such as a dev container's socat, can cut off a container's
 # output after half a second while the command still succeeds.
