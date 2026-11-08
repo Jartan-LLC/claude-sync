@@ -65,6 +65,7 @@ done
 
 source "$root/tests/lib/checks.sh"
 source "$root/tests/lib/sandbox.sh"
+source "$root/tests/lib/nodes.sh"
 
 # A relay on Docker's socket, such as a dev container's socat, can cut off a container's
 # output after half a second while the command still succeeds.
@@ -117,44 +118,15 @@ readonly ignored=(
     "$job/tmp/notes.md"
 )
 
-# Root shell with a target mounted at /t.
-in_target() {
-    docker run --rm --entrypoint sh --mount "$1,dst=/t" "$image" -c "$2"
-}
-
 claude_sync() {
     local node=$1
     shift
     CLAUDE_SYNC_NAME=$node "$bin" "$@"
 }
 
-st() {
-    local node=$1 owner=$2
-    shift 2
-    docker exec -u "$owner" "$node" syncthing cli "$@"
-}
-
-# A node's Syncthing REST API: node, owner, path, then extra curl options.
-rest() {
-    local node=$1 owner=$2
-    shift 2
-    docker exec -u "$owner" "$node" sh -c \
-        'path=$1; shift
-        curl "$@" -H "X-API-Key: $(syncthing cli config gui apikey get)" "http://127.0.0.1:8384$path"' \
-        sh "$@"
-}
-
-folder_status() {
-    rest "$1" "$2" "/rest/db/status?folder=claude-sync" -fsS
-}
-
 # HTTP status of A's index entry for a file: 200 when indexed, 404 when not.
 index_status() {
     rest "$a" "$owner_a" "/rest/db/file?folder=claude-sync&file=$1" -s -o /dev/null -w '%{http_code}'
-}
-
-owned_by() {
-    [[ $(in_target "$1" "stat -c %u:%g /t/$2") == "$3" ]]
 }
 
 synced_to_b() {
@@ -166,17 +138,9 @@ synced_to_b() {
         <<<"$b_status"
 }
 
-stignore_installed() {
-    in_target "$1" 'cat /t/.stignore' | cmp -s - "$root/stignore"
-}
-
 trash_can_14_days() {
     st "$1" "$2" config folders claude-sync versioning dump-json |
         jq -e '.type == "trashcan" and .params.cleanoutDays == "14"'
-}
-
-network_options() {
-    st "$1" "$2" config options dump-json | jq -c '[.globalAnnounceEnabled, .relaysEnabled, .natEnabled]'
 }
 
 # Whether a node's Syncthing is scanning the folder, or waiting to.
@@ -225,11 +189,6 @@ trusts() {
 # image's settings.
 on_host() {
     as_user "$h" "$@"
-}
-
-# A command as `user` on a host fixture CONTAINER.
-as_user() {
-    docker exec -u user -w /home/user "$1" env -u STHOMEDIR -u STGUIADDRESS HOME=/home/user "${@:2}"
 }
 
 host_sync() {
@@ -288,16 +247,6 @@ beside() {
     shift
     CLAUDE_SYNC_COMPOSE_OVERRIDE=$root/tests/compose.busy.yaml CLAUDE_SYNC_NAME=$node \
         timeout 300 "$bin" "$@"
-}
-
-# A node's sync port, from its listen addresses.
-sync_port() {
-    st "$1" "$2" config options dump-json |
-        jq -r '.listenAddresses[] | select(startswith("tcp://")) | sub(".*:"; "")'
-}
-
-listens() {
-    docker exec "$1" nc -z 127.0.0.1 "$2"
 }
 
 listens_soon() {
@@ -1248,11 +1197,6 @@ EOF
 calls() {
     # shellcheck disable=SC2016 # expanded by the inner bash
     bash -c 'source "$1" help >/dev/null && "${@:2}"' _ "$bin" "$@"
-}
-
-# The version an instance's container was last set up by.
-stamp_of() {
-    docker exec "$1" cat /var/syncthing/config/claude-sync-version
 }
 
 # A fake release list in the shape of GitHub's API, for a repository at BASE: v0.4.1 is the
