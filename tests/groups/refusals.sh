@@ -22,7 +22,7 @@ path_overlay_renders() {
             .type == "bind" and .source == "/srv/claude" and .target == "/var/syncthing/claude")'
 }
 
-# Whether the claude-sync under test, or CLAUDE_SYNC, gives out FILE as this checkout has
+# Whether SCRIPT, or else the claude-sync under test, gives out FILE as this checkout has
 # it, including the compose overlay for --path, which no test runs in a container.
 carries() {
     # shellcheck disable=SC2016 # expanded by the inner bash
