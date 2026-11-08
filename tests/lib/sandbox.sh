@@ -52,9 +52,9 @@ own_volumes() {
     register registered_volumes "$@"
 }
 
-# The volume Docker made for the image's VOLUME, /var/syncthing, in container NAME, as long as
-# NAME mounts it there; nothing when NAME mounts something else there. Apart from claude-sync's
-# own anonymous_volume, so that cleanup does not depend on the code under test.
+# The volume container NAME has at /var/syncthing, the image's VOLUME, if it has Docker's
+# anonymous label; nothing for another volume there. Separate from claude-sync's own
+# anonymous_volume, so that cleanup does not depend on the code under test.
 anonymous_mount() {
     local volume
     volume=$(docker container inspect \

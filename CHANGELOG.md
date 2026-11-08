@@ -70,12 +70,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   once in the same way, naming the option. They used to fail later, with a message that
   did not name it.
 - Since 0.1.0, `uninstall` left a Docker volume behind, holding only two empty folders,
-  once `upgrade`, or `setup` run by a newer claude-sync, had recreated the container, as
-  either does when a release changes it. It now removes that volume too. If another
-  container uses it, `uninstall` removes the rest, then fails with `kept volume` and the
-  command to remove it once nothing uses it. Volumes that earlier uninstalls left stay:
-  `docker volume prune` removes them, along with every other anonymous volume that no
-  container uses.
+  once the container had been recreated, as `setup` does after the target's owner
+  changes. It now removes that volume, including after `upgrade` has recreated the
+  container for a new release. If another container uses it, `uninstall` removes the rest,
+  then fails with `kept volume` and the command to remove it once nothing uses it. A volume
+  an earlier uninstall left stays.
 
 ## [0.1.1] - 2026-10-09
 

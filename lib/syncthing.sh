@@ -187,9 +187,9 @@ ours_container() {
     [[ $(docker container inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' "$1") == "$1" ]]
 }
 
-# The volume the existing container NAME has at the image's home, if Docker made it for the
-# image's VOLUME, as its anonymous label shows; Compose may have handed it on to NAME when it
-# recreated the container. Nothing for a volume someone else made.
+# The volume the existing container NAME has at the image's home, if it has Docker's
+# anonymous label, as the volume Docker makes for the image's VOLUME does; Compose may have
+# handed that volume on to NAME when it recreated the container. Nothing for another volume.
 anonymous_volume() {
     local volume
     volume=$(docker container inspect --format "{{range .Mounts}}{{if and (eq .Type \"volume\") (eq .Destination \"$container_home\")}}{{.Name}}{{end}}{{end}}" "$1")

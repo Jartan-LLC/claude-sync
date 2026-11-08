@@ -154,12 +154,12 @@ that Syncthing's ports in Syncthing itself.
 claude-sync uninstall
 ```
 
-Removes the instance `claude-sync list` marks: its container, this device's Syncthing
-state, including its device ID, and its [daily backup](#daily-backups), whose archives
-stay. Your `~/.claude` is untouched; the files Syncthing and claude-sync keep in it stay
-([Caveats](caveats.md#syncthings-and-claude-syncs-files)). If another container uses the
-anonymous volume the container has at `/var/syncthing`, `uninstall` removes the rest and
-fails with [`kept volume`](#errors).
+Removes the instance `claude-sync list` marks: its container with the anonymous volume it
+has at `/var/syncthing`, this device's Syncthing state, including its device ID, and its
+[daily backup](#daily-backups), whose archives stay. Your `~/.claude` is untouched; the
+files Syncthing and claude-sync keep in it stay
+([Caveats](caveats.md#syncthings-and-claude-syncs-files)). If another container uses that
+anonymous volume, `uninstall` removes the rest and fails with [`kept volume`](#errors).
 
 With your own Syncthing, see [Using your own Syncthing](own-syncthing.md#uninstall).
 
