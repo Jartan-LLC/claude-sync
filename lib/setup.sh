@@ -188,15 +188,7 @@ setup_container() {
         --mount "type=volume,src=$name-config,dst=/config" "$image" -c 'cat >/config/claude-sync-companion'
 
     export CLAUDE_SYNC_UID=${owner%:*} CLAUDE_SYNC_GID=${owner#*:} CLAUDE_SYNC_TARGET=$target
-    # Compose reads only files; the port checks and `up` below use them.
-    local compose_dir
-    compose_dir=$(mktemp -d -t claude-sync.XXXXXX)
-    # shellcheck disable=SC2064 # expanded now: compose_dir is local
-    trap "rm -rf -- $(printf %q "$compose_dir")" EXIT
-    asset compose.yaml >"$compose_dir/compose.yaml"
-    asset "compose.$kind.yaml" >"$compose_dir/compose.$kind.yaml"
-    compose_files=(-f "$compose_dir/compose.yaml" -f "$compose_dir/compose.$kind.yaml")
-    [[ -z ${CLAUDE_SYNC_COMPOSE_OVERRIDE:-} ]] || compose_files+=(-f "$CLAUDE_SYNC_COMPOSE_OVERRIDE")
+    write_compose_files "$kind"
 
     # A port asked for must be free, unless this instance already has it.
     local port status
@@ -284,6 +276,19 @@ check_host_folders() {
             fi
         done < <(host_folders)
     fi
+}
+
+write_compose_files() {
+    local kind=$1
+    # Compose reads only files; setup_container's port checks and `up` use them.
+    local compose_dir
+    compose_dir=$(mktemp -d -t claude-sync.XXXXXX)
+    # shellcheck disable=SC2064 # expanded now: compose_dir is local
+    trap "rm -rf -- $(printf %q "$compose_dir")" EXIT
+    asset compose.yaml >"$compose_dir/compose.yaml"
+    asset "compose.$kind.yaml" >"$compose_dir/compose.$kind.yaml"
+    compose_files=(-f "$compose_dir/compose.yaml" -f "$compose_dir/compose.$kind.yaml")
+    [[ -z ${CLAUDE_SYNC_COMPOSE_OVERRIDE:-} ]] || compose_files+=(-f "$CLAUDE_SYNC_COMPOSE_OVERRIDE")
 }
 
 check_volume() {
