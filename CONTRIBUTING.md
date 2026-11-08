@@ -50,7 +50,9 @@ the same order, into the built file. So:
   `build.sh` refuses a lib file that is not listed, a listed file that is missing, and a
   function defined in two files, where the later definition would silently win.
 - Top-level code that reads a global or calls a function defined in another file needs that
-  file listed first. A global read before it is set fails at startup under `set -u`.
+  file listed first. `make lint` reports a call to a function defined in a later-listed file
+  as SC2218, including inside an `elif ...$(...)` condition, though not necessarily every such
+  call; a global read before it is set fails at startup under `set -u`.
 - Lib files hold only definitions and plain top-level assignments, and their top-level code
   ends with status 0.
 - Code that needs claude-sync's own path reads `claude_sync_file`, never `BASH_SOURCE`, which

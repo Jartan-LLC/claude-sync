@@ -13,7 +13,14 @@ repos:
     rev: 745eface02aef23e168a8afb6b5737818efbea95 # frozen: v0.11.0.1
     hooks:
       - id: shellcheck
-        args: [--external-sources] # follow `# shellcheck source=` into sourced helpers
+        args: [--external-sources]
+        exclude: ^(claude-sync|lib/.+\.sh)$
+      # claude-sync and its lib files as one program: a lib file checked alone reports every
+      # global another file sets. Follows claude-sync's `source` lines into lib/.
+      - id: shellcheck
+        files: ^(claude-sync|lib/.+\.sh)$
+        pass_filenames: false
+        args: [--external-sources, --check-sourced, claude-sync]
   - repo: https://github.com/DavidAnson/markdownlint-cli2
     rev: 341e2a331ba578029e66c2e01183e7a6b5ca9ab4 # frozen: v0.24.0
     hooks:
@@ -34,6 +41,14 @@ repos:
     rev: c92afdf2c6ca336aaa8f39e2bd8d48f62dbd8e1f # frozen: v1.31.1
     hooks:
       - id: zizmor
+  - repo: local
+    hooks:
+      - id: build
+        name: build
+        language: system
+        pass_filenames: false
+        files: ^(claude-sync|lib/.+\.sh|packaging/build\.sh|compose.*\.yaml|stignore)$
+        entry: bash -c 'out=$(mktemp -d) && { packaging/build.sh 0 "$out/claude-sync"; s=$?; rm -rf -- "$out"; exit "$s"; }'
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # frozen: v6.0.0
     hooks:
