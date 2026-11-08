@@ -514,6 +514,20 @@ else
 fi
 readonly bin
 
+# Copies this checkout's claude-sync into DIR with the files it reads beside it.
+copy_checkout() {
+    cp -r "$root/claude-sync" "$root/lib" "$root"/compose*.yaml "$root/stignore" "$1"
+}
+
+# Copies the claude-sync under test into DIR: the built file alone, or this checkout's.
+copy_under_test() {
+    if [[ -n ${CLAUDE_SYNC_BIN:-} ]]; then
+        cp "$bin" "$1/claude-sync"
+    else
+        copy_checkout "$1"
+    fi
+}
+
 docker network create "$net" >/dev/null
 docker volume create "$vol_a" >/dev/null
 docker volume create "$vol_b" >/dev/null
@@ -781,9 +795,10 @@ group_chain() {
     docker run -d --name "$h" --network "$net" --user user --entrypoint env "$host_image" \
         -u STHOMEDIR -u STGUIADDRESS HOME=/home/user syncthing serve --no-browser >/dev/null
     docker exec -u 0 "$h" mkdir /opt/claude-sync
-    docker cp -q "$bin" "$h:/opt/claude-sync/"
-    # Beside the script only for this checkout's, which reads it from there.
-    [[ -n ${CLAUDE_SYNC_BIN:-} ]] || docker cp -q "$root/stignore" "$h:/opt/claude-sync/"
+    stage=$(mktemp -d -p "$scratch")
+    copy_under_test "$stage"
+    chmod 755 "$stage"
+    docker cp -q "$stage/." "$h:/opt/claude-sync"
     docker cp -q "$root/stignore" "$h:/opt/stignore"
     wait_for on_host syncthing cli show version
     id_h=$(on_host syncthing device-id)
@@ -1162,7 +1177,7 @@ group_stuck() {
     # Syncthing cannot remove J's own plugin version while its .in_use is there, so J's
     # join cannot finish.
     mkdir "$scratch/old"
-    cp "$root/claude-sync" "$root"/compose*.yaml "$scratch/old"
+    copy_checkout "$scratch/old"
     sed 's/^(?d)//' "$root/stignore" >"$scratch/old/stignore"
     j_plugin=plugins/cache/market/j-only/1.0.0
     in_target "$mount_j" "mkdir -p /t/$j_plugin && echo j >/t/$j_plugin/plugin.json && \
@@ -1287,7 +1302,7 @@ EOF
     echo "# setup fails when Syncthing cannot run the folder"
     # A scratch copy of the checkout, so the broken ignore list never touches the repo's.
     mkdir "$scratch/broken"
-    cp "$root/claude-sync" "$root"/compose*.yaml "$root/stignore" "$scratch/broken"
+    copy_checkout "$scratch/broken"
     echo '*.bad[0-9a-f]' >>"$scratch/broken/stignore"
     check "an ignore list Syncthing rejects fails setup with its error" fails_with "invalid pattern" \
         env CLAUDE_SYNC_NAME="$m" "$scratch/broken/claude-sync" setup --volume "$vol_m" --private
@@ -1366,7 +1381,7 @@ group_upgrade() {
     mkdir -p "$up/old-src/packaging" "$up/old" "$up/install" "$up/shim" "$up/rpm" \
         "$up/releases/download/v0.4.1" "$up/bad/releases/download/v0.4.1" \
         "$up/wrong/releases/download/v0.4.1"
-    cp "$root/claude-sync" "$root"/compose*.yaml "$root/stignore" "$up/old-src"
+    copy_checkout "$up/old-src"
     cp "$root/packaging/build.sh" "$up/old-src/packaging"
     echo '// the old ignore list' >>"$up/old-src/stignore"
     sed -i 's/^    restart: unless-stopped$/&\n    labels: [claude-sync-test-old=1]/' "$up/old-src/compose.yaml"
@@ -1903,8 +1918,7 @@ EOF
     check "setup that finds the kept DIR in the synced folder goes on" [ "$status" = 0 ]
     check "  warning that the daily backup fails" grep -qF "the daily backup into $odd fails each day" <<<"$out"
     check "  and keeping it" [ "$(cat "$service" "$timer")" = "$units_before" ]
-    cp "$bin" "$tm/other/claude-sync"
-    [[ -n ${CLAUDE_SYNC_BIN:-} ]] || cp "$root"/compose*.yaml "$root/stignore" "$tm/other/"
+    copy_under_test "$tm/other"
     check "setup by another claude-sync stops when systemd fails to reload the units" \
         fails_with "systemctl --user daemon-reload failed" \
         env SYSTEMCTL_FAIL=daemon-reload CLAUDE_SYNC_NAME="$u" "$tm/other/claude-sync" setup
@@ -1961,8 +1975,10 @@ EOF
     docker run -d --name "$y" --network "$net" --user user --entrypoint env "$host_image" \
         -u STHOMEDIR -u STGUIADDRESS HOME=/home/user syncthing serve --no-browser >/dev/null
     docker exec -u 0 "$y" mkdir /opt/claude-sync
-    docker cp -q "$bin" "$y:/opt/claude-sync/"
-    [[ -n ${CLAUDE_SYNC_BIN:-} ]] || docker cp -q "$root/stignore" "$y:/opt/claude-sync/"
+    stage=$(mktemp -d -p "$scratch")
+    copy_under_test "$stage"
+    chmod 755 "$stage"
+    docker cp -q "$stage/." "$y:/opt/claude-sync"
     as_user "$y" mkdir stub claude
     docker cp -q "$tm/bin/systemctl" "$y:/home/user/stub/"
     wait_for as_user "$y" syncthing cli show version
