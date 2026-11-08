@@ -47,7 +47,7 @@ group_status() {
     check "status when docker cannot be reached says so" fails_with "docker cannot be reached" \
         env PATH="$sdir/down:$PATH" CLAUDE_SYNC_RELEASES_API="file://$sdir/releases.json" \
         CLAUDE_SYNC_NAME="$sx" "$sdir/claude-sync" status
-    check "status takes no arguments" fails_with "status takes no arguments" \
+    check "status takes no arguments" misused "status takes no arguments" \
         claude_sync "$sx" status --volume "$vol_sx"
 
     docker volume create "$vol_sx" >/dev/null

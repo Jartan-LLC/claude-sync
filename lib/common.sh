@@ -6,6 +6,14 @@ die() {
     exit 1
 }
 
+# die for a mistake the command line alone shows, such as an unknown or missing option or a
+# value of the wrong form: exit status 2, as for the usage. A mistake that depends on the
+# environment, files, Docker or Syncthing is for die.
+die_usage() {
+    printf 'claude-sync: %s\n' "$*" >&2
+    exit 2
+}
+
 # Whether COMMAND prints the line LINE. Not grep -q: it stops reading at the first match,
 # and the command, killed by SIGPIPE writing its next line, fails the pipeline under pipefail.
 prints_line() {

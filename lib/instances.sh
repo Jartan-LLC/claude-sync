@@ -113,7 +113,7 @@ setup_command() {
 
 # Lists this host's instances, marking the one commands act on.
 list() {
-    (($# == 0)) || die "list takes no arguments"
+    (($# == 0)) || die_usage "list takes no arguments"
     local all unlisted="" instance status width=4 mark state syncs marked=""
     all=$(instances) || unlisted=1
     while IFS=$'\t' read -r instance status; do

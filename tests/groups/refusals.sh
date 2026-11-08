@@ -62,7 +62,8 @@ group_refusals() {
     check "  saying it runs only as a file" grep -qF "runs only as a file, with lib/ beside it" <<<"$out"
 
     echo "# setup rejects bad input"
-    check "a missing volume is rejected" fails_with "no Docker volume named $vol_missing" \
+    # Exit status 1: the command line is right, and the volume is what is wrong.
+    check "a missing volume is rejected" fails_as 1 "no Docker volume named $vol_missing" \
         claude_sync "$m" setup --volume "$vol_missing"
     check "  and is not created" fails docker volume inspect "$vol_missing"
     check "a root-owned target is rejected" fails_with "owned by root" claude_sync "$m" setup --volume "$vol_root"
@@ -75,15 +76,15 @@ group_refusals() {
         claude_sync x setup --volume "$vol_missing"
     # With equal ports too, so code that took the empty --path stops before it could set up
     # the working directory.
-    check "an empty directory is refused" fails_with "--path needs a value" \
+    check "an empty directory is refused" misused "--path needs a value" \
         claude_sync "$m" setup --path "" --gui-port 8500 --sync-port 8500
-    check "  and an empty volume" fails_with "--volume needs a value" claude_sync "$m" setup --volume ""
-    check "pair refuses an empty address" fails_with "--address needs a value" \
+    check "  and an empty volume" misused "--volume needs a value" claude_sync "$m" setup --volume ""
+    check "pair refuses an empty address" misused "--address needs a value" \
         claude_sync "$m" pair DEVICE-ID --address ""
-    check "a port that is not a number is refused" fails_with "not a port" \
+    check "a port that is not a number is refused" misused "not a port" \
         claude_sync "$m" setup --volume "$vol_m" --gui-port http
-    check "  and one below 1024" fails_with "not a port" claude_sync "$m" setup --volume "$vol_m" --sync-port 80
-    check "  and the same port for both" fails_with "need different ports" \
+    check "  and one below 1024" misused "not a port" claude_sync "$m" setup --volume "$vol_m" --sync-port 80
+    check "  and the same port for both" misused "need different ports" \
         claude_sync "$m" setup --volume "$vol_m" --gui-port 8500 --sync-port 8500
     check "  and creates no Syncthing state" fails docker volume inspect "$m-config"
     # A stand-in for this user's Syncthing on the host, stopped: it answers only `paths`, so
@@ -146,6 +147,22 @@ EOF
     check "no container or state is left behind" fails docker container inspect "$m"
     check "  nor Syncthing state" fails docker volume inspect "$m-config"
 
+    echo "# a command used wrongly exits 2"
+    for cmd in list status uninstall upgrade; do
+        check "$cmd with an argument is refused" misused "$cmd takes no arguments" claude_sync "$m" "$cmd" extra
+    done
+    check "unpair with no device ID prints the usage" misused "Usage:" claude_sync "$m" unpair
+    check "use with no name prints the usage" misused "Usage:" claude_sync "$m" use
+    check "an unknown command prints the usage" misused "Usage:" claude_sync "$m" sync
+    check "setup with an unknown argument is refused" misused "unknown argument: --force" \
+        claude_sync "$m" setup --volume "$vol_missing" --force
+    check "  and given both a volume and a directory" misused "give only one of --volume or --path" \
+        claude_sync "$m" setup --volume "$vol_missing" --path /nonexistent
+    check "  and a port with no value" misused "--gui-port needs a value" \
+        claude_sync "$m" setup --volume "$vol_missing" --gui-port
+    check "pair with an unknown argument is refused" misused "unknown argument: --force" \
+        claude_sync "$m" pair DEVICE-ID --force
+
     # A real --path run would need a directory on the Docker host, which is not this
     # filesystem when the tests run in a dev container that shares the host's daemon. Path
     # mode differs from volume mode only in its compose overlay and path handling, which
@@ -153,8 +170,8 @@ EOF
     echo "# setup --path"
     check "a missing directory is rejected" fails_with "cannot read /nonexistent/$prefix$$" \
         claude_sync "$m" setup --path "/nonexistent/$prefix$$"
-    check "a path with a comma is rejected" fails_with comma claude_sync "$m" setup --path /tmp/a,b
-    check "  and one with a newline" fails_with newline claude_sync "$m" setup --path $'/tmp/a\nb'
+    check "a path with a comma is rejected" misused comma claude_sync "$m" setup --path /tmp/a,b
+    check "  and one with a newline" misused newline claude_sync "$m" setup --path $'/tmp/a\nb'
     check "a relative path is made absolute" relative_path_resolved
     check "  and one spelled loosely is cleaned as Docker does" fails_with "cannot read $root/${prefix}missing" \
         claude_sync "$m" setup --path "$root/./tests/..//${prefix}missing/"

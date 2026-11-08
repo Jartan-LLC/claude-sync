@@ -45,6 +45,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   login. Later runs of `setup` and `upgrade` keep it; `setup --no-backup` and `uninstall`
   remove it. Hosts without systemd's user manager, such as macOS, refuse it.
 
+### Changed
+
+- Every mistake in a command line now exits 2 and says what is wrong. Some exited 1 before,
+  as other failures do: an unknown argument, a missing or empty value, options that cannot
+  go together, a port, device ID or address of the wrong form, a path with a comma or a
+  newline, and an argument to `list`, `status`, `uninstall` or `upgrade`, which take none.
+  A script that tells usage mistakes from other failures by exit status 2 now sees them
+  all. Every other failure still exits 1.
+
 ### Fixed
 
 - `claude-sync upgrade`, and `setup` when it would schedule the daily backup, both new since

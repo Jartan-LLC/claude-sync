@@ -26,13 +26,25 @@ cut_off() {
     (($? == 124))
 }
 
-# On a failed check, the command's exit status and output go to stderr, which check leaves
-# shown: they come just above the FAIL line.
+# Whether the command fails, saying MESSAGE.
 fails_with() {
-    local message=$1 out status=0 lines
-    shift
+    fails_as "" "$@"
+}
+
+# Whether the command fails as claude-sync does for a mistake in its command line: with exit
+# status 2, saying MESSAGE.
+misused() {
+    fails_as 2 "$@"
+}
+
+# fails_with, also checking that the exit status is STATUS unless STATUS is empty. On a
+# failed check, the command's exit status and output go to stderr, which check leaves shown:
+# they come just above the FAIL line.
+fails_as() {
+    local want=$1 message=$2 out status=0 lines
+    shift 2
     out=$("$@" 2>&1) || status=$?
-    ((status != 0)) && grep -qF -- "$message" <<<"$out" && return
+    ((status != 0)) && [[ -z $want || $status == "$want" ]] && grep -qF -- "$message" <<<"$out" && return
     mapfile -t lines <<<"$out"
     printf '     exited %s, saying:\n' "$status" >&2
     printf '     | %s\n' "${lines[@]}" >&2

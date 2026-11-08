@@ -65,13 +65,13 @@ setup() {
     while (($#)); do
         case $1 in
             --volume | --path)
-                [[ -z $kind ]] || die "give only one of --volume or --path"
-                [[ -n ${2:-} ]] || die "$1 needs a value"
+                [[ -z $kind ]] || die_usage "give only one of --volume or --path"
+                [[ -n ${2:-} ]] || die_usage "$1 needs a value"
                 kind=${1#--} target=$2
                 shift 2
                 ;;
             --private | --public)
-                [[ -z $network || $network == "${1#--}" ]] || die "give only one of --private or --public"
+                [[ -z $network || $network == "${1#--}" ]] || die_usage "give only one of --private or --public"
                 network=${1#--}
                 shift
                 ;;
@@ -80,26 +80,26 @@ setup() {
                 shift
                 ;;
             --gui-port | --sync-port)
-                (($# >= 2)) || die "$1 needs a value"
+                (($# >= 2)) || die_usage "$1 needs a value"
                 if ! [[ $2 =~ ^[1-9][0-9]{3,4}$ ]] || (($2 < 1024 || $2 > 65535)); then
-                    die "not a port: $2; give one from 1024 to 65535"
+                    die_usage "not a port: $2; give one from 1024 to 65535"
                 fi
                 if [[ $1 == --gui-port ]]; then want_gui=$2; else want_sync=$2; fi
                 shift 2
                 ;;
             --backup-dir)
-                [[ $backup != off ]] || die "give only one of --backup-dir or --no-backup"
-                [[ -n ${2:-} ]] || die "$1 needs a value"
-                [[ $2 != *$'\n'* ]] || die "paths containing a newline are not supported"
+                [[ $backup != off ]] || die_usage "give only one of --backup-dir or --no-backup"
+                [[ -n ${2:-} ]] || die_usage "$1 needs a value"
+                [[ $2 != *$'\n'* ]] || die_usage "paths containing a newline are not supported"
                 backup=$(clean_path "$(expand_home "$2")")
                 shift 2
                 ;;
             --no-backup)
-                [[ $backup != /* ]] || die "give only one of --backup-dir or --no-backup"
+                [[ $backup != /* ]] || die_usage "give only one of --backup-dir or --no-backup"
                 backup=off
                 shift
                 ;;
-            *) die "unknown argument: $1" ;;
+            *) die_usage "unknown argument: $1" ;;
         esac
     done
     check_instance
@@ -123,11 +123,11 @@ setup() {
         fi
         usage_error
     fi
-    [[ -z $want_gui || $want_gui != "$want_sync" ]] || die "--gui-port and --sync-port need different ports"
+    [[ -z $want_gui || $want_gui != "$want_sync" ]] || die_usage "--gui-port and --sync-port need different ports"
     if [[ -n $host ]]; then
-        [[ $kind == path ]] || die "--use-host-syncthing works only with --path: a Syncthing on the host cannot reach a Docker volume"
-        [[ -z $network ]] || die "--$network changes how all of a Syncthing's folders connect; with --use-host-syncthing, set them in that Syncthing"
-        [[ -z $want_gui$want_sync ]] || die "--gui-port and --sync-port change that Syncthing's own ports; with --use-host-syncthing, set them in that Syncthing"
+        [[ $kind == path ]] || die_usage "--use-host-syncthing works only with --path: a Syncthing on the host cannot reach a Docker volume"
+        [[ -z $network ]] || die_usage "--$network changes how all of a Syncthing's folders connect; with --use-host-syncthing, set them in that Syncthing"
+        [[ -z $want_gui$want_sync ]] || die_usage "--gui-port and --sync-port change that Syncthing's own ports; with --use-host-syncthing, set them in that Syncthing"
         # One Syncthing holds one claude-sync folder, so names would not keep instances apart.
         if [[ $name != "$default_name" ]]; then
             [[ $name_from != selection ]] ||
@@ -148,7 +148,7 @@ setup_container() {
     local kind=$1 target=$2 network=$3 want_gui=$4 want_sync=$5 backup=$6
     command -v docker >/dev/null || die "Docker is required"
     if [[ $kind == path ]]; then
-        [[ $target != *$'\n'* ]] || die "paths containing a newline are not supported"
+        [[ $target != *$'\n'* ]] || die_usage "paths containing a newline are not supported"
         target=$(clean_path "$target")
     fi
     check_host_folders "$kind" "$target"
@@ -161,7 +161,7 @@ setup_container() {
         # Not checked with -d: Docker resolves the path on its host, which is not this
         # filesystem when claude-sync runs inside a container sharing the host's daemon.
         # --mount takes comma-separated fields, with no quoting for a comma in a value.
-        [[ $target != *,* ]] || die "paths containing a comma are not supported: $target"
+        [[ $target != *,* ]] || die_usage "paths containing a comma are not supported: $target"
         mount="type=bind,src=$target,dst=/target"
     fi
 
@@ -396,7 +396,7 @@ setup_host() {
 }
 
 uninstall() {
-    (($# == 0)) || die "uninstall takes no arguments"
+    (($# == 0)) || die_usage "uninstall takes no arguments"
     check_instance
     local container="" volume=""
     if command -v docker >/dev/null; then
