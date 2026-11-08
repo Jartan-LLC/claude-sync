@@ -22,11 +22,11 @@ path_overlay_renders() {
             .type == "bind" and .source == "/srv/claude" and .target == "/var/syncthing/claude")'
 }
 
-# Whether the claude-sync under test gives out FILE as this checkout has it, including the
-# compose overlay for --path, which no test runs in a container.
+# Whether SCRIPT, or else the claude-sync under test, gives out FILE as this checkout has
+# it, including the compose overlay for --path, which no test runs in a container.
 carries() {
     # shellcheck disable=SC2016 # expanded by the inner bash
-    bash -c 'source "$1" help >/dev/null && asset "$2"' _ "$bin" "$1" | cmp -s - "$root/$1"
+    bash -c 'source "$1" help >/dev/null && asset "$2"' _ "${2:-$bin}" "$1" | cmp -s - "$root/$1"
 }
 
 # Input setup refuses, and objects uninstall refuses, on node M of its own.
@@ -40,6 +40,23 @@ group_refusals() {
     for f in compose.yaml compose.path.yaml compose.volume.yaml stignore; do
         check "carries $f unchanged" carries "$f"
     done
+
+    # The checkout's own script, whatever claude-sync the suite tests.
+    echo "# a checkout's claude-sync"
+    mkdir "$scratch/link" "$scratch/lone"
+    ln -s "$root/claude-sync" "$scratch/link/claude-sync"
+    check "run through a symlink, it prints its help" \
+        [ "$("$scratch/link/claude-sync" help)" = "$("$root/claude-sync" help)" ]
+    check "  and its version" [ "$("$scratch/link/claude-sync" version)" = "claude-sync dev" ]
+    check "  and finds its own files" carries stignore "$scratch/link/claude-sync"
+    cp "$root/claude-sync" "$scratch/lone/"
+    local out status
+    out=$("$scratch/lone/claude-sync" version 2>&1) && status=0 || status=$?
+    check "copied without lib/ beside it, it exits 1" [ "$status" = 1 ]
+    check "  saying it needs lib/" grep -qF "runs only with lib/ beside it" <<<"$out"
+    out=$(fileless stdin "$root/claude-sync" version 2>&1) && status=0 || status=$?
+    check "run from stdin, it exits 1" [ "$status" = 1 ]
+    check "  saying it runs only as a file" grep -qF "runs only as a file, with lib/ beside it" <<<"$out"
 
     echo "# setup rejects bad input"
     check "a missing volume is rejected" fails_with "no Docker volume named $vol_missing" \

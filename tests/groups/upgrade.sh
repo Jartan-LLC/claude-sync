@@ -25,6 +25,12 @@ with_releases() {
         timeout 600 "${@:2}"
 }
 
+# upgrade of the 0.4.0 build run from no file, as fileless's HOW, with no release list.
+upgrade_fileless() {
+    PATH="$up/shim:$PATH" CLAUDE_SYNC_RELEASES_API="file://$up/releases/missing.json" \
+        fileless "$1" "$up/old/claude-sync" upgrade
+}
+
 # upgrade as installed in $up/install, with the fake releases in LIST.
 upgrade_here() {
     with_releases "$1" "$up/install/claude-sync" upgrade
@@ -120,6 +126,10 @@ EOF
     # With no release list, so a refusal that fails cannot go further.
     check "upgrade from a checkout is refused" fails_with "runs from a checkout" \
         with_releases missing.json "$root/claude-sync" upgrade
+    for how in stdin string procsub; do
+        check "upgrade run from no file ($how) is refused" fails_with "not running from a file" \
+            upgrade_fileless "$how"
+    done
     check "upgrade of a file an RPM installed is refused" fails_with "upgrade it with dnf" \
         with_releases missing.json env PATH="$up/rpm:$up/shim:$PATH" "$up/install/claude-sync" upgrade
     check "a download that fails its SHA-256 check is refused" fails_with "SHA-256" upgrade_here bad.json

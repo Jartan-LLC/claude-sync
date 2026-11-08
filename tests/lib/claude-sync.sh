@@ -30,6 +30,18 @@ copy_under_test() {
     fi
 }
 
+# FILE's text run with ARGS from no file: HOW is stdin (bash -s), string (bash -c) or
+# procsub (bash <(...)).
+fileless() {
+    local how=$1 file=$2
+    shift 2
+    case $how in
+        stdin) bash -s "$@" <"$file" ;;
+        string) bash -c "$(cat -- "$file")" _ "$@" ;;
+        procsub) bash <(cat -- "$file") "$@" ;;
+    esac
+}
+
 # A function of the claude-sync under test, run with its arguments.
 calls() {
     # shellcheck disable=SC2016 # expanded by the inner bash

@@ -76,6 +76,25 @@ EOF
         fails_with "needs systemd's user manager" env SYSTEMCTL_STATE='"systemd" is not running in this container' \
         CLAUDE_SYNC_NAME="$u" "$bin" setup --volume "$vol_u" --backup-dir "$tm/backups"
     check "  writing no unit" [ ! -e "$units" ]
+    # A built file for fileless to run: a checkout's claude-sync run from no file stops
+    # before any command, setup included.
+    mkdir "$tm/one"
+    "$root/packaging/build.sh" 0.0.0-test "$tm/one/claude-sync"
+    setup_fileless() {
+        CLAUDE_SYNC_NAME=$u fileless "$1" "$tm/one/claude-sync" setup "${@:2}"
+    }
+    rm -f -- "$SYSTEMCTL_CALLS"
+    for how in stdin string procsub; do
+        check "setup --backup-dir run from no file ($how) is refused" fails_with "not running from a file" \
+            setup_fileless "$how" --volume "$vol_u" --backup-dir "$tm/fileless"
+    done
+    check "  before setting anything up" fails docker container inspect "$u"
+    check "  or making Syncthing state" fails docker volume inspect "$u-config"
+    check "  or asking systemd anything" [ ! -e "$SYSTEMCTL_CALLS" ]
+    check "  or making DIR" [ ! -e "$tm/fileless" ]
+    check "  while the same file run as a file gets past that check" fails_with "needs systemd's user manager" \
+        env SYSTEMCTL_STATE=offline CLAUDE_SYNC_NAME="$u" "$tm/one/claude-sync" setup --volume "$vol_u" \
+        --backup-dir "$tm/fileless"
     rm -f -- "$SYSTEMCTL_CALLS"
     claude_sync "$u" setup --volume "$vol_u" >/dev/null
     check "setup without --backup-dir writes no unit" [ ! -e "$units" ]
@@ -136,6 +155,10 @@ EOF
     check "setup with no target keeps the daily backup" [ "$(cat "$service" "$timer")" = "$units_before" ]
     check "  calling no systemctl, with nothing to change" [ -z "$(systemctl_calls)" ]
     check "  and reads DIR back, to say where it backs up" grep -qF "Backs up to $odd daily" <<<"$out"
+    check "setup run from no file is refused when it keeps a daily backup" fails_with "not running from a file" \
+        setup_fileless stdin
+    check "  before any work, printing nothing" [ -z "$(setup_fileless stdin 2>/dev/null)" ]
+    check "  and keeping its units" [ "$(cat "$service" "$timer")" = "$units_before" ]
     out=$(env SYSTEMCTL_FAIL=is-enabled CLAUDE_SYNC_NAME="$u" "$bin" setup)
     check "  which it does not say of a timer the user disabled" fails grep -qF "Backs up to" <<<"$out"
     claude_sync "$u" setup --volume "$vol_u" >/dev/null
