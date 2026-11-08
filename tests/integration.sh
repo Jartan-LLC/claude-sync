@@ -67,6 +67,7 @@ source "$root/tests/lib/checks.sh"
 source "$root/tests/lib/sandbox.sh"
 source "$root/tests/lib/nodes.sh"
 source "$root/tests/lib/claude-sync.sh"
+source "$root/tests/lib/claude-dir.sh"
 
 # A relay on Docker's socket, such as a dev container's socat, can cut off a container's
 # output after half a second while the command still succeeds.
@@ -76,48 +77,6 @@ out=$(docker run --rm --entrypoint sh "$image" -c 'sleep 1; echo ok')
         "(in this repository's dev container, unix:///var/run/docker-host.sock)" >&2
     exit 1
 }
-
-# Synthetic ~/.claude: real filename shapes, no real data. The look-alikes in `synced`
-# (lockfiles, .tmp-like names, nested daemon/, ide/ and jobs/) must not be caught by ignore rules.
-readonly task=tasks/3570ff36-0222-44b7-8023-47d964bf700c
-readonly job=jobs/5d1c8e2a
-readonly synced=(
-    settings.json
-    claude.json
-    projects/-work-demo/memory/note.md
-    projects/-work-demo/0b6c1f9e-4d2a-4c8e-9f3b-2a7d5e8c1b40.jsonl
-    skills/demo/SKILL.md
-    skills/demo/bun.lock
-    skills/demo/template.tmpl
-    skills/demo/plan.tmp.md
-    skills/demo/notes.tmp.data.txt
-    skills/demo/draft.tmp.2.changelog.md
-    skills/demo/daemon/notes.md
-    skills/demo/ide/4242.lock
-    sessions/0b6c1f9e-demo-session.tmp
-    "$task/.highwatermark"
-    "$job/state.json"
-    "$job/timeline.jsonl"
-    skills/demo/jobs/1/tmp/notes.md
-)
-readonly ignored=(
-    .credentials.json
-    .update.lock
-    sessions/4242.json
-    sessions/4242.key
-    ide/4242.lock
-    "$task/.lock"
-    plugins/cache/market/demo/1.0.0/.in_use
-    plugins/marketplaces/demo/.git/HEAD
-    plugins/marketplaces/demo/bun.lock
-    daemon/control.key
-    session-env/0b6c1f9e-4d2a-4c8e-9f3b-2a7d5e8c1b40/sessionstart-hook-1.sh
-    shell-snapshots/snapshot-bash-1700000000000-abc123.sh
-    telemetry/1p_failed_events.0b6c1f9e.json
-    settings.json.tmp.ab12cd34
-    history.jsonl.tmp.4242.0123456789ab
-    "$job/tmp/notes.md"
-)
 
 # HTTP status of A's index entry for a file: 200 when indexed, 404 when not.
 index_status() {
@@ -398,10 +357,6 @@ in_target "$mount_m" "chown $owner_m /t"
 in_target "$mount_c" "chown $owner_c /t"
 in_target "$mount_n" "chown $owner_n /t"
 in_target "$mount_p" "chown $owner_p /t"
-fixture="cd /t"
-for f in "${synced[@]}" "${ignored[@]}"; do
-    fixture+=" && mkdir -p \"\$(dirname '$f')\" && echo 'fixture $f' >'$f'"
-done
 in_target "$mount_a" "$fixture && chown -R $owner_a /t"
 # Q's fixture adds what an archive must carry as it is: a login only its owner reads, a
 # symlink, a path too long for tar's basic header, and a file in the trash can.

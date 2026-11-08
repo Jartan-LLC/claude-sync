@@ -76,7 +76,7 @@ To add a rule:
    a file, and a join never finishes. A top-level entry needs none.
 3. Spell hex ranges out, as `[0123456789abcdef]`: Syncthing's glob takes one range per `[]`
    class and rejects the whole file on `[0-9a-f]`.
-4. Add a path the rule matches to the `ignored` list in `tests/integration.sh`, and a
+4. Add a path the rule matches to the `ignored` list in `tests/lib/claude-dir.sh`, and a
    look-alike it must not match to `synced`.
 5. Add the rule to the README's [What syncs](README.md#what-syncs) table.
 
