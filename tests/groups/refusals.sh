@@ -17,6 +17,9 @@ relative_path_resolved() {
 
 path_overlay_renders() {
     CLAUDE_SYNC_NAME=$a CLAUDE_SYNC_UID=1 CLAUDE_SYNC_GID=1 CLAUDE_SYNC_TARGET=/srv/claude \
+        CLAUDE_SYNC_CONFIG_PATH=/var/syncthing/config CLAUDE_SYNC_FOLDER_PATH=/var/syncthing/claude \
+        CLAUDE_SYNC_COMPANION_PATH=/var/syncthing/config/claude-sync-companion \
+        CLAUDE_SYNC_UNPAIRED_PATH=/var/syncthing/claude/.claude-sync-unpaired \
         docker compose -f "$root/compose.yaml" -f "$root/compose.path.yaml" config --format json |
         jq -e '.services.syncthing.volumes | any(
             .type == "bind" and .source == "/srv/claude" and .target == "/var/syncthing/claude")'

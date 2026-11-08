@@ -4,6 +4,8 @@
 # Devices unpaired anywhere, one empty file per device ID in the synced folder, so every
 # device sees them and unpairs of different devices never touch the same file.
 readonly unpaired_dir=.claude-sync-unpaired
+# The companion's file in the config volume.
+readonly companion=claude-sync-companion
 # Syncthing also accepts other spellings of an ID, but its CLI and the checks here match
 # only this one, as setup prints it.
 readonly id_re='^[A-Z2-7]{7}(-[A-Z2-7]{7}){7}$'
