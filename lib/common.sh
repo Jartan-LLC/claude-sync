@@ -7,8 +7,8 @@ die() {
 }
 
 # die for a mistake the command line alone shows, such as an unknown or missing option or a
-# value of the wrong form: exit status 2, as for the usage. A mistake that depends on the
-# environment, files, Docker or Syncthing is for die.
+# value of the wrong form: exit status 2, which usage_error in claude-sync also exits with.
+# A mistake that depends on the environment, files, Docker or Syncthing is for die.
 die_usage() {
     printf 'claude-sync: %s\n' "$*" >&2
     exit 2

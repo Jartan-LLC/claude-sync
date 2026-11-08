@@ -229,7 +229,8 @@ restore with `tar` alone.
 
 claude-sync exits 2 when the command line itself is wrong, such as an unknown argument, a
 missing value or options that cannot go together. For an unknown command, or one missing
-its argument, it prints the usage. It exits 1 for every other failure.
+its argument, it prints the usage. It exits 1 for every other failure, including a check of
+this host that comes first, such as whether the instance is set up.
 
 | The message says | What to do |
 |---|---|

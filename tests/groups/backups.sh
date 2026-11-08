@@ -155,6 +155,8 @@ EOF
         claude_sync "$t" restore "$archive" --volume ""
     check "an unknown flag is refused" misused "unknown argument: --into" \
         claude_sync "$t" restore "$archive" --into "$scratch/restored"
+    check "  and a second archive" misused "unknown argument: $archive" \
+        claude_sync "$t" restore "$archive" "$archive" --path "$scratch/restored"
 
     echo "# backup retention"
     # Empty stand-ins, as backup reads only the names. In 2025, before any run of this test.
@@ -196,6 +198,8 @@ EOF
         claude_sync "$q" backup "$scratch/keep-0-0" --keep-monthly
     check "an unknown flag is refused" misused "unknown argument: --keep-daily" \
         claude_sync "$q" backup "$scratch/keep-0-0" --keep-daily 3
+    check "  and a second directory" misused "unknown argument: $scratch/keep-0-0" \
+        claude_sync "$q" backup "$scratch/keep-0-0" "$scratch/keep-0-0"
     check "backup with no directory prints the usage" misused "Usage:" claude_sync "$q" backup
     # A clock that gives the same second for each run, as when backup runs twice within one.
     mkdir "$scratch/fixed-date" "$scratch/same-second"

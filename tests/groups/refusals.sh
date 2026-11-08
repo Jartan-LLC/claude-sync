@@ -61,6 +61,25 @@ group_refusals() {
     check "run from stdin, it exits 1" [ "$status" = 1 ]
     check "  saying it runs only as a file" grep -qF "runs only as a file, with lib/ beside it" <<<"$out"
 
+    echo "# a command used wrongly exits 2"
+    for cmd in list status uninstall upgrade; do
+        check "$cmd with an argument is refused" misused "$cmd takes no arguments" claude_sync "$m" "$cmd" extra
+    done
+    check "unpair with no device ID prints the usage" misused "Usage:" claude_sync "$m" unpair
+    check "use with no name prints the usage" misused "Usage:" claude_sync "$m" use
+    check "an unknown command prints the usage" misused "Usage:" claude_sync "$m" sync
+    check "setup with an unknown argument is refused" misused "unknown argument: --force" \
+        claude_sync "$m" setup --volume "$vol_missing" --force
+    check "  and given both a volume and a directory" misused "give only one of --volume or --path" \
+        claude_sync "$m" setup --volume "$vol_missing" --path /nonexistent
+    check "  and a port with no value" misused "--gui-port needs a value" \
+        claude_sync "$m" setup --volume "$vol_missing" --gui-port
+    check "pair with an unknown argument is refused" misused "unknown argument: --force" \
+        claude_sync "$m" pair DEVICE-ID --force
+    # M is not set up, which pair checks before the device ID.
+    check "  but with a malformed device ID on a device not set up, it exits 1" \
+        fails_as 1 "run setup first" claude_sync "$m" pair not-a-device-id
+
     echo "# setup rejects bad input"
     # Exit status 1: the command line is right, and the volume is what is wrong.
     check "a missing volume is rejected" fails_as 1 "no Docker volume named $vol_missing" \
@@ -72,7 +91,8 @@ group_refusals() {
         claude_sync "$bad_name" setup --volume "$vol_m"
     check "  and creates no volume" fails docker volume inspect "$bad_name-config"
     # A missing volume, so a broken name check still stops before creating anything unprefixed.
-    check "a one-character CLAUDE_SYNC_NAME is rejected" fails_with CLAUDE_SYNC_NAME \
+    # Exit status 1 too: the variable, not the command line, is wrong.
+    check "a one-character CLAUDE_SYNC_NAME is rejected" fails_as 1 CLAUDE_SYNC_NAME \
         claude_sync x setup --volume "$vol_missing"
     # With equal ports too, so code that took the empty --path stops before it could set up
     # the working directory.
@@ -146,22 +166,6 @@ EOF
     check "  numeric ones too" fails_with "folder notes already syncs" beside_host --path "$elsewhere/it's/x"
     check "no container or state is left behind" fails docker container inspect "$m"
     check "  nor Syncthing state" fails docker volume inspect "$m-config"
-
-    echo "# a command used wrongly exits 2"
-    for cmd in list status uninstall upgrade; do
-        check "$cmd with an argument is refused" misused "$cmd takes no arguments" claude_sync "$m" "$cmd" extra
-    done
-    check "unpair with no device ID prints the usage" misused "Usage:" claude_sync "$m" unpair
-    check "use with no name prints the usage" misused "Usage:" claude_sync "$m" use
-    check "an unknown command prints the usage" misused "Usage:" claude_sync "$m" sync
-    check "setup with an unknown argument is refused" misused "unknown argument: --force" \
-        claude_sync "$m" setup --volume "$vol_missing" --force
-    check "  and given both a volume and a directory" misused "give only one of --volume or --path" \
-        claude_sync "$m" setup --volume "$vol_missing" --path /nonexistent
-    check "  and a port with no value" misused "--gui-port needs a value" \
-        claude_sync "$m" setup --volume "$vol_missing" --gui-port
-    check "pair with an unknown argument is refused" misused "unknown argument: --force" \
-        claude_sync "$m" pair DEVICE-ID --force
 
     # A real --path run would need a directory on the Docker host, which is not this
     # filesystem when the tests run in a dev container that shares the host's daemon. Path

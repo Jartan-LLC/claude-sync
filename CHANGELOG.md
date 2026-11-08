@@ -47,12 +47,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Every mistake in a command line now exits 2 and says what is wrong. Some exited 1 before,
-  as other failures do: an unknown argument, a missing or empty value, options that cannot
-  go together, a port, device ID or address of the wrong form, a path with a comma or a
-  newline, and an argument to `list`, `status`, `uninstall` or `upgrade`, which take none.
-  A script that tells usage mistakes from other failures by exit status 2 now sees them
-  all. Every other failure still exits 1.
+- A mistake that the command line alone shows now exits 2 and still says what is wrong. A
+  missing argument, which prints the usage, already exited 2. Other mistakes exited 1, as
+  any failure does: an unknown argument, a missing or empty value, options that cannot go
+  together, a value of the wrong form, or an argument to `list`, `status`, `uninstall` or
+  `upgrade`. Other failures still exit 1, among them a check of this host that runs before
+  the mistake is found: `pair` with a malformed device ID on a device not set up says to
+  run setup first.
 
 ### Fixed
 

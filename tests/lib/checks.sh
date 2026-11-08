@@ -26,7 +26,7 @@ cut_off() {
     (($? == 124))
 }
 
-# Whether the command fails, saying MESSAGE.
+# Whether the command fails, with any exit status, saying MESSAGE.
 fails_with() {
     fails_as "" "$@"
 }
@@ -44,9 +44,11 @@ fails_as() {
     local want=$1 message=$2 out status=0 lines
     shift 2
     out=$("$@" 2>&1) || status=$?
-    ((status != 0)) && [[ -z $want || $status == "$want" ]] && grep -qF -- "$message" <<<"$out" && return
+    if ((status != 0)) && [[ -z $want || $status == "$want" ]]; then
+        grep -qF -- "$message" <<<"$out" && return
+    fi
     mapfile -t lines <<<"$out"
-    printf '     exited %s, saying:\n' "$status" >&2
+    printf '     exited %s%s, saying:\n' "$status" "${want:+ (expected $want)}" >&2
     printf '     | %s\n' "${lines[@]}" >&2
     return 1
 }
