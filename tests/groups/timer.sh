@@ -61,13 +61,13 @@ EOF
     real_bin=$(readlink -f -- "$bin")
 
     echo "# setup --backup-dir"
-    check "--backup-dir with --no-backup is refused" fails_with "only one of --backup-dir or --no-backup" \
+    check "--backup-dir with --no-backup is refused" misused "only one of --backup-dir or --no-backup" \
         claude_sync "$u" setup --volume "$vol_u" --backup-dir "$tm/backups" --no-backup
-    check "  and so is --no-backup with --backup-dir" fails_with "only one of --backup-dir or --no-backup" \
+    check "  and so is --no-backup with --backup-dir" misused "only one of --backup-dir or --no-backup" \
         claude_sync "$u" setup --volume "$vol_u" --no-backup --backup-dir "$tm/backups"
-    check "--backup-dir with no value is refused" fails_with "--backup-dir needs a value" \
+    check "--backup-dir with no value is refused" misused "--backup-dir needs a value" \
         claude_sync "$u" setup --volume "$vol_u" --backup-dir
-    check "a DIR containing a newline is refused" fails_with "paths containing a newline are not supported" \
+    check "a DIR containing a newline is refused" misused "paths containing a newline are not supported" \
         claude_sync "$u" setup --volume "$vol_u" --backup-dir "$tm/a"$'\n'"b"
     check "--backup-dir without systemd's user manager is refused" fails_with "needs systemd's user manager" \
         env SYSTEMCTL_STATE=offline CLAUDE_SYNC_NAME="$u" "$bin" setup --volume "$vol_u" --backup-dir "$tm/backups"

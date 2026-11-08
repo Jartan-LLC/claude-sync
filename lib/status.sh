@@ -10,7 +10,7 @@ show() {
 # only reads, so it never starts a stopped container, and does not use detect_mode, which
 # applies the unpaired list to the Syncthing on this host.
 status() {
-    (($# == 0)) || die "status takes no arguments"
+    (($# == 0)) || die_usage "status takes no arguments"
     check_name
     local instance=$name place="" runs syncs="" id folders folder="" info="" set_up="" devices=""
     [[ $name == "$default_name" ]] || instance+=", $(name_source)"

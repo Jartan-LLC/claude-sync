@@ -155,7 +155,7 @@ group_chain() {
     check "keeps exactly one folder" [ "$(st "$a" "$owner_a" config folders list)" = claude-sync ]
     check "keeps trash can versioning" trash_can_14_days "$a" "$owner_a"
     check "stays private" [ "$(network_options "$a" "$owner_a")" = '[false,false,false]' ]
-    check "refuses --private with --public" fails_with "only one of --private or --public" \
+    check "refuses --private with --public" misused "only one of --private or --public" \
         claude_sync "$a" setup --volume "$vol_a" --private --public
     claude_sync "$a" setup --volume "$vol_a" --public >/dev/null
     check "--public restores Syncthing's defaults" \
@@ -170,7 +170,7 @@ group_chain() {
         pair_bounded "$c" "$id_a" --address "tcp://$a:22000"
     check "this device's own ID is refused" fails_with "this device's own ID" \
         pair_bounded "$a" "$id_a" --address "tcp://$a:22000"
-    check "an invalid device ID is refused" fails_with "not a device ID" \
+    check "an invalid device ID is refused" misused "not a device ID" \
         pair_bounded "$a" not-a-device-id --address "tcp://$b:22000"
 
     echo "# setup --volume, second device"
@@ -199,7 +199,7 @@ group_chain() {
     check "B's folder is send-receive after joining" [ "$(folder_type "$b" "$owner_b")" = sendreceive ]
     check "pairing B again changes nothing" pair_bounded "$b" "$id_a" --address "tcp://$a:22000"
     check "  and leaves it send-receive" [ "$(folder_type "$b" "$owner_b")" = sendreceive ]
-    check "an invalid address is refused" fails_with "not an address" \
+    check "an invalid address is refused" misused "not an address" \
         pair_bounded "$a" "$id_b" --address 'tcp://b"x'
     check "  and leaves the address as it was" [ "$(addresses "$a" "$owner_a" "$id_b")" = "tcp://$b:22000" ]
     pair_bounded "$a" "$id_b" --address "tcp://elsewhere:22000" >/dev/null
@@ -364,11 +364,11 @@ group_chain() {
     wait_for on_host sh -c 'syncthing cli config gui raw-address get | grep -qx :8384'
     host_before=$(host_config)
     others_before=$(host_others)
-    check "--volume is refused" fails_with "only with --path" \
+    check "--volume is refused" misused "only with --path" \
         host_sync setup --volume "$vol_a" --use-host-syncthing
-    check "--private is refused" fails_with "set them in that Syncthing" \
+    check "--private is refused" misused "set them in that Syncthing" \
         host_sync setup --path claude --use-host-syncthing --private
-    check "--public is refused" fails_with "set them in that Syncthing" \
+    check "--public is refused" misused "set them in that Syncthing" \
         host_sync setup --path claude --use-host-syncthing --public
     check "a directory another folder syncs is refused" fails_with "folder notes already syncs" \
         host_sync setup --path notes --use-host-syncthing
@@ -506,7 +506,7 @@ EOF
         on_host env CLAUDE_SYNC_NAME=work /opt/claude-sync/claude-sync pair "$id_b"
     check "  nor does uninstall" on_host env CLAUDE_SYNC_NAME=work /opt/claude-sync/claude-sync uninstall
     check "  which leaves the folder" host_has_folder
-    check "--gui-port is refused" fails_with "set them in that Syncthing" \
+    check "--gui-port is refused" misused "set them in that Syncthing" \
         host_sync setup --path claude --use-host-syncthing --gui-port 8484
     # Another Syncthing home whose web UI nothing listens on: this user's Syncthing, stopped.
     on_host sh -c 'mkdir stopped && cp .local/state/syncthing/*.pem .local/state/syncthing/config.xml stopped/ &&
@@ -546,7 +546,7 @@ EOF
 
     echo "# unpair"
     check "this device's own ID is refused" fails_with "this device's own ID" claude_sync "$a" unpair "$id_a"
-    check "an invalid device ID is refused" fails_with "not a device ID" claude_sync "$a" unpair not-a-device-id
+    check "an invalid device ID is refused" misused "not a device ID" claude_sync "$a" unpair not-a-device-id
     # The host device pairs with D directly, so no introducer takes D away there, and also
     # shares another folder with it. It knows D by introduction so far, which pairing alone
     # does not change, so D is deleted there first. Until pair has added D and shared the

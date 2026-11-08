@@ -6,14 +6,14 @@ backup() {
     while (($#)); do
         case $1 in
             --keep-weekly | --keep-monthly)
-                (($# >= 2)) || die "$1 needs a value"
-                [[ $2 =~ ^[0-9]{1,4}$ ]] || die "$1 takes a number of archives, from 0 to 9999: $2"
+                (($# >= 2)) || die_usage "$1 needs a value"
+                [[ $2 =~ ^[0-9]{1,4}$ ]] || die_usage "$1 takes a number of archives, from 0 to 9999: $2"
                 if [[ $1 == --keep-weekly ]]; then weekly=$((10#$2)); else monthly=$((10#$2)); fi
                 shift 2
                 ;;
-            -*) die "unknown argument: $1" ;;
+            -*) die_usage "unknown argument: $1" ;;
             *)
-                [[ -z $dir ]] || die "unknown argument: $1"
+                [[ -z $dir ]] || die_usage "unknown argument: $1"
                 dir=$1
                 shift
                 ;;
@@ -186,14 +186,14 @@ restore() {
     while (($#)); do
         case $1 in
             --volume | --path)
-                [[ -z $kind ]] || die "give only one of --volume or --path"
-                [[ -n ${2:-} ]] || die "$1 needs a value"
+                [[ -z $kind ]] || die_usage "give only one of --volume or --path"
+                [[ -n ${2:-} ]] || die_usage "$1 needs a value"
                 kind=${1#--} target=$2
                 shift 2
                 ;;
-            -*) die "unknown argument: $1" ;;
+            -*) die_usage "unknown argument: $1" ;;
             *)
-                [[ -z $archive ]] || die "unknown argument: $1"
+                [[ -z $archive ]] || die_usage "unknown argument: $1"
                 archive=$1
                 shift
                 ;;

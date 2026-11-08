@@ -144,17 +144,19 @@ EOF
     check "  and is not created" fails docker volume inspect "$vol_q_missing"
     check "a root-owned volume is refused" fails_with "owned by root" \
         claude_sync "$t" restore "$archive" --volume "$vol_t"
-    check "a restore with no target is refused" fails claude_sync "$t" restore "$archive"
-    check "a restore given both a volume and a directory is refused" fails_with "give only one of" \
+    check "a restore with no target prints the usage" misused "Usage:" claude_sync "$t" restore "$archive"
+    check "a restore given both a volume and a directory is refused" misused "give only one of" \
         claude_sync "$t" restore "$archive" --volume "$vol_r" --path "$scratch/restored"
-    check "a target with no value is refused" fails_with "--path needs a value" \
+    check "a target with no value is refused" misused "--path needs a value" \
         claude_sync "$t" restore "$archive" --path
-    check "  and so is an empty one" fails_with "--path needs a value" \
+    check "  and so is an empty one" misused "--path needs a value" \
         claude_sync "$t" restore "$archive" --path ""
-    check "  or an empty volume" fails_with "--volume needs a value" \
+    check "  or an empty volume" misused "--volume needs a value" \
         claude_sync "$t" restore "$archive" --volume ""
-    check "an unknown flag is refused" fails_with "unknown argument: --into" \
+    check "an unknown flag is refused" misused "unknown argument: --into" \
         claude_sync "$t" restore "$archive" --into "$scratch/restored"
+    check "  and a second archive" misused "unknown argument: $archive" \
+        claude_sync "$t" restore "$archive" "$archive" --path "$scratch/restored"
 
     echo "# backup retention"
     # Empty stand-ins, as backup reads only the names. In 2025, before any run of this test.
@@ -185,18 +187,20 @@ EOF
     claude_sync "$q" backup "$scratch/keep-0-0" --keep-weekly 0 --keep-monthly 0 >/dev/null
     check "--keep-weekly 0 --keep-monthly 0 removes every older archive" [ ! -e "$scratch/keep-0-0/${old[9]}" ]
     check "  and keeps the new one" [ "$(files_in "$scratch/keep-0-0")" = 1 ]
-    check "a count that is not a number is refused" fails_with "--keep-weekly takes" \
+    check "a count that is not a number is refused" misused "--keep-weekly takes" \
         claude_sync "$q" backup "$scratch/keep-0-0" --keep-weekly x
-    check "  and so is one over 9999" fails_with "--keep-monthly takes" \
+    check "  and so is one over 9999" misused "--keep-monthly takes" \
         claude_sync "$q" backup "$scratch/keep-0-0" --keep-monthly 10000
-    check "  and one below 0" fails_with "--keep-weekly takes" \
+    check "  and one below 0" misused "--keep-weekly takes" \
         claude_sync "$q" backup "$scratch/keep-0-0" --keep-weekly -1
     check "a count of 9999 is taken" claude_sync "$q" backup "$scratch/keep-9999" --keep-weekly 9999
-    check "a count with no value is refused" fails_with "--keep-monthly needs a value" \
+    check "a count with no value is refused" misused "--keep-monthly needs a value" \
         claude_sync "$q" backup "$scratch/keep-0-0" --keep-monthly
-    check "an unknown flag is refused" fails_with "unknown argument: --keep-daily" \
+    check "an unknown flag is refused" misused "unknown argument: --keep-daily" \
         claude_sync "$q" backup "$scratch/keep-0-0" --keep-daily 3
-    check "backup with no directory prints the usage" fails_with "Usage:" claude_sync "$q" backup
+    check "  and a second directory" misused "unknown argument: $scratch/keep-0-0" \
+        claude_sync "$q" backup "$scratch/keep-0-0" "$scratch/keep-0-0"
+    check "backup with no directory prints the usage" misused "Usage:" claude_sync "$q" backup
     # A clock that gives the same second for each run, as when backup runs twice within one.
     mkdir "$scratch/fixed-date" "$scratch/same-second"
     printf '#!/bin/sh\necho 20250101T000000Z\n' >"$scratch/fixed-date/date"

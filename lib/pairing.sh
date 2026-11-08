@@ -64,13 +64,13 @@ pair() {
         case $1 in
             --keep) keep=1 ;;
             --address)
-                [[ -n ${2:-} ]] || die "$1 needs a value"
+                [[ -n ${2:-} ]] || die_usage "$1 needs a value"
                 address=$2
                 shift
                 ;;
-            -*) die "unknown argument: $1" ;;
+            -*) die_usage "unknown argument: $1" ;;
             *)
-                [[ -z $id ]] || die "unknown argument: $1"
+                [[ -z $id ]] || die_usage "unknown argument: $1"
                 id=$1
                 ;;
         esac
@@ -82,7 +82,7 @@ pair() {
     check_instance
     detect_mode
 
-    [[ $id =~ $id_re ]] || die "not a device ID: $id; copy it as setup printed it"
+    [[ $id =~ $id_re ]] || die_usage "not a device ID: $id; copy it as setup printed it"
     local self
     self=$(syncthing_run device-id)
     [[ $id != "$self" ]] || die "that is this device's own ID; give the other device's"
@@ -91,7 +91,7 @@ pair() {
     # Also keeps the address safe to put in the JSON below.
     local address_re='^[a-z0-9]+://[^"\\[:space:][:cntrl:]]+$' at="" there=""
     if [[ $address != dynamic ]]; then
-        [[ $address =~ $address_re ]] || die "not an address: $address; give one such as tcp://HOST:22000"
+        [[ $address =~ $address_re ]] || die_usage "not an address: $address; give one such as tcp://HOST:22000"
         local port
         port=$(sync_port) || die "cannot reach Syncthing $where"
         at=" --address $address" there=" --address tcp://THIS-HOST:$port"
@@ -263,7 +263,7 @@ unpair() {
     local id=$1 self
     check_instance
     detect_mode
-    [[ $id =~ $id_re ]] || die "not a device ID: $id; copy it as setup printed it"
+    [[ $id =~ $id_re ]] || die_usage "not a device ID: $id; copy it as setup printed it"
     self=$(syncthing_run device-id)
     [[ $id != "$self" ]] || die "that is this device's own ID; run unpair with it on another device"
     # A receive-only folder never sends the list, and the join's undo would remove it.

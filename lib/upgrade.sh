@@ -148,7 +148,7 @@ rpm_package() {
 }
 
 upgrade() {
-    (($# == 0)) || die "upgrade takes no arguments"
+    (($# == 0)) || die_usage "upgrade takes no arguments"
     [[ $claude_sync_version != dev ]] ||
         die "this claude-sync runs from a checkout (version dev); update it with git, then run setup to apply it"
     local file package
