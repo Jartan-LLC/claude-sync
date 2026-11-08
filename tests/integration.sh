@@ -63,6 +63,28 @@ done
     exit 1
 }
 
+# Where each function was first defined. A file that defines one again would silently
+# replace it, so the runner dies on that before any Docker call.
+declare -A defined_at=()
+defined_once() {
+    local fns fn line file
+    mapfile -t fns < <(compgen -A function)
+    shopt -s extdebug
+    while read -r fn line file; do
+        file=${file#"$root/"}
+        if [[ -z ${defined_at[$fn]:-} ]]; then
+            defined_at[$fn]=$file:$line
+        elif [[ ${defined_at[$fn]} != "$file:$line" ]]; then
+            echo "$fn is defined in $file:$line and before that in ${defined_at[$fn]}" >&2
+            exit 1
+        fi
+    done < <(declare -F "${fns[@]}")
+    shopt -u extdebug
+}
+
+# Checked after each source line below, then after the runner's own functions.
+trap defined_once RETURN
+
 source "$root/tests/lib/checks.sh"
 source "$root/tests/lib/sandbox.sh"
 source "$root/tests/lib/nodes.sh"
@@ -78,15 +100,7 @@ source "$root/tests/groups/backups.sh"
 source "$root/tests/groups/timer.sh"
 source "$root/tests/groups/select.sh"
 source "$root/tests/groups/status.sh"
-
-# A relay on Docker's socket, such as a dev container's socat, can cut off a container's
-# output after half a second while the command still succeeds.
-out=$(docker run --rm --entrypoint sh "$image" -c 'sleep 1; echo ok')
-[[ $out == ok ]] || {
-    echo "Docker's output is cut short here; point DOCKER_HOST at the daemon's own socket" \
-        "(in this repository's dev container, unix:///var/run/docker-host.sock)" >&2
-    exit 1
-}
+trap - RETURN
 
 # This run's live processes, each before its children, leaving out the subshell that lists
 # them; a zombie is gone already, waiting only for its parent to collect it.
@@ -126,11 +140,60 @@ on_exit() {
     [[ -z $scratch ]] || rm -rf -- "$scratch"
 }
 
+# Each group runs in the background, its output in $scratch/NAME.log and its failure count
+# in $scratch/NAME.failures; one that aborts writes no count. The groups share only the
+# test network and the host image, each with nodes and volumes of its own, so they run in
+# parallel.
+declare -A group_of=()
+run_group() {
+    (
+        top=$BASH_SUBSHELL
+        # Where setup writes its compose files, so checks can see it removes them.
+        export TMPDIR=$scratch/tmp-$1
+        mkdir "$TMPDIR"
+        "group_$1"
+        echo "$failures" >"$scratch/$1.failures"
+    ) >"$scratch/$1.log" 2>&1 &
+    group_of[$!]=$1
+}
+defined_once
+
+# A test file the runner does not source is neither linted nor loaded: fails would pass
+# on a helper missing from it, and a group in it would never run.
+for file in "$root"/tests/lib/*.sh "$root"/tests/groups/*.sh; do
+    rel=${file#"$root/"}
+    grep -qxF "source \"\$root/$rel\"" "$root/tests/integration.sh" || {
+        echo "tests/integration.sh does not source $rel; add: source \"\$root/$rel\"" >&2
+        exit 1
+    }
+done
+# The groups, one per file: tests/groups/NAME.sh defines group_NAME.
+groups=()
+for file in "$root"/tests/groups/*.sh; do
+    group=${file##*/}
+    group=${group%.sh}
+    declare -F "group_$group" >/dev/null || {
+        echo "tests/groups/$group.sh defines no group_$group" >&2
+        exit 1
+    }
+    groups+=("$group")
+done
+
+# A relay on Docker's socket, such as a dev container's socat, can cut off a container's
+# output after half a second while the command still succeeds.
+out=$(docker run --rm --entrypoint sh "$image" -c 'sleep 1; echo ok')
+[[ $out == ok ]] || {
+    echo "Docker's output is cut short here; point DOCKER_HOST at the daemon's own socket" \
+        "(in this repository's dev container, unix:///var/run/docker-host.sock)" >&2
+    exit 1
+}
+
 scratch=""
 cleanup
 # -E carries the trap into functions; the subshell test skips command substitutions in
 # check arguments, which fail on purpose. A group runs in a subshell of its own, whose
 # level it stores in top.
+# shellcheck disable=SC2034 # read by the ERR trap
 top=0
 set -E
 trap '((BASH_SUBSHELL == top)) && echo "aborted at ${BASH_SOURCE[0]#"$root/"}:$LINENO${FUNCNAME:+ in ${FUNCNAME[0]}, called from ${BASH_SOURCE[1]#"$root/"}:${BASH_LINENO[0]}}" >&2' ERR
@@ -190,33 +253,7 @@ in_target "$mount_b" "chown $owner_b /t"
 in_target "type=volume,src=$vol_d" "chown $owner_d /t"
 in_target "type=volume,src=$vol_u" "chown $owner_u /t"
 
-# The groups below share only the test network, each with nodes and volumes of its own,
-# so they run in parallel.
-# Each runs in the background, its output in $scratch/NAME.log and its failure count in
-# $scratch/NAME.failures; one that aborts writes no count.
-declare -A group_of=()
-run_group() {
-    (
-        # shellcheck disable=SC2034 # read by the ERR trap
-        top=$BASH_SUBSHELL
-        # Where setup writes its compose files, so checks can see it removes them.
-        export TMPDIR=$scratch/tmp-$1
-        mkdir "$TMPDIR"
-        "group_$1"
-        echo "$failures" >"$scratch/$1.failures"
-    ) >"$scratch/$1.log" 2>&1 &
-    group_of[$!]=$1
-}
-
-run_group chain
-run_group instances
-run_group stuck
-run_group refusals
-run_group upgrade
-run_group backups
-run_group timer
-run_group select
-run_group status
+for group in "${groups[@]}"; do run_group "$group"; done
 # Each group's output as it ends.
 while ((${#group_of[@]})); do
     wait -n -p done_pid || true
