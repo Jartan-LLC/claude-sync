@@ -66,6 +66,7 @@ done
 source "$root/tests/lib/checks.sh"
 source "$root/tests/lib/sandbox.sh"
 source "$root/tests/lib/nodes.sh"
+source "$root/tests/lib/claude-sync.sh"
 
 # A relay on Docker's socket, such as a dev container's socat, can cut off a container's
 # output after half a second while the command still succeeds.
@@ -117,12 +118,6 @@ readonly ignored=(
     history.jsonl.tmp.4242.0123456789ab
     "$job/tmp/notes.md"
 )
-
-claude_sync() {
-    local node=$1
-    shift
-    CLAUDE_SYNC_NAME=$node "$bin" "$@"
-}
 
 # HTTP status of A's index entry for a file: 200 when indexed, 404 when not.
 index_status() {
@@ -258,15 +253,6 @@ listens_soon() {
     return 1
 }
 
-# A joining device's pair blocks until caught up; a bound turns a hang into a failure.
-# Not for a background pair: killing a backgrounded function leaves timeout and pair
-# running, so background `timeout ... claude-sync pair` itself.
-pair_bounded() {
-    local node=$1
-    shift
-    CLAUDE_SYNC_NAME=$node timeout 300 "$bin" pair "$@"
-}
-
 relative_path_resolved() {
     local err
     err=$(cd "$root" && CLAUDE_SYNC_NAME=$m "$bin" setup --path "${prefix}missing" 2>&1 >/dev/null) &&
@@ -384,20 +370,6 @@ else
     bin=$root/claude-sync
 fi
 readonly bin
-
-# Copies this checkout's claude-sync into DIR with the files it reads beside it.
-copy_checkout() {
-    cp -r "$root/claude-sync" "$root/lib" "$root"/compose*.yaml "$root/stignore" "$1"
-}
-
-# Copies the claude-sync under test into DIR: the built file alone, or this checkout's.
-copy_under_test() {
-    if [[ -n ${CLAUDE_SYNC_BIN:-} ]]; then
-        cp "$bin" "$1/claude-sync"
-    else
-        copy_checkout "$1"
-    fi
-}
 
 docker network create "$net" >/dev/null
 docker volume create "$vol_a" >/dev/null
@@ -1191,12 +1163,6 @@ EOF
     check "a foreign volume is refused" fails_with "volume $foreign-config was not created by claude-sync" \
         claude_sync "$foreign" uninstall
     check "  and survives" docker volume inspect "$foreign-config"
-}
-
-# A function of the claude-sync under test, run with its arguments.
-calls() {
-    # shellcheck disable=SC2016 # expanded by the inner bash
-    bash -c 'source "$1" help >/dev/null && "${@:2}"' _ "$bin" "$@"
 }
 
 # A fake release list in the shape of GitHub's API, for a repository at BASE: v0.4.1 is the
