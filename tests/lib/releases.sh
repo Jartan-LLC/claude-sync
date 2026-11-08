@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Fake releases, for the groups that check for or install a newer claude-sync.
+# Fake releases and a fake rpm, for the groups that check for or install a newer claude-sync.
 
 # A fake release list in the shape of GitHub's API, for a repository at BASE: v0.4.1 is the
 # only release with files, and SUMS, if given, is the repository its SHA-256 is in.
@@ -16,4 +16,11 @@ releases_json() {
   {"html_url": "$base/releases/tag/v0.4.0", "tag_name": "v0.4.0", "prerelease": false, "assets": []}
 ]
 EOF
+}
+
+# A fake rpm in DIR: `rpm -qf FILE` says claude-sync 0.4.0's package owns FILE.
+fake_rpm() {
+    # shellcheck disable=SC2016 # expanded by the fake rpm
+    printf '#!/bin/sh\n[ "$1" = -qf ] && echo claude-sync-0.4.0-1.noarch\n' >"$1/rpm"
+    chmod +x "$1/rpm"
 }

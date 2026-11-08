@@ -103,9 +103,8 @@ exit 97
 EOF
     # No Syncthing on this host as far as upgrade can tell, so it never finds the runner's.
     printf '#!/bin/sh\nexit 1\n' >"$up/shim/syncthing"
-    # shellcheck disable=SC2016 # expanded by the fake rpm
-    printf '#!/bin/sh\n[ "$1" = -qf ] && echo claude-sync-0.4.0-1.noarch\n' >"$up/rpm/rpm"
-    chmod +x "$up/shim/docker" "$up/shim/syncthing" "$up/rpm/rpm"
+    fake_rpm "$up/rpm"
+    chmod +x "$up/shim/docker" "$up/shim/syncthing"
 
     check "a new minor version while the major is 0 is breaking" calls version_breaking 0.4.0 0.5.0
     check "  a new patch version is not" fails calls version_breaking 0.4.0 0.4.9

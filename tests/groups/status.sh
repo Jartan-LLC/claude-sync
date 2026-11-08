@@ -25,13 +25,12 @@ group_status() {
     mkdir -p "$sdir/rpm" "$sdir/down" "$sdir/no-exec"
     "$root/packaging/build.sh" 0.4.0 "$sdir/claude-sync"
     releases_json "file://$sdir" >"$sdir/releases.json"
-    # shellcheck disable=SC2016 # expanded by the fake rpm
-    printf '#!/bin/sh\n[ "$1" = -qf ] && echo claude-sync-0.4.0-1.noarch\n' >"$sdir/rpm/rpm"
+    fake_rpm "$sdir/rpm"
     printf '#!/bin/sh\nexit 1\n' >"$sdir/down/docker"
     # docker as it is when the container answers inspect but not exec.
     # shellcheck disable=SC2016 # expanded by the shim
     printf '#!/bin/sh\n[ "$1" = exec ] && exit 1\nexec %s "$@"\n' "$(command -v docker)" >"$sdir/no-exec/docker"
-    chmod +x "$sdir/rpm/rpm" "$sdir/down/docker" "$sdir/no-exec/docker"
+    chmod +x "$sdir/down/docker" "$sdir/no-exec/docker"
 
     out=$(status_of "$sx" releases.json) && status=0 || status=$?
     check "status of an instance not set up says how to set it up" grep -qF \
