@@ -2,6 +2,7 @@
 # Keep ~/.claude in sync across devices with Syncthing. See README.md.
 set -euo pipefail
 
+readonly claude_sync_file=${BASH_SOURCE[0]-}
 # BEGIN ASSETS: packaging/build.sh replaces this block with the version and the files.
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 readonly here claude_sync_version=dev
@@ -1440,7 +1441,7 @@ use() {
 
 # The file this claude-sync runs from, symlinks resolved.
 installed_file() {
-    readlink -f -- "${BASH_SOURCE[0]}"
+    readlink -f -- "$claude_sync_file"
 }
 
 # The RPM package that installed FILE. Fails when none did.
@@ -1647,6 +1648,7 @@ upgrade() {
     [[ $claude_sync_version != dev ]] ||
         die "this claude-sync runs from a checkout (version dev); update it with git, then run setup to apply it"
     local file package
+    [[ -f $claude_sync_file ]] || die "this claude-sync is not running from a file; save it to a file and run that"
     file=$(installed_file)
     if package=$(rpm_package "$file"); then
         die "$file belongs to the RPM package $package: $rpm_upgrade"
@@ -2059,7 +2061,8 @@ schedule_backup() {
     esac
     path=$(backup_unit)
     unit=${path##*/}
-    bin=$(readlink -f -- "${BASH_SOURCE[0]}")
+    [[ -f $claude_sync_file ]] || die "this claude-sync is not running from a file; save it to a file and run that"
+    bin=$(installed_file)
     # Not setup_command, which changes with the selection: the units would change with it,
     # and setup reloads units that changed.
     header="# Written by claude-sync setup, which replaces it; CLAUDE_SYNC_NAME=$name claude-sync setup --no-backup removes it."

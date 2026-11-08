@@ -47,6 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `claude-sync upgrade`, and `setup` when it schedules the daily backup, both new since 0.1.1,
+  refuse when claude-sync is not running from a file (`bash -s`, `bash -c`, `bash <(...)`),
+  instead of naming a file that is not claude-sync as the program to replace or to run every
+  day. Save claude-sync to a file and run that.
 - A background job's scratch space, `jobs/<id>/tmp/` in `~/.claude`, no longer syncs. It can
   hold gigabytes in tens of thousands of directories, which every other device copied and
   kept. Rerun `setup` on each device to get the new ignore list. Each device keeps the copies
