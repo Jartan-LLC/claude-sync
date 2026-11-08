@@ -44,6 +44,15 @@ left_of() {
 # Q: backup and restore of a folder with every kind of file, then restore on Q once it is
 # paired with T.
 group_backups() {
+    docker volume create "$vol_q" >/dev/null
+    docker volume create "$vol_r" >/dev/null
+    docker volume create "$vol_t" >/dev/null
+    # Q's fixture adds what an archive must carry as it is: a login only its owner reads, a
+    # symlink, a path too long for tar's basic header, and a file in the trash can.
+    in_target "$mount_q" "$fixture && chmod 600 .credentials.json && ln -s settings.json link.json &&
+    mkdir -p .stversions \"\$(dirname '$long')\" && echo old >.stversions/settings.json && echo long >'$long' &&
+    chown -R $owner_q /t"
+    in_target "$mount_r" "chown $owner_r /t"
     # Restored modes are the archive's less the umask, as with any tar.
     umask 022
     echo "# backup"

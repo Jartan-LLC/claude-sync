@@ -16,6 +16,9 @@ scanning() {
 # J: a first scan setup does not wait for, and a join stuck under an old ignore list.
 group_stuck() {
     echo "# setup, while Syncthing's first scan runs"
+    docker volume create "$vol_j" >/dev/null
+    docker volume create "$vol_l" >/dev/null
+    in_target "$mount_l" "echo 'l claude.json' >/t/claude.json && chown -R $owner_l /t"
     # A sparse file takes Syncthing far longer to hash than these checks, and no disk space.
     in_target "$mount_j" "truncate -s 64G /t/big && chown -R $owner_j /t"
     out=$(claude_sync "$j" setup --volume "$vol_j" --private)

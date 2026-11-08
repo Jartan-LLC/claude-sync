@@ -32,6 +32,9 @@ carries() {
 # Input setup refuses, and objects uninstall refuses, on node M of its own.
 group_refusals() {
     echo "# version"
+    docker volume create "$vol_root" >/dev/null
+    docker volume create "$vol_m" >/dev/null
+    in_target "$mount_m" "chown $owner_m /t"
     check "version prints the version" [ "$("$bin" version)" = "claude-sync ${CLAUDE_SYNC_BIN_VERSION:-dev}" ]
     check "  and so does --version" [ "$("$bin" --version)" = "claude-sync ${CLAUDE_SYNC_BIN_VERSION:-dev}" ]
     for f in compose.yaml compose.path.yaml compose.volume.yaml stignore; do

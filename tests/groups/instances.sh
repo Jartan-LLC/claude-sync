@@ -29,6 +29,10 @@ listens_soon() {
 # Two instances on one host, beside a program that holds the default ports.
 group_instances() {
     echo "# several instances on one host"
+    docker volume create "$vol_e" >/dev/null
+    docker volume create "$vol_g" >/dev/null
+    in_target "type=volume,src=$vol_e" "echo e >/t/e-only.md && chown -R $owner_e /t"
+    in_target "type=volume,src=$vol_g" "echo 'g claude.json' >/t/claude.json && chown -R $owner_g /t"
     # For compose.busy.yaml, which joins the listener's network.
     export CLAUDE_SYNC_TEST_LISTENER=$listener
     # E and G share a listener's network namespace, as two instances on one host where another

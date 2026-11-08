@@ -204,42 +204,9 @@ fi
 readonly bin
 
 docker network create "$net" >/dev/null
-docker volume create "$vol_a" >/dev/null
-docker volume create "$vol_b" >/dev/null
-docker volume create "$vol_root" >/dev/null
-docker volume create "$vol_c" >/dev/null
-docker volume create "$vol_d" >/dev/null
-docker volume create "$vol_e" >/dev/null
-docker volume create "$vol_g" >/dev/null
-docker volume create "$vol_j" >/dev/null
-docker volume create "$vol_l" >/dev/null
-docker volume create "$vol_m" >/dev/null
-docker volume create "$vol_n" >/dev/null
-docker volume create "$vol_p" >/dev/null
 # For the groups that run a host fixture.
 docker build -q -t "$host_image" --build-arg IMAGE="$image" -f "$root/tests/host.Dockerfile" \
     "$root/tests" >/dev/null
-docker volume create "$vol_q" >/dev/null
-docker volume create "$vol_r" >/dev/null
-docker volume create "$vol_t" >/dev/null
-docker volume create "$vol_u" >/dev/null
-in_target "type=volume,src=$vol_e" "echo e >/t/e-only.md && chown -R $owner_e /t"
-in_target "type=volume,src=$vol_g" "echo 'g claude.json' >/t/claude.json && chown -R $owner_g /t"
-in_target "$mount_l" "echo 'l claude.json' >/t/claude.json && chown -R $owner_l /t"
-in_target "$mount_m" "chown $owner_m /t"
-in_target "$mount_c" "chown $owner_c /t"
-in_target "$mount_n" "chown $owner_n /t"
-in_target "$mount_p" "chown $owner_p /t"
-in_target "$mount_a" "$fixture && chown -R $owner_a /t"
-# Q's fixture adds what an archive must carry as it is: a login only its owner reads, a
-# symlink, a path too long for tar's basic header, and a file in the trash can.
-in_target "$mount_q" "$fixture && chmod 600 .credentials.json && ln -s settings.json link.json &&
-    mkdir -p .stversions \"\$(dirname '$long')\" && echo old >.stversions/settings.json && echo long >'$long' &&
-    chown -R $owner_q /t"
-in_target "$mount_r" "chown $owner_r /t"
-in_target "$mount_b" "chown $owner_b /t"
-in_target "type=volume,src=$vol_d" "chown $owner_d /t"
-in_target "type=volume,src=$vol_u" "chown $owner_u /t"
 
 for group in "${groups[@]}"; do run_group "$group"; done
 # Each group's output as it ends.

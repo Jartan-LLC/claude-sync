@@ -128,6 +128,14 @@ snapshot() {
 # Devices A to D pairing, joining and unpairing, with the host's own Syncthing.
 group_chain() {
     echo "# setup --volume --private"
+    docker volume create "$vol_a" >/dev/null
+    docker volume create "$vol_b" >/dev/null
+    docker volume create "$vol_c" >/dev/null
+    docker volume create "$vol_d" >/dev/null
+    in_target "$mount_c" "chown $owner_c /t"
+    in_target "$mount_a" "$fixture && chown -R $owner_a /t"
+    in_target "$mount_b" "chown $owner_b /t"
+    in_target "type=volume,src=$vol_d" "chown $owner_d /t"
     out=$(claude_sync "$a" setup --volume "$vol_a" --private)
     id_a=$(docker exec -u "$owner_a" "$a" syncthing device-id)
     check "prints this device's ID" grep -qF "This device ID: $id_a" <<<"$out"

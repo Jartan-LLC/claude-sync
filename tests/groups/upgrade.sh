@@ -33,6 +33,10 @@ upgrade_here() {
 # N, P and the host fixture HU: instances set up by one build, reapplied by a newer one.
 group_upgrade() {
     echo "# upgrade"
+    docker volume create "$vol_n" >/dev/null
+    docker volume create "$vol_p" >/dev/null
+    in_target "$mount_n" "chown $owner_n /t"
+    in_target "$mount_p" "chown $owner_p /t"
     # This group's files, apart from the other groups' in $scratch; the helpers above use it.
     up=$scratch/upgrade
     # 0.4.0, the build installed: a copy whose ignore list and compose file differ from this

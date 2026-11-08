@@ -16,6 +16,8 @@ systemctl_calls() {
 # calls and a config directory of this group's, so no check reaches the real systemd or the
 # runner's ~/.config.
 group_timer() {
+    docker volume create "$vol_u" >/dev/null
+    in_target "type=volume,src=$vol_u" "chown $owner_u /t"
     local tm=$scratch/timer
     mkdir -p "$tm/bin" "$tm/other"
     export XDG_CONFIG_HOME=$tm/config SYSTEMCTL_CALLS=$tm/calls PATH=$tm/bin:$PATH
