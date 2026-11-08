@@ -73,6 +73,13 @@ group_refusals() {
     # A missing volume, so a broken name check still stops before creating anything unprefixed.
     check "a one-character CLAUDE_SYNC_NAME is rejected" fails_with CLAUDE_SYNC_NAME \
         claude_sync x setup --volume "$vol_missing"
+    # With equal ports too, so code that took the empty --path stops before it could set up
+    # the working directory.
+    check "an empty directory is refused" fails_with "--path needs a value" \
+        claude_sync "$m" setup --path "" --gui-port 8500 --sync-port 8500
+    check "  and an empty volume" fails_with "--volume needs a value" claude_sync "$m" setup --volume ""
+    check "pair refuses an empty address" fails_with "--address needs a value" \
+        claude_sync "$m" pair DEVICE-ID --address ""
     check "a port that is not a number is refused" fails_with "not a port" \
         claude_sync "$m" setup --volume "$vol_m" --gui-port http
     check "  and one below 1024" fails_with "not a port" claude_sync "$m" setup --volume "$vol_m" --sync-port 80

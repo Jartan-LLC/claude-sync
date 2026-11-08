@@ -64,7 +64,7 @@ pair() {
         case $1 in
             --keep) keep=1 ;;
             --address)
-                (($# >= 2)) || die "$1 needs a value"
+                [[ -n ${2:-} ]] || die "$1 needs a value"
                 address=$2
                 shift
                 ;;

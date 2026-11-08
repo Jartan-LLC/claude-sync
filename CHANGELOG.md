@@ -64,6 +64,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - When `setup` checked a path against the folders of the Syncthing on the host, it read a
   quoted `~NAME` at the start of the path as the home directory followed by NAME, a
   directory beside the home directory, since 0.1.0. It now leaves `~NAME` as a name.
+- `setup --path ""` set up the working directory, since 0.1.0. It now refuses an empty
+  value with `--path needs a value`; give `--path .` for the working directory. `--volume`,
+  `restore`'s `--path` and `--volume`, and `pair --address` now refuse an empty value at
+  once in the same way, naming the option. They used to fail later, with a message that
+  did not name it.
 
 ## [0.1.1] - 2026-10-09
 
