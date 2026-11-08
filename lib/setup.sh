@@ -118,8 +118,7 @@ setup() {
             unschedule_backup
             return
         fi
-        usage >&2
-        exit 2
+        usage_error
     fi
     [[ -z $want_gui || $want_gui != "$want_sync" ]] || die "--gui-port and --sync-port need different ports"
     if [[ -n $host ]]; then

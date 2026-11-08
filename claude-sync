@@ -100,6 +100,11 @@ Environment:
 EOF
 }
 
+usage_error() {
+    usage >&2
+    exit 2
+}
+
 case ${1:-help} in
     setup) setup "${@:2}" ;;
     pair) pair "${@:2}" ;;
@@ -113,8 +118,5 @@ case ${1:-help} in
     use) use "${@:2}" ;;
     version | --version) echo "claude-sync $claude_sync_version" ;;
     help | -h | --help) usage ;;
-    *)
-        usage >&2
-        exit 2
-        ;;
+    *) usage_error ;;
 esac

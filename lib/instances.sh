@@ -159,8 +159,7 @@ list() {
 # Selects the instance later commands act on, when CLAUDE_SYNC_NAME is unset.
 use() {
     if (($# != 1)); then
-        usage >&2
-        exit 2
+        usage_error
     fi
     local instance=$1 file all
     file=$(selection_file) ||

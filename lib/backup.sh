@@ -20,8 +20,7 @@ backup() {
         esac
     done
     if [[ -z $dir ]]; then
-        usage >&2
-        exit 2
+        usage_error
     fi
     # A quoted ~: left as it is, mkdir would make ./~ here and write the archive into it.
     dir=$(expand_home "$dir")
@@ -201,8 +200,7 @@ restore() {
         esac
     done
     if [[ -z $archive || -z $kind ]]; then
-        usage >&2
-        exit 2
+        usage_error
     fi
     # A quoted ~, as backup takes one: left as it is, --path would make ./~ here and restore
     # into it.

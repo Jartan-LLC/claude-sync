@@ -75,8 +75,7 @@ pair() {
         shift
     done
     if [[ -z $id ]]; then
-        usage >&2
-        exit 2
+        usage_error
     fi
     check_instance
     detect_mode
@@ -257,8 +256,7 @@ nothing_to_join() {
 
 unpair() {
     if (($# != 1)); then
-        usage >&2
-        exit 2
+        usage_error
     fi
     local id=$1 self
     check_instance
