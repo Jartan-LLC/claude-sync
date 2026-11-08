@@ -214,14 +214,7 @@ setup_container() {
     move_ports "$want_gui" "$want_sync"
 
     ensure_folder
-    # Left as it is when neither is given, so re-running setup never makes a device public.
-    if [[ -n $network ]]; then
-        local option on=true
-        [[ $network == public ]] || on=false
-        for option in global-ann-enabled relays-enabled natenabled; do
-            st config options "$option" set "$on"
-        done
-    fi
+    set_network "$network"
     wait_folder_started
 
     local gui sync

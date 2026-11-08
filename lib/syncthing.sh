@@ -269,6 +269,18 @@ in_folder() {
     fi
 }
 
+set_network() {
+    local network=$1
+    # Left as it is when neither is given, so re-running setup never makes a device public.
+    if [[ -n $network ]]; then
+        local option on=true
+        [[ $network == public ]] || on=false
+        for option in global-ann-enabled relays-enabled natenabled; do
+            st config options "$option" set "$on"
+        done
+    fi
+}
+
 # public or private, as setup's --public and --private set them, or each option as it is.
 network_setting() {
     local discovery relays nat
