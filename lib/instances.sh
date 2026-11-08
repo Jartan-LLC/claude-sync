@@ -114,7 +114,7 @@ setup_command() {
 # Lists this host's instances, marking the one commands act on.
 list() {
     (($# == 0)) || die "list takes no arguments"
-    local all unlisted="" instance status width=4 mark state syncs marked="" tab=$'\t'
+    local all unlisted="" instance status width=4 mark state syncs marked=""
     all=$(instances) || unlisted=1
     while IFS=$'\t' read -r instance status; do
         ((${#instance} <= width)) || width=${#instance}
@@ -140,7 +140,7 @@ list() {
                 state-only) state="state only" syncs="" ;;
                 host)
                     state="host Syncthing"
-                    syncs="directory $(host_folders | sed -n "s/^$folder_id$tab//p")"
+                    syncs="directory $(host_folder_path)"
                     ;;
             esac
             printf '%s %-*s  %-14s  %s\n' "$mark" "$width" "$instance" "$state" "${syncs:--}"

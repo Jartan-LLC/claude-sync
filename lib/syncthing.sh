@@ -210,6 +210,12 @@ host_folders() {
             -e "s/&apos;/'/g" -e "s/&#39;/'/g" -e 's/&amp;/\&/g'
 }
 
+# The path of claude-sync's folder in this user's Syncthing; empty when it has none.
+host_folder_path() {
+    local tab=$'\t'
+    host_folders | sed -n "s/^$folder_id$tab//p"
+}
+
 # Points the helpers at the Syncthing running as this user on this host.
 use_host() {
     mode=host where="on this host"

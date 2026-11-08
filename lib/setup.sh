@@ -54,8 +54,7 @@ current_setup() {
         return 0
     fi
     [[ $name == "$default_name" ]] || return 1
-    local tab=$'\t'
-    target=$(host_folders | sed -n "s/^$folder_id$tab//p")
+    target=$(host_folder_path)
     [[ -n $target ]] || return 1
     kind=path host=1
 }
