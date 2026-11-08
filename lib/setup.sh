@@ -211,22 +211,7 @@ setup_container() {
 
     compose up --detach --wait --wait-timeout 120 --quiet-pull
 
-    # A web UI on the sync port would leave nothing to reach Syncthing through, so the two
-    # are checked as they will end up. The web UI moves first when the sync port takes its
-    # port, or the sync listener would wait on Syncthing's retry; not in an exact swap,
-    # where the web UI would move onto the port the sync listener still holds and setup
-    # would lose the API.
-    local gui sync current_gui
-    { current_gui=$(gui_port) && gui=${want_gui:-$current_gui} && sync=${want_sync:-$(sync_port)}; } ||
-        die "cannot reach Syncthing in container $name"
-    [[ $gui != "$sync" ]] || die "the web UI and sync ports would both be $gui; choose different ones"
-    if [[ $sync == "$current_gui" && $gui != "$(sync_port)" ]]; then
-        move_gui_port "$want_gui"
-        move_sync_port "$want_sync"
-    else
-        move_sync_port "$want_sync"
-        move_gui_port "$want_gui"
-    fi
+    move_ports "$want_gui" "$want_sync"
 
     ensure_folder
     # Left as it is when neither is given, so re-running setup never makes a device public.
@@ -239,6 +224,7 @@ setup_container() {
     fi
     wait_folder_started
 
+    local gui sync
     { gui=$(gui_port) && sync=$(sync_port); } || die "cannot reach Syncthing in container $name"
     printf 'Syncthing is running in container %s, web UI on 127.0.0.1:%s, sync port %s.\n' \
         "$name" "$gui" "$sync"
@@ -313,6 +299,26 @@ read_owner() {
     # Files written as root are files Claude Code cannot change.
     [[ ${owner%:*} != 0 ]] || die "$3 is owned by root; chown it to the user who runs Claude Code"
     echo "$owner"
+}
+
+move_ports() {
+    local want_gui=$1 want_sync=$2
+    # A web UI on the sync port would leave nothing to reach Syncthing through, so the two
+    # are checked as they will end up. The web UI moves first when the sync port takes its
+    # port, or the sync listener would wait on Syncthing's retry; not in an exact swap,
+    # where the web UI would move onto the port the sync listener still holds and setup
+    # would lose the API.
+    local gui sync current_gui
+    { current_gui=$(gui_port) && gui=${want_gui:-$current_gui} && sync=${want_sync:-$(sync_port)}; } ||
+        die "cannot reach Syncthing in container $name"
+    [[ $gui != "$sync" ]] || die "the web UI and sync ports would both be $gui; choose different ones"
+    if [[ $sync == "$current_gui" && $gui != "$(sync_port)" ]]; then
+        move_gui_port "$want_gui"
+        move_sync_port "$want_sync"
+    else
+        move_sync_port "$want_sync"
+        move_gui_port "$want_gui"
+    fi
 }
 
 # Moves the sync port to PORT, if given and new.
