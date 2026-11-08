@@ -81,7 +81,7 @@ instances() {
                 [[ $instance != "$volume" ]] || continue
                 if ! docker container inspect "$instance" >/dev/null 2>&1 || ! ours_container "$instance"; then
                     printf '%s\tstate-only\n' "$instance"
-                elif [[ $(docker container inspect --format '{{.State.Running}}' "$instance") == true ]]; then
+                elif running "$instance"; then
                     printf '%s\tcontainer\n' "$instance"
                 else
                     printf '%s\tstopped\n' "$instance"
@@ -91,7 +91,7 @@ instances() {
             unlisted=1
         fi
         # setup refuses a host instance beside a container of the default name.
-        if docker container inspect "$default_name" >/dev/null 2>&1; then
+        if container_exists "$default_name"; then
             return "$unlisted"
         fi
     fi

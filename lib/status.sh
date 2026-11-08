@@ -55,7 +55,7 @@ locate_syncthing() {
         else
             runs="your own, on this host, not running as $(id -un); start it"
         fi
-    elif running; then
+    elif running "$name"; then
         owner=$(container_owner "$name") || die "cannot inspect container $name"
         place=container runs="in container $name"
     else

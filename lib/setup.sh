@@ -44,7 +44,7 @@ target_taken_by() {
 # Sets kind and target to this instance's, and host for one in the Syncthing on this host,
 # for setup with no target. Fails when there is no instance.
 current_setup() {
-    if command -v docker >/dev/null && docker container inspect "$name" >/dev/null 2>&1; then
+    if container_exists "$name"; then
         ours_container "$name" || die "container $name was not created by claude-sync"
         target=$(current_target "$name")
         [[ -n $target ]] || die "container $name syncs nothing; run uninstall, then setup with --volume or --path"
@@ -213,7 +213,7 @@ setup() {
     # A port asked for must be free, unless this instance already has it.
     local port status
     for port in $want_gui $want_sync; do
-        if running && [[ $port == "$(gui_port)" || $port == "$(sync_port)" ]]; then
+        if running "$name" && [[ $port == "$(gui_port)" || $port == "$(sync_port)" ]]; then
             continue
         fi
         status=0
@@ -334,7 +334,7 @@ setup_host() {
     [[ -d $target ]] || die "no directory $target"
     # Stored absolute, without a trailing slash or `..`.
     target=$(cd -- "$target" && pwd)
-    if command -v docker >/dev/null && docker container inspect "$name" >/dev/null 2>&1; then
+    if container_exists "$name"; then
         die "already set up in container $name; run uninstall first"
     fi
     use_host

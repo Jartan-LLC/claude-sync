@@ -139,8 +139,13 @@ set_trash_can() {
     st config folders "$folder_id" versioning params set cleanoutDays "$trash_days"
 }
 
+# Whether container NAME exists; false, not an error, when docker is not installed.
+container_exists() {
+    command -v docker >/dev/null && docker container inspect "$1" >/dev/null 2>&1
+}
+
 running() {
-    [[ $(docker container inspect --format '{{.State.Running}}' "$name" 2>/dev/null) == true ]]
+    [[ $(docker container inspect --format '{{.State.Running}}' "$1" 2>/dev/null) == true ]]
 }
 
 gui_port() {
@@ -227,8 +232,8 @@ container_owner() {
 # Container mode when claude-sync's container exists, else the Syncthing this user has
 # configured on this host.
 detect_mode() {
-    if command -v docker >/dev/null && docker container inspect "$name" >/dev/null 2>&1; then
-        { running && ours_container "$name"; } || die "Syncthing is not running in container $name; run setup first"
+    if container_exists "$name"; then
+        { running "$name" && ours_container "$name"; } || die "Syncthing is not running in container $name; run setup first"
         owner=$(container_owner "$name")
         warn_stale
     elif [[ $name == "$default_name" ]] && host_syncthing_configured; then
