@@ -76,8 +76,8 @@ EOF
         fails_with "needs systemd's user manager" env SYSTEMCTL_STATE='"systemd" is not running in this container' \
         CLAUDE_SYNC_NAME="$u" "$bin" setup --volume "$vol_u" --backup-dir "$tm/backups"
     check "  writing no unit" [ ! -e "$units" ]
-    # A single file, as fileless runs it: a checkout's claude-sync from no file stops before
-    # setup.
+    # A built file for fileless to run: a checkout's claude-sync run from no file stops
+    # before any command, setup included.
     mkdir "$tm/one"
     "$root/packaging/build.sh" 0.0.0-test "$tm/one/claude-sync"
     setup_fileless() {
