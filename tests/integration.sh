@@ -68,6 +68,7 @@ source "$root/tests/lib/sandbox.sh"
 source "$root/tests/lib/nodes.sh"
 source "$root/tests/lib/claude-sync.sh"
 source "$root/tests/lib/claude-dir.sh"
+source "$root/tests/lib/releases.sh"
 
 # A relay on Docker's socket, such as a dev container's socat, can cut off a container's
 # output after half a second while the command still succeeds.
@@ -1118,23 +1119,6 @@ EOF
     check "a foreign volume is refused" fails_with "volume $foreign-config was not created by claude-sync" \
         claude_sync "$foreign" uninstall
     check "  and survives" docker volume inspect "$foreign-config"
-}
-
-# A fake release list in the shape of GitHub's API, for a repository at BASE: v0.4.1 is the
-# only release with files, and SUMS, if given, is the repository its SHA-256 is in.
-releases_json() {
-    local base=$1 sums=${2:-$1}
-    cat <<EOF
-[
-  {"html_url": "$base/releases/tag/v0.5.0", "tag_name": "v0.5.0", "prerelease": false, "assets": []},
-  {"html_url": "$base/releases/tag/v0.4.2-rc.1", "tag_name": "v0.4.2-rc.1", "prerelease": true, "assets": []},
-  {"html_url": "$base/releases/tag/v0.4.1", "tag_name": "v0.4.1", "prerelease": false, "assets": [
-    {"browser_download_url": "$base/releases/download/v0.4.1/claude-sync"},
-    {"browser_download_url": "$sums/releases/download/v0.4.1/claude-sync.sha256"}
-  ]},
-  {"html_url": "$base/releases/tag/v0.4.0", "tag_name": "v0.4.0", "prerelease": false, "assets": []}
-]
-EOF
 }
 
 # The newest releases in LIST, to the 0.4.0 build: the one that is not breaking and the
