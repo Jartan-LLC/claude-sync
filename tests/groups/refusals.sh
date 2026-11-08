@@ -76,6 +76,7 @@ group_refusals() {
         claude_sync "$m" setup --volume "$vol_missing" --gui-port
     check "pair with an unknown argument is refused" misused "unknown argument: --force" \
         claude_sync "$m" pair DEVICE-ID --force
+    check "  and a second device ID" misused "unknown argument: EXTRA" claude_sync "$m" pair DEVICE-ID EXTRA
     # M is not set up, which pair checks before the device ID.
     check "  but with a malformed device ID on a device not set up, it exits 1" \
         fails_as 1 "run setup first" claude_sync "$m" pair not-a-device-id
