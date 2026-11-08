@@ -168,7 +168,6 @@ while read -r var; do
     exit 1
 done < <(compgen -v)
 
-
 # A relay on Docker's socket, such as a dev container's socat, can cut off a container's
 # output after half a second while the command still succeeds.
 out=$(docker run --rm --entrypoint sh "$image" -c 'sleep 1; echo ok')

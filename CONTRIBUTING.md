@@ -53,8 +53,8 @@ the same order, into the built file. So:
   file listed first. `make lint` reports a call to a function defined in a later-listed file
   as SC2218, including inside an `elif ...$(...)` condition, though not necessarily every such
   call; a global read before it is set fails at startup under `set -u`.
-- Lib files hold only definitions and plain top-level assignments, and their top-level code
-  ends with status 0.
+- Lib files hold only definitions and top-level assignments, `lib/instances.sh`'s name block
+  included, and their top-level code ends with status 0.
 - Code that needs claude-sync's own path reads `claude_sync_file`, never `BASH_SOURCE`, which
   in a function names the lib file in a checkout.
 
