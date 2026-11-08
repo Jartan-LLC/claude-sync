@@ -257,6 +257,8 @@ check_host_folders() {
     fi
 }
 
+# Writes the compose files for KIND to a new temporary directory and sets compose_files to
+# them. Also sets the EXIT trap, replacing any other, so the directory lasts until exit.
 write_compose_files() {
     local kind=$1
     # Compose reads only files; setup_container's port checks and `up` use them.

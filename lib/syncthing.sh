@@ -8,7 +8,8 @@ readonly trash_days=14
 readonly default_gui_port=8384 default_sync_port=22000
 readonly label=claude-sync=config
 owner=""
-# Set by use_host for the Syncthing on this host.
+# Set by use_host for the Syncthing on this host. Reads name, so lib/instances.sh is listed
+# before this file.
 mode=container where="in container $name" api_url="" api_key="" api_tls=()
 
 syncthing_run() {

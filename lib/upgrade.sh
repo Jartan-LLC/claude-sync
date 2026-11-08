@@ -142,16 +142,6 @@ warn_stale() {
     printf 'claude-sync: this instance was last set up by %s\n' "$text" >&2
 }
 
-# Dies when this claude-sync has no file to name: under bash -s, bash -c or bash <(...).
-check_running_from_file() {
-    [[ -f $claude_sync_file ]] || die "this claude-sync is not running from a file; save it to a file and run that"
-}
-
-# The file this claude-sync runs from, symlinks resolved.
-installed_file() {
-    readlink -f -- "$claude_sync_file"
-}
-
 # The RPM package that installed FILE. Fails when none did.
 rpm_package() {
     command -v rpm >/dev/null && rpm -qf -- "$1" 2>/dev/null

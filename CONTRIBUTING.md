@@ -44,17 +44,19 @@ CLAUDE_SYNC_BIN=$PWD/dist/claude-sync CLAUDE_SYNC_BIN_VERSION=0.0.0-test make te
 `claude-sync` holds the command line; the rest of the program lives in `lib/*.sh`. The
 checkout's `claude-sync` loads each of them with a `source` line in its SOURCES block, from
 the directory it sits in, symlinks resolved; `packaging/build.sh` puts the same files, in
-the same order, into the built file. The checkout's `claude-sync` exits 1 without `lib/`
-beside it, and also when it has no file to look beside: run from stdin (`bash -s`), as a
-string (`bash -c`) or through `bash <(...)`, it says so. So:
+the same order, into the built file. The checkout's `claude-sync` exits 1, saying why,
+without `lib/` beside it or when it has no file to look beside: run from stdin (`bash -s`),
+as a string (`bash -c`) or through `bash <(...)`.
+
+Rules for lib files:
 
 - A new lib file needs its `source "$here/lib/NAME.sh"` line in the SOURCES block.
   `build.sh` refuses a lib file that is not listed, a listed file that is missing, and a
   function defined in two files, where the later definition would silently win.
 - Top-level code that reads a global or calls a function defined in another file needs that
   file listed first. `make lint` reports a call to a function defined in a later-listed file
-  as SC2218, including inside an `elif ...$(...)` condition, though not necessarily every such
-  call; a global read before it is set fails at startup under `set -u`.
+  as SC2218, though perhaps only the first such call in a file; a global read before it is
+  set fails at startup under `set -u`.
 - Lib files hold only definitions and top-level assignments, `lib/instances.sh`'s name block
   included, and their top-level code ends with status 0.
 - Code that needs claude-sync's own path reads `claude_sync_file`, never `BASH_SOURCE`, which
@@ -78,9 +80,9 @@ and the helpers the groups share from `tests/lib/`, then runs the groups in para
   inside `group_NAME` would run in the group's subshell, which cleanup does not see. The
   runner refuses a name registered twice, and a name with the suite's prefix that nothing
   registers. The group makes its volumes and fixtures at the start of `group_NAME`.
-- Test names such as `a`, `g`, `n`, `v`, `task`, `tree`, `bin`, `root` and `prefix` are
-  read-only globals in every test file, so a helper's locals and loop variables must not
-  reuse them.
+- A name declared `readonly` at the top level of `tests/integration.sh` or of a file in
+  `tests/lib/` or `tests/groups/` is a read-only global in every test file, so a helper's
+  locals and loop variables must not reuse it.
 
 ## Updating the ignore list
 

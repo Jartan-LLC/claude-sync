@@ -11,6 +11,10 @@ if [[ ! -f $claude_sync_file ]]; then
 fi
 here=$(readlink -f -- "$claude_sync_file")
 here=${here%/*}
+if [[ ! -d $here/lib ]]; then
+    echo "claude-sync: a checkout's claude-sync runs only with lib/ beside it; run it from the whole checkout, or install a release" >&2
+    exit 1
+fi
 readonly here claude_sync_version=dev
 # Prints one of claude-sync's own files: compose.yaml, compose.path.yaml,
 # compose.volume.yaml or stignore.
