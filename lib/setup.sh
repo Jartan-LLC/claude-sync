@@ -137,6 +137,11 @@ setup() {
         setup_host "$target" "$backup"
         return
     fi
+    setup_container "$kind" "$target" "$network" "$want_gui" "$want_sync" "$backup"
+}
+
+setup_container() {
+    local kind=$1 target=$2 network=$3 want_gui=$4 want_sync=$5 backup=$6
     command -v docker >/dev/null || die "Docker is required"
     if [[ $kind == path ]]; then
         [[ $target != *$'\n'* ]] || die "paths containing a newline are not supported"
