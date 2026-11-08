@@ -497,7 +497,7 @@ cleanup
 # level it stores in top.
 top=0
 set -E
-trap '((BASH_SUBSHELL == top)) && echo "aborted at tests/integration.sh:$LINENO${FUNCNAME:+ in ${FUNCNAME[0]}, called from line ${BASH_LINENO[0]}}" >&2' ERR
+trap '((BASH_SUBSHELL == top)) && echo "aborted at ${BASH_SOURCE[0]#"$root/"}:$LINENO${FUNCNAME:+ in ${FUNCNAME[0]}, called from ${BASH_SOURCE[1]#"$root/"}:${BASH_LINENO[0]}}" >&2' ERR
 trap on_exit EXIT
 scratch=$(mktemp -d -t "${prefix}XXXXXX")
 # Where claude-sync keeps the selected instance, so no run reads or writes the user's own.
