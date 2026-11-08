@@ -51,13 +51,30 @@ own_volumes() {
     register registered_volumes "$@"
 }
 
+# The volume Docker made for the image's VOLUME, /var/syncthing, in container NAME, as long as
+# NAME mounts it there; nothing when another kind of mount is there.
+anonymous_volume() {
+    local volume
+    volume=$(docker container inspect \
+        --format '{{range .Mounts}}{{if and (eq .Type "volume") (eq .Destination "/var/syncthing")}}{{.Name}}{{end}}{{end}}' "$1") ||
+        return
+    [[ -z $volume ]] && return
+    # shellcheck disable=SC2016 # a Go template's variables
+    docker volume inspect \
+        --format '{{range $key, $_ := .Labels}}{{if eq $key "com.docker.volume.anonymous"}}{{$.Name}}{{end}}{{end}}' "$volume"
+}
+
+remove_container() {
+    guard "$1"
+    docker rm --force -v "$1" >/dev/null 2>&1 || true
+}
+
 # Containers first, then the image and volumes they use, then the network: Docker refuses
 # to remove a volume or image in use, and `|| true` would hide it.
 cleanup() {
     local x
     for x in "${registered_containers[@]}"; do
-        guard "$x"
-        docker rm --force -v "$x" >/dev/null 2>&1 || true
+        remove_container "$x"
     done
     guard "$host_image"
     docker image rm "$host_image" >/dev/null 2>&1 || true

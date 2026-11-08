@@ -1,12 +1,12 @@
 # shellcheck shell=bash
 # group_upgrade, the names of what it makes, and the helpers only it uses.
 
-readonly n=${prefix}n p=${prefix}p s=${prefix}s hu=${prefix}hu
+readonly n=${prefix}n p=${prefix}p s=${prefix}s hu=${prefix}hu held=${prefix}held recreated=${prefix}recreated
 readonly vol_n=${prefix}n-data vol_p=${prefix}p-data
 readonly owner_n=1357:1357 owner_p=2468:2468
 readonly mount_n=type=volume,src=$vol_n mount_p=type=volume,src=$vol_p
 own_instances "$n" "$p" "$s"
-own_containers "$hu"
+own_containers "$hu" "$held" "$recreated"
 own_volumes "$vol_n" "$vol_p"
 
 # The newest releases in LIST, to the 0.4.0 build: the one that is not breaking and the
@@ -242,6 +242,30 @@ EOF
     check "  succeeding" [ "$status" = 0 ]
     check "upgrade names Syncthing state no container uses" \
         grep -qF "Volume $s-config holds the Syncthing state of instance $s," <<<"$out"
+
+    echo "# uninstall, of a container upgrade recreated"
+    # Compose hands the old container's volume for /var/syncthing on to the new one by name,
+    # and from then on docker rm -v keeps it.
+    anonymous_p=$(anonymous_volume "$p")
+    claude_sync "$p" uninstall >/dev/null
+    check "removes the container's anonymous volume" fails docker volume inspect "${anonymous_p:?}"
+    anonymous_n=$(anonymous_volume "$n")
+    docker create --name "$held" --mount "type=volume,src=${anonymous_n:?},dst=/held" "$image" >/dev/null
+    out=$(claude_sync "$n" uninstall 2>&1) && status=0 || status=$?
+    check "fails when another container uses that volume" [ "$status" != 0 ]
+    check "  naming it" grep -qF "kept volume $anonymous_n" <<<"$out"
+    check "  which stays" docker volume inspect "$anonymous_n"
+    check "  and removes the rest of the instance" fails docker volume inspect "$n-config"
+    docker rm --force -v "$held" >/dev/null
+    docker volume rm "$anonymous_n" >/dev/null
+
+    echo "# the suite's cleanup, of a container Compose recreated"
+    # As Compose leaves it: the anonymous volume mounted by name.
+    handed=$(docker volume create --label com.docker.volume.anonymous)
+    docker create --name "$recreated" --mount "type=volume,src=$handed,dst=/var/syncthing" "$image" >/dev/null
+    remove_container "$recreated"
+    check "removes the container" fails docker container inspect "$recreated"
+    check "  and its anonymous volume" fails docker volume inspect "$handed"
 
     echo "# upgrade, on the host's Syncthing"
     start_host_fixture "$hu"
