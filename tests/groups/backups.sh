@@ -149,6 +149,10 @@ EOF
         claude_sync "$t" restore "$archive" --volume "$vol_r" --path "$scratch/restored"
     check "a target with no value is refused" fails_with "--path needs a value" \
         claude_sync "$t" restore "$archive" --path
+    check "  and so is an empty one" fails_with "--path needs a value" \
+        claude_sync "$t" restore "$archive" --path ""
+    check "  or an empty volume" fails_with "--volume needs a value" \
+        claude_sync "$t" restore "$archive" --volume ""
     check "an unknown flag is refused" fails_with "unknown argument: --into" \
         claude_sync "$t" restore "$archive" --into "$scratch/restored"
 

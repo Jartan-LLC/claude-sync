@@ -66,7 +66,7 @@ setup() {
         case $1 in
             --volume | --path)
                 [[ -z $kind ]] || die "give only one of --volume or --path"
-                (($# >= 2)) || die "$1 needs a value"
+                [[ -n ${2:-} ]] || die "$1 needs a value"
                 kind=${1#--} target=$2
                 shift 2
                 ;;
