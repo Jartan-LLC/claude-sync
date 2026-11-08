@@ -125,7 +125,8 @@ snapshot() {
     in_target "$1" 'cd /t && find . | sort && find . -type f -exec sha256sum {} + | sort'
 }
 
-# Devices A to D pairing, joining and unpairing, with the host's own Syncthing.
+# Devices A to D pairing, joining and unpairing, with the host's own Syncthing. One function:
+# each step runs on the devices as the step before left them.
 group_chain() {
     echo "# setup --volume --private"
     docker volume create "$vol_a" >/dev/null

@@ -5,6 +5,10 @@ set -euo pipefail
 
 readonly claude_sync_file=${BASH_SOURCE[0]-}
 # BEGIN ASSETS: packaging/build.sh replaces this block with the version and the files.
+if [[ ! -f $claude_sync_file ]]; then
+    echo "claude-sync: a checkout's claude-sync runs only as a file, with lib/ beside it; run ./claude-sync" >&2
+    exit 1
+fi
 here=$(readlink -f -- "$claude_sync_file")
 here=${here%/*}
 readonly here claude_sync_version=dev

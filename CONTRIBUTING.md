@@ -33,8 +33,8 @@ failing check.
 ## Building
 
 `./claude-sync` runs from the checkout and reports its version as `dev`. `make build`
-writes `dist/claude-sync`, the single file a release ships: the script with its version
-and its own files (`compose*.yaml`, `stignore`) built in. To test that file:
+writes `dist/claude-sync`, the single file a release ships: the script with its version,
+its own files (`compose*.yaml`, `stignore`) and `lib/*.sh` built in. To test that file:
 
 ```bash
 make build VERSION=0.0.0-test
@@ -44,7 +44,9 @@ CLAUDE_SYNC_BIN=$PWD/dist/claude-sync CLAUDE_SYNC_BIN_VERSION=0.0.0-test make te
 `claude-sync` holds the command line; the rest of the program lives in `lib/*.sh`. The
 checkout's `claude-sync` loads each of them with a `source` line in its SOURCES block, from
 the directory it sits in, symlinks resolved; `packaging/build.sh` puts the same files, in
-the same order, into the built file. So:
+the same order, into the built file. The checkout's `claude-sync` exits 1 without `lib/`
+beside it, and also when it has no file to look beside: run from stdin (`bash -s`), as a
+string (`bash -c`) or through `bash <(...)`, it says so. So:
 
 - A new lib file needs its `source "$here/lib/NAME.sh"` line in the SOURCES block.
   `build.sh` refuses a lib file that is not listed, a listed file that is missing, and a

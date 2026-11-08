@@ -90,7 +90,7 @@ schedule_backup() {
     esac
     path=$(backup_unit)
     unit=${path##*/}
-    [[ -f $claude_sync_file ]] || die "this claude-sync is not running from a file; save it to a file and run that"
+    check_running_from_file
     bin=$(installed_file)
     # Not setup_command, which changes with the selection: the units would change with it,
     # and setup reloads units that changed.
