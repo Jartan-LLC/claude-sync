@@ -1,7 +1,7 @@
 services:
   syncthing:
     volumes:
-      - target:/var/syncthing/claude
+      - target:${CLAUDE_SYNC_FOLDER_PATH:?}
 
 volumes:
   target:

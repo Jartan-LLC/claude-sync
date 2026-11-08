@@ -3,6 +3,6 @@ services:
     volumes:
       - type: bind
         source: ${CLAUDE_SYNC_TARGET:?}
-        target: /var/syncthing/claude
+        target: ${CLAUDE_SYNC_FOLDER_PATH:?}
         bind:
           create_host_path: false

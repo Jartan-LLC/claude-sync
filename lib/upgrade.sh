@@ -82,7 +82,7 @@ release_url() {
 stamp_file() {
     local config
     case $1 in
-        container) echo "/var/syncthing/config/$stamp" ;;
+        container) echo "$container_config/$stamp" ;;
         host) config=$(host_config_file) && echo "${config%/*}/$stamp" ;;
         *) return 1 ;;
     esac

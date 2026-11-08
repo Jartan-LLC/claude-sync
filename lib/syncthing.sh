@@ -2,8 +2,11 @@
 # Where the instance's Syncthing runs, how to reach it, and what --private and --public set.
 
 readonly folder_id=claude-sync
+# Syncthing's config and the synced folder inside the container, under the image's home,
+# /var/syncthing. The compose files take them from write_compose_files.
+readonly container_config=/var/syncthing/config container_folder=/var/syncthing/claude
 # The synced folder as Syncthing sees it; with --use-host-syncthing, the directory itself.
-folder_path=/var/syncthing/claude
+folder_path=$container_folder
 readonly trash_days=14
 readonly default_gui_port=8384 default_sync_port=22000
 readonly label=claude-sync=config

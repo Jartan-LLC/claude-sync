@@ -189,7 +189,7 @@ setup_container() {
     docker run --rm --entrypoint chown --mount "type=volume,src=$name-config,dst=/config" \
         "$image" -R "$owner" /config
     companion_script | docker run --rm -i --user "$owner" --entrypoint sh \
-        --mount "type=volume,src=$name-config,dst=/config" "$image" -c 'cat >/config/claude-sync-companion'
+        --mount "type=volume,src=$name-config,dst=/config" "$image" -c 'cat >"/config/$1"' sh "$companion"
 
     export CLAUDE_SYNC_UID=${owner%:*} CLAUDE_SYNC_GID=${owner#*:} CLAUDE_SYNC_TARGET=$target
     write_compose_files "$kind"
@@ -261,10 +261,14 @@ check_host_folders() {
     fi
 }
 
-# Writes the compose files for KIND to a new temporary directory and sets compose_files to
-# them. Also sets the EXIT trap, replacing any other, so the directory lasts until exit.
+# Writes the compose files for KIND to a new temporary directory, sets compose_files to
+# them and exports the paths inside the container that they read. Also sets the EXIT trap,
+# replacing any other, so the directory lasts until exit.
 write_compose_files() {
     local kind=$1
+    export CLAUDE_SYNC_CONFIG_PATH=$container_config CLAUDE_SYNC_FOLDER_PATH=$container_folder \
+        CLAUDE_SYNC_COMPANION_PATH=$container_config/$companion \
+        CLAUDE_SYNC_UNPAIRED_PATH=$container_folder/$unpaired_dir
     # Compose reads only files; setup_container's port checks and `up` use them.
     local compose_dir
     compose_dir=$(mktemp -d -t claude-sync.XXXXXX)
