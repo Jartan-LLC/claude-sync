@@ -147,23 +147,7 @@ setup_container() {
         [[ $target != *$'\n'* ]] || die "paths containing a newline are not supported"
         target=$(clean_path "$target")
     fi
-    # Under the default name, pair, unpair, backup and uninstall would act on a container
-    # instead of the Syncthing that already syncs claude-sync's folder. With --path, under any
-    # name, the container would also be a second device on files a folder of that Syncthing
-    # syncs.
-    if host_syncthing_configured; then
-        local fid fpath real_target=""
-        [[ $kind != path ]] || real_target=$(real_path "$target")
-        while IFS=$'\t' read -r fid fpath; do
-            if [[ $fid == "$folder_id" && $name == "$default_name" ]]; then
-                [[ $kind == volume ]] ||
-                    die "already set up in the Syncthing on this host; add --use-host-syncthing, or run uninstall first"
-                die "the Syncthing on this host already syncs claude-sync's folder; to sync this volume beside it, set CLAUDE_SYNC_NAME to another name"
-            elif [[ $kind == path ]] && paths_overlap "$real_target" "$(real_path "$fpath")"; then
-                die "this host's Syncthing folder $fid already syncs $fpath, which overlaps $target; choose another directory"
-            fi
-        done < <(host_folders)
-    fi
+    check_host_folders "$kind" "$target"
 
     local mount
     if [[ $kind == volume ]]; then
@@ -279,6 +263,27 @@ setup_container() {
     printf 'This device ID: %s\n' "$(docker exec -u "$owner" "$name" syncthing device-id)"
     schedule_backup "$backup"
     write_stamp "$name" container
+}
+
+check_host_folders() {
+    local kind=$1 target=$2
+    # Under the default name, pair, unpair, backup and uninstall would act on a container
+    # instead of the Syncthing that already syncs claude-sync's folder. With --path, under any
+    # name, the container would also be a second device on files a folder of that Syncthing
+    # syncs.
+    if host_syncthing_configured; then
+        local fid fpath real_target=""
+        [[ $kind != path ]] || real_target=$(real_path "$target")
+        while IFS=$'\t' read -r fid fpath; do
+            if [[ $fid == "$folder_id" && $name == "$default_name" ]]; then
+                [[ $kind == volume ]] ||
+                    die "already set up in the Syncthing on this host; add --use-host-syncthing, or run uninstall first"
+                die "the Syncthing on this host already syncs claude-sync's folder; to sync this volume beside it, set CLAUDE_SYNC_NAME to another name"
+            elif [[ $kind == path ]] && paths_overlap "$real_target" "$(real_path "$fpath")"; then
+                die "this host's Syncthing folder $fid already syncs $fpath, which overlaps $target; choose another directory"
+            fi
+        done < <(host_folders)
+    fi
 }
 
 check_volume() {
