@@ -1,5 +1,6 @@
 # shellcheck shell=bash
-# The suite touches only objects with its prefix: guard refuses others, cleanup removes them.
+# The suite touches only objects with its prefix, and the anonymous volume of a container with
+# its prefix: guard refuses others, cleanup removes them.
 
 guard() {
     [[ $1 == "$prefix"* ]] || {
@@ -52,7 +53,7 @@ own_volumes() {
 }
 
 # The volume Docker made for the image's VOLUME, /var/syncthing, in container NAME, as long as
-# NAME mounts it there; nothing when another kind of mount is there.
+# NAME mounts it there; nothing when NAME mounts something else there.
 anonymous_volume() {
     local volume
     volume=$(docker container inspect \
@@ -64,9 +65,16 @@ anonymous_volume() {
         --format '{{range $key, $_ := .Labels}}{{if eq $key "com.docker.volume.anonymous"}}{{$.Name}}{{end}}{{end}}' "$volume"
 }
 
+# Removes container NAME and its anonymous volume, which docker rm -v leaves once Compose has
+# recreated the container: Compose hands the volume on to the new container by name. The
+# volume has a hash for a name, not the prefix; read from NAME's own mounts, it is this run's.
 remove_container() {
+    local volume
     guard "$1"
+    volume=$(anonymous_volume "$1" 2>/dev/null) || true
     docker rm --force -v "$1" >/dev/null 2>&1 || true
+    [[ -n $volume ]] && docker volume inspect "$volume" >/dev/null 2>&1 || return 0
+    docker volume rm "$volume" >/dev/null || echo "cleanup left volume $volume, container $1's anonymous volume" >&2
 }
 
 # Containers first, then the image and volumes they use, then the network: Docker refuses

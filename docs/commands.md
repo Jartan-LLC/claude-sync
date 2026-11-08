@@ -259,6 +259,7 @@ restore with `tar` alone.
 | `this instance was last set up by` | Run the `setup` command the message gives, to apply the installed version |
 | `runs from a checkout` | Update the checkout with git, then run `setup` to apply it |
 | `not running from a file` | Save claude-sync to a file, as the README's [Install](../README.md#install) section does, and run that |
+| `kept volume` | Docker's reason comes before it. The rest of the instance is removed; once no container uses the volume, remove it with the command the message gives |
 | `belongs to the RPM package` | Upgrade with `dnf` as in [Upgrade](../README.md#upgrade) |
 | `cannot get the list of claude-sync's releases` | Check that this host reaches `api.github.com`; GitHub also [limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api) how many such requests one address can make without a login |
 | `cannot write to` ... `where claude-sync is` | Run `upgrade` as the user who owns that directory |
