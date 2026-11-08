@@ -74,7 +74,8 @@ remove_container() {
     guard "$1"
     volume=$(anonymous_mount "$1" 2>/dev/null) || true
     docker rm --force -v "$1" >/dev/null 2>&1 || true
-    [[ -n $volume ]] && docker volume inspect "$volume" >/dev/null 2>&1 || return 0
+    [[ -n $volume ]] || return 0
+    docker volume inspect "$volume" >/dev/null 2>&1 || return 0
     docker volume rm "$volume" >/dev/null || echo "cleanup left volume $volume, container $1's anonymous volume" >&2
 }
 

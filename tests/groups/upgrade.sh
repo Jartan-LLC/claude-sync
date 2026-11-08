@@ -256,6 +256,7 @@ EOF
     out=$(claude_sync "$n" uninstall 2>&1) && status=0 || status=$?
     check "fails when another container uses that volume" [ "$status" != 0 ]
     check "  naming it" grep -qF "kept volume $anonymous_n" <<<"$out"
+    check "  and how to remove it" grep -qF "docker volume rm $anonymous_n" <<<"$out"
     check "  which stays" docker volume inspect "$anonymous_n"
     check "  and removes the rest of the instance" fails docker volume inspect "$n-config"
     remove_container "$held"
