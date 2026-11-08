@@ -3,6 +3,7 @@
 # Every container, volume, network and image this keeps is named claude-sync-test-*, and
 # cleanup refuses anything else: a dev container may share the host's live Docker daemon,
 # where a real ~/.claude volume lives.
+# shellcheck source-path=SCRIPTDIR/..
 set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -61,6 +62,9 @@ done
     echo "tests/integration.sh needs bash 5.1 or newer" >&2
     exit 1
 }
+
+source "$root/tests/lib/checks.sh"
+
 # A relay on Docker's socket, such as a dev container's socat, can cut off a container's
 # output after half a second while the command still succeeds.
 out=$(docker run --rm --entrypoint sh "$image" -c 'sleep 1; echo ok')
@@ -111,53 +115,6 @@ readonly ignored=(
     history.jsonl.tmp.4242.0123456789ab
     "$job/tmp/notes.md"
 )
-
-failures=0
-
-check() {
-    local desc=$1
-    shift
-    if "$@" >/dev/null; then
-        printf 'ok   %s\n' "$desc"
-    else
-        printf 'FAIL %s\n' "$desc"
-        failures=$((failures + 1))
-        # A red run or a mutation check needs only its first failure.
-        [[ -z ${CLAUDE_SYNC_TEST_FAIL_FAST:-} ]] || exit 1
-    fi
-}
-
-fails() {
-    ! "$@" >/dev/null 2>&1
-}
-
-# Whether the command ran until its timeout cut it off, as a join that waits does.
-cut_off() {
-    "$@" >/dev/null 2>&1
-    (($? == 124))
-}
-
-# On a failed check, the command's exit status and output go to stderr, which check leaves
-# shown: they come just above the FAIL line.
-fails_with() {
-    local message=$1 out status=0 lines
-    shift
-    out=$("$@" 2>&1) || status=$?
-    ((status != 0)) && grep -qF -- "$message" <<<"$out" && return
-    mapfile -t lines <<<"$out"
-    printf '     exited %s, saying:\n' "$status" >&2
-    printf '     | %s\n' "${lines[@]}" >&2
-    return 1
-}
-
-wait_for() {
-    local i
-    for ((i = 0; i < 120; i++)); do
-        "$@" >/dev/null 2>&1 && return 0
-        sleep 1
-    done
-    return 1
-}
 
 guard() {
     [[ $1 == "$prefix"* ]] || {
@@ -388,10 +345,6 @@ carries() {
     bash -c 'source "$1" help >/dev/null && asset "$2"' _ "$bin" "$1" | cmp -s - "$root/$1"
 }
 
-no_leftovers() {
-    [ -z "$(ls -A "$TMPDIR")" ]
-}
-
 snapshot() {
     in_target "$1" 'cd /t && find . | sort && find . -type f -exec sha256sum {} + | sort'
 }
@@ -425,10 +378,6 @@ left_of() {
     for name; do
         [[ ! -e $dir/$name ]] || echo "$name"
     done
-}
-
-files_in() {
-    find "$1" -mindepth 1 -maxdepth 1 | wc -l
 }
 
 cleanup() {

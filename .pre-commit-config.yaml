@@ -14,13 +14,14 @@ repos:
     hooks:
       - id: shellcheck
         args: [--external-sources]
-        exclude: ^(claude-sync|lib/.+\.sh)$
-      # claude-sync and its lib files as one program: a lib file checked alone reports every
-      # global another file sets. Follows claude-sync's `source` lines into lib/.
+        exclude: ^(claude-sync|lib/.+\.sh|tests/integration\.sh|tests/(lib|groups)/.+\.sh)$
+      # claude-sync and its lib files as one program, and the test runner and its files as
+      # another: a sourced file checked alone reports every global another file sets. Follows
+      # the entry files' `source` lines into lib/, tests/lib/ and tests/groups/.
       - id: shellcheck
-        files: ^(claude-sync|lib/.+\.sh)$
+        files: ^(claude-sync|lib/.+\.sh|tests/integration\.sh|tests/(lib|groups)/.+\.sh)$
         pass_filenames: false
-        args: [--external-sources, --check-sourced, claude-sync]
+        args: [--external-sources, --check-sourced, claude-sync, tests/integration.sh]
   - repo: https://github.com/DavidAnson/markdownlint-cli2
     rev: 341e2a331ba578029e66c2e01183e7a6b5ca9ab4 # frozen: v0.24.0
     hooks:
