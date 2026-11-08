@@ -4,7 +4,8 @@ set -euo pipefail
 
 readonly claude_sync_file=${BASH_SOURCE[0]-}
 # BEGIN ASSETS: packaging/build.sh replaces this block with the version and the files.
-here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+here=$(readlink -f -- "$claude_sync_file")
+here=${here%/*}
 readonly here claude_sync_version=dev
 # Prints one of claude-sync's own files: compose.yaml, compose.path.yaml,
 # compose.volume.yaml or stignore.
