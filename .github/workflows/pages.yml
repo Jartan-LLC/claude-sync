@@ -1,5 +1,5 @@
-# Deploys the GitHub Pages site: the dnf repository under rpm/, from the Latest release's
-# bundle, while packaging/dnf.repo exists, and the Sphinx docs while docs/conf.py exists.
+# Deploys the GitHub Pages site from the Latest release: its dnf repository bundle under rpm/,
+# while packaging/dnf.repo exists, and its Sphinx docs, while its tag has docs/conf.py.
 name: Deploy Pages
 
 on:
@@ -33,10 +33,21 @@ jobs:
       contents: read
     outputs:
       docs: ${{ steps.docs.outputs.docs }}
+      tag: ${{ steps.latest.outputs.tag }}
     steps:
+      # The site documents what users run: the Latest release's tag, not main, whose docs can
+      # describe unreleased commands. site serves rpm/ from this same tag. A docs build that
+      # fails at the tag deploys nothing, rpm/ included: re-run once the cause is fixed, or,
+      # for a fault at the tag or tool drift, release again.
+      - id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: echo "tag=$(gh release view --json tagName --jq .tagName)" >>"$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ steps.latest.outputs.tag }}
       - id: docs
         run: |
           if [ -f docs/conf.py ]; then
@@ -52,7 +63,7 @@ jobs:
           version-file: ci/requirements.txt
           enable-cache: true
       - if: steps.docs.outputs.docs == 'true'
-        run: uv pip install -e '.[docs]'
+        run: uv pip install -r ci/requirements.txt
       - if: steps.docs.outputs.docs == 'true'
         run: sphinx-build -W -b html docs docs/_build/html
       - if: steps.docs.outputs.docs == 'true'
@@ -103,6 +114,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          LATEST_TAG: ${{ needs.docs.outputs.tag }}
         run: |
           # Not a pipe: without pipefail, a failed gh would read as no bundle.
           bundles=$(gh api --paginate "repos/$GH_REPO/releases" \
@@ -111,8 +123,9 @@ jobs:
             echo "::notice::No GitHub Release has a dnf repository bundle yet, so the site has no rpm/"
             exit 0
           fi
-          # The latest Release is never a pre-release, which gets no bundle.
-          tag=$(gh release view --json tagName --jq .tagName)
+          # The tag the docs job built from, so docs and rpm/ come from one release. The latest
+          # Release is never a pre-release, which gets no bundle.
+          tag=$LATEST_TAG
           bundle=$(gh release view "$tag" --json assets \
             --jq '[.assets[].name | select(endswith("-dnf-repo.tar.gz"))] | select(length == 1) | .[0]')
           if [ -z "$bundle" ]; then

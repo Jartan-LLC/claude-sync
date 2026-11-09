@@ -16,6 +16,7 @@ Put a breaking change first under its heading, starting with "Breaking:".
 
 ### Added
 
+- The docs are published at `https://jartan-llc.github.io/claude-sync/`.
 - The RPM is signed, and installs claude-sync's dnf repository, so
   `sudo dnf upgrade --refresh claude-sync` installs each new release. An RPM installed
   before this release has no repository to upgrade from: rerun the `dnf install` line from

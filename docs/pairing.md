@@ -1,7 +1,7 @@
 # Pairing devices
 
 How devices find each other, what joining does, and how to remove a device. The
-[README](../README.md) has the two-device quickstart.
+[README](https://github.com/Jartan-LLC/claude-sync/blob/main/README.md) has the two-device quickstart.
 
 ## The first pairing
 

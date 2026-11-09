@@ -20,6 +20,11 @@ updates:
 
   - package-ecosystem: "pip"
     directory: "/ci"
+    # Sphinx 9.2 needs Python 3.13 and .python-version is 3.12; ignored so a bump that can't
+    # install never holds up the group.
+    ignore:
+      - dependency-name: "sphinx"
+        versions: [">=9.2"]
     schedule:
       interval: "weekly"
       day: "monday"

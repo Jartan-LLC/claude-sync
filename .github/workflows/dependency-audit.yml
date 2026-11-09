@@ -1,6 +1,6 @@
 name: Dependency Audit
 
-# Weekly pip-audit of the gate tools ci/requirements.txt pins and of their dependencies,
+# Weekly pip-audit of the gate and docs tools ci/requirements.txt pins and of their dependencies,
 # which are unpinned and invisible to Dependabot. Findings open (or update) one issue,
 # and a clean run closes it. A tool, install or network error fails the run and leaves
 # the issue alone.

@@ -1,5 +1,5 @@
 # Task runner for the local dev loop. Run `make` or `make help` to list targets.
-.PHONY: help install lint test build check all
+.PHONY: help install lint test build docs check all
 
 # Every target uses one Python environment, chosen here: this
 # checkout's .venv, else the active one, else, in the main checkout only, the system
@@ -57,9 +57,13 @@ VERSION ?= dev
 build:  ## Build the single-file claude-sync into dist/ (VERSION=X.Y.Z sets its version)
 	packaging/build.sh '$(VERSION)' dist/claude-sync
 
-check:  ## Run CI's lint and integration checks, and the advisory dependency audit
+docs:  ## Build the docs site, warnings as errors, re-reading every page
+	sphinx-build -E -W -b html docs docs/_build/html
+
+check:  ## Run CI's lint, integration and docs checks, and the advisory dependency audit
 	$(MAKE) lint
 	$(MAKE) test
+	$(MAKE) docs
 # Advisory: known vulnerabilities are reported without failing the gate; the weekly
 # dependency-audit.yml tracks them in an issue.
 	-pip-audit

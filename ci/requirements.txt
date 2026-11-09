@@ -1,4 +1,4 @@
-# Tools that run the gate, exact-pinned with every release file's hash; Dependabot's "/ci"
+# Tools that run the gate and build the docs, exact-pinned with every release file's hash; Dependabot's "/ci"
 # entry bumps both. Their own dependencies are neither pinned nor hashed.
 # The lint tools are versioned by their hook revs in .pre-commit-config.yaml.
 # A new entry's hashes:
@@ -35,3 +35,18 @@ pre-commit==4.7.0 \
 pip-audit==2.10.1 \
     --hash=sha256:1eb4565d19ebe5d48996f4b770b4d2b32887e12cb12cfa637f1a064011b55ffc \
     --hash=sha256:99ef3f600a317c1945f1e89e227ef26e1c2d618429b8bd3fa6f4f7c440c4611a
+
+# docs site generator; 9.2 needs Python 3.13 (.python-version is 3.12)
+sphinx==9.1.1 \
+    --hash=sha256:48b627f02908f22c601b3ba9c7b17265b4f315dd05c8bc64cd4da41183f44fbc \
+    --hash=sha256:f8b60013ce25017be41a509e5c2d265bc1918410061315c36b809c7f335646c0
+
+# lets Sphinx read the Markdown docs pages
+myst-parser==5.1.0 \
+    --hash=sha256:9c91c52b3cdb4d94a6506e4fab4e2f296c7623a0da0dcbe6de1565c3dad67a8a \
+    --hash=sha256:ab69322dc6719dcc7f296479dbb70181b66df6ed315064f92dbc85c0e1bf2f02
+
+# the docs site's theme
+furo==2025.12.19 \
+    --hash=sha256:188d1f942037d8b37cd3985b955839fea62baa1730087dc29d157677c857e2a7 \
+    --hash=sha256:bb0ead5309f9500130665a26bee87693c41ce4dbdff864dbfb6b0dae4673d24f
