@@ -149,7 +149,7 @@ A directory deleted on another device is deleted here too, with any of these fil
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute; [docs/scaffold.md](docs/scaffold.md)
-covers the dev container, CI and Liza.
+covers CI, publishing, Liza and syncing with scaffold.
 
 ## License
 
