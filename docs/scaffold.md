@@ -59,6 +59,9 @@ job joins or leaves that gate through two entries in `check`, `needs` and the `r
 array, so a job you write or uncomment goes in both. A step added to an existing job, such as
 a Node check in `lint`, needs no `check` change.
 
+The `rpm` job runs on every change while `packaging/rpm.spec` exists: it builds the RPM,
+running the spec's `%check`, and installs it in Fedora.
+
 The dev container job runs only when a change touches one of its build inputs, which
 `_DEVCONTAINER_INPUTS` in `ci/changes.py` lists. `ci/requirements.txt` is among them, because
 `post-create.sh` reads uv's pin from it; `.claude/settings.json`, which the grimoire Feature
@@ -68,11 +71,12 @@ weekly run, not on its PR.
 
 ## Publishing
 
-Nothing publishes until you push a `v*` tag. `release.yml` then builds the single-file
-claude-sync, runs the integration tests against it, and creates a GitHub Release with
-generated notes, the file, its `claude-sync.sha256` and the RPM that `packaging/rpm.sh`
-builds in a Fedora container. It also records a build provenance attestation for the file
-and the RPM, which `gh attestation verify` checks. It needs no secret or setup.
+A `v*` tag runs these workflows:
+
+| Workflow | Publishes |
+|---|---|
+| `release.yml` | a GitHub Release whose notes are the tag's `CHANGELOG.md` section (`## [1.2.0]` for `v1.2.0`) with its hard-wrapped lines joined, or GitHub's generated notes, with a warning in the run, when there is no `CHANGELOG.md` or that section is missing, empty or holds only HTML comments. It builds the single-file claude-sync, runs the integration tests against it, and attaches it with its `claude-sync.sha256`, both with a build provenance attestation that `gh attestation verify` checks. A pre-release tag, written in SemVer as [RELEASING.md](../RELEASING.md) requires (`v1.2.0-rc.1`), makes a pre-release. A full release becomes Latest only when no full release has a higher version. Runs go one at a time, in push order: a tag's run waits until the previous tag's run finishes. The Release is created only once the single file, the RPM and their attestations all succeed. It needs no secret or setup |
+| `rpm.yml`, run by `release.yml` | `claude-sync.noarch.rpm` on the GitHub Release, built from the tag by `packaging/rpm.sh` in Fedora and installed there first, with a build provenance attestation. A failed build creates no Release |
 
 ## Syncing template updates
 

@@ -99,24 +99,22 @@ jobs:
 
   # The RPM a release ships, from this commit: built with its %check, then installed.
   rpm:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    container: fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
-    steps:
-      # Before checkout, which without git fetches no repository for rpm.sh to archive.
-      - run: dnf -y install git-core rpm-build
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - run: packaging/rpm.sh 0.0.0-ci "$RUNNER_TEMP/rpm"
-      - run: dnf -y install "$RUNNER_TEMP/rpm/claude-sync.noarch.rpm"
-      - run: test "$(claude-sync version)" = "claude-sync 0.0.0~ci"
+    needs: changes
+    if: needs.changes.outputs.rpm == 'true'
+    permissions:
+      contents: read
+    # actionlint rejects the $/ form zizmor asks for (rhysd/actionlint#711).
+    uses: ./.github/workflows/rpm.yml # zizmor: ignore[self-repository]
+    with:
+      version: 0.0.0-ci
 
   changes:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       devcontainer: ${{ steps.diff.outputs.devcontainer }}
+      rpm: ${{ steps.packaging.outputs.rpm }}
+      dnf_repo: ${{ steps.packaging.outputs.dnf_repo }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -125,6 +123,17 @@ jobs:
           # checked-out history, so push runs check out all of it. '0' is quoted because a
           # bare 0 is falsy and would give push runs depth 2.
           fetch-depth: ${{ github.event_name == 'push' && '0' || '2' }}
+      # The rpm job runs on every change while the project ships an RPM, and the dnf-repo
+      # job while that RPM carries a dnf repository too: they depend on the tree, not the
+      # diff, so they stay out of ci/changes.py.
+      - id: packaging
+        run: |
+          if [ -f packaging/rpm.spec ]; then
+            echo "rpm=true" >>"$GITHUB_OUTPUT"
+            if [ -f packaging/dnf.repo ]; then
+              echo "dnf_repo=true" >>"$GITHUB_OUTPUT"
+            fi
+          fi
       - id: diff
         env:
           EVENT: ${{ github.event_name }}

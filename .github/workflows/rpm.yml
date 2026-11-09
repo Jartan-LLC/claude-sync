@@ -1,0 +1,94 @@
+name: RPM
+
+# Builds the RPM of the commit checked out with packaging/rpm.sh, which runs the spec's
+# %check, then installs it. ci.yml calls it on each change and release.yml on each tag.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The version to build. A leading v is dropped, so a tag name works.
+        required: true
+        type: string
+      artifact:
+        description: The artifact name to upload the RPM under; empty uploads nothing.
+        required: false
+        type: string
+        default: ""
+    outputs:
+      image:
+        description: The Fedora image the build ran in, pinned by digest.
+        value: ${{ jobs.image.outputs.ref }}
+
+permissions: {}
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      ref: ${{ steps.ref.outputs.ref }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: packaging/fedora.Containerfile
+          sparse-checkout-cone-mode: false
+      # An empty ref would run the build on the bare runner, and a tag alone could change
+      # under the build; this check is the pin zizmor can't see through the expression. A
+      # flag, a stage name or a second FROM line would make the ref no valid image, or not
+      # the one ci.yml's dnf-repo job builds from this file.
+      - id: ref
+        run: |
+          ref=$(sed -n 's/^FROM //Ip' packaging/fedora.Containerfile)
+          if [[ ! $ref =~ ^[^[:space:]]+@sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::packaging/fedora.Containerfile must have one FROM line, holding only an image pinned by digest (image@sha256:...)"
+            exit 1
+          fi
+          echo "ref=$ref" >>"$GITHUB_OUTPUT"
+
+  build:
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    container: ${{ needs.image.outputs.ref }} # zizmor: ignore[unpinned-images]
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      # Before checkout, which without git fetches no repository for rpm.sh to archive.
+      - run: dnf -y install git-core rpm-build
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the RPM
+        run: |
+          rpm=$(packaging/rpm.sh "${VERSION#v}" dist)
+          echo "RPM=$rpm" >>"$GITHUB_ENV"
+
+      - name: Install the RPM
+        run: |
+          dnf -y install "./$RPM"
+
+      - name: Check the RPM installs the dnf repository's files
+        run: |
+          if [[ -f packaging/dnf.repo ]]; then
+            name=$(rpm -qp --qf '%{NAME}' "$RPM")
+            for path in "/etc/yum.repos.d/$name.repo" "/etc/pki/rpm-gpg/RPM-GPG-KEY-$name"; do
+              if [[ $(rpm -qf --qf '%{NAME}' "$path") != "$name" ]]; then
+                echo "::error::the RPM doesn't install $path, which packaging/rpm.spec must install while packaging/dnf.repo exists"
+                exit 1
+              fi
+            done
+          fi
+
+      - if: inputs.artifact != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ inputs.artifact }}
+          path: ${{ env.RPM }}
+          if-no-files-found: error

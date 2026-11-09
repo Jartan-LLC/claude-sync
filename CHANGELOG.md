@@ -54,6 +54,8 @@ Put a breaking change first under its heading, starting with "Breaking:".
 
 ### Changed
 
+- A release's notes on GitHub are its section of this file, where they used to be GitHub's
+  list of merged pull requests.
 - A mistake that the command line alone shows now exits 2 and still says what is wrong. A
   missing argument, which prints the usage, already exited 2. Other mistakes exited 1, as
   any failure does: an unknown argument, a missing or empty value, options that cannot go

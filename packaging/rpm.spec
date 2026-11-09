@@ -1,7 +1,9 @@
-# packaging/rpm.sh sets Version.
+# packaging/rpm.sh builds this spec. Write no percent sign in a comment: rpm expands
+# macros there too.
 Name:           claude-sync
-Version:        0
-# One package for every RPM distribution, so no %{?dist}.
+# packaging/rpm.sh defines tag_version from its VERSION argument.
+Version:        %{tag_version}
+# One package for every RPM distribution, so no dist suffix.
 Release:        1
 Summary:        Continuous sync of ~/.claude across devices with Syncthing
 License:        MIT
