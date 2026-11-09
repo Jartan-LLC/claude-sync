@@ -36,6 +36,11 @@ packaging/build.sh %{version} dist/claude-sync
 
 %install
 install -Dpm 0755 dist/claude-sync %{buildroot}%{_bindir}/claude-sync
+# The dnf repository's definition and the key that signs it. Each @NAME@ in dnf.repo becomes
+# the package's name, so its gpgkey line names the key file installed here.
+sed 's/@NAME@/%{name}/g' packaging/dnf.repo >dnf.repo
+install -Dm0644 dnf.repo %{buildroot}%{_sysconfdir}/yum.repos.d/%{name}.repo
+install -Dm0644 packaging/RPM-GPG-KEY %{buildroot}%{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-%{name}
 
 %check
 test "$(dist/claude-sync version)" = "claude-sync %{version}"
@@ -44,3 +49,7 @@ test "$(dist/claude-sync version)" = "claude-sync %{version}"
 %license LICENSE
 %doc README.md CHANGELOG.md docs/commands.md docs/own-syncthing.md docs/pairing.md docs/recovering-files.md
 %{_bindir}/claude-sync
+# An upgrade keeps a user's edits to the .repo file. The key is not config, so each release
+# replaces it, which is how a new key reaches users.
+%config(noreplace) %{_sysconfdir}/yum.repos.d/%{name}.repo
+%{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-%{name}

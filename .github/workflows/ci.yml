@@ -108,6 +108,41 @@ jobs:
     with:
       version: 0.0.0-ci
 
+  # The signed dnf repository packaging/dnf-repo.sh builds, for RPMs that install its .repo
+  # file and key: built in one Fedora container, then served from the runner and installed
+  # from in a second, fresh one.
+  dnf-repo:
+    needs: changes
+    if: needs.changes.outputs.dnf_repo == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # rpm.yml's image job, which runs whenever this job does, fails unless the FROM line
+      # pins a digest.
+      - name: Pull the Fedora image
+        run: |
+          FEDORA=$(docker build -q - <packaging/fedora.Containerfile)
+          echo "FEDORA=$FEDORA" >>"$GITHUB_ENV"
+
+      - name: Build the repository
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src "$FEDORA" bash -c \
+            'dnf -y install git-core rpm-build createrepo_c rpm-sign gnupg2 zstd && ci/dnf-repo-test.sh build www'
+
+      # auto_import_local_keys needs dnf5 5.4.7 or later; the upgrade can go once the image
+      # has it. The port is the one ci/dnf-repo-test.sh's url names.
+      - name: Install from the repository
+        run: |
+          python3 ci/dnf_repo_server.py www 8000 &
+          docker run --rm --network host -v "$PWD:/src" -w /src "$FEDORA" bash -c \
+            'dnf -y upgrade dnf5 && dnf -y install dnf5-plugin-automatic && ci/dnf-repo-test.sh check www'
+
   changes:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -168,12 +203,12 @@ jobs:
   check:
     if: always()
     # A new gating job goes in BOTH the needs list and the results array below.
-    needs: [lint, integration, rpm, changes, devcontainer]
+    needs: [lint, integration, rpm, dnf-repo, changes, devcontainer]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - run: |
-          results=("${{ needs.lint.result }}" "${{ needs.integration.result }}" "${{ needs.rpm.result }}" "${{ needs.changes.result }}" "${{ needs.devcontainer.result }}")
+          results=("${{ needs.lint.result }}" "${{ needs.integration.result }}" "${{ needs.rpm.result }}" "${{ needs.dnf-repo.result }}" "${{ needs.changes.result }}" "${{ needs.devcontainer.result }}")
           for r in "${results[@]}"; do
             if [[ "$r" != "success" && "$r" != "skipped" ]]; then
               echo "Check failed: $r"
