@@ -34,7 +34,7 @@ version_older() {
 }
 
 # Whether going from version A to the later version B is breaking by the project's rule
-# (CONTRIBUTING.md, Releasing): a new major version, or a new minor version while the
+# (RELEASING.md): a new major version, or a new minor version while the
 # major is 0.
 version_breaking() {
     local a b
