@@ -12,7 +12,7 @@ own_volumes "$vol_j" "$vol_l"
 scanning() {
     local state
     state=$(folder_status "$1" "$2" | jq -r .state) || state="no answer"
-    [[ $state == scan* ]] || { echo "  folder state: $state" >&2; return 1; }
+    [[ $state == scan* ]] || { echo "     folder state: $state" >&2; return 1; }
 }
 
 # J: a first scan setup does not wait for, and a join stuck under an old ignore list.
