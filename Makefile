@@ -57,8 +57,11 @@ VERSION ?= dev
 build:  ## Build the single-file claude-sync into dist/ (VERSION=X.Y.Z sets its version)
 	packaging/build.sh '$(VERSION)' dist/claude-sync
 
-check:  ## Run CI's lint and integration checks
+check:  ## Run CI's lint and integration checks, and the advisory dependency audit
 	$(MAKE) lint
 	$(MAKE) test
+# Advisory: known vulnerabilities are reported without failing the gate; the weekly
+# dependency-audit.yml tracks them in an issue.
+	-pip-audit
 
 all: check  ## Alias for `check`

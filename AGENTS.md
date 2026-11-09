@@ -24,7 +24,7 @@ heading is what prompts adding one. -->
 ## Verify
 
 Run `make check` before declaring work done — it runs CI's lint and integration checks
-(the integration tests need Docker):
+(the integration tests need Docker) and the advisory dependency audit:
 
 ```bash
 make check

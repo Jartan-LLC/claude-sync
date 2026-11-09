@@ -19,7 +19,8 @@ Docker (actionlint, lychee) and Node (markdownlint), which the devcontainer has.
 make check
 ```
 
-Runs the lint and integration checks CI runs. CI runs more (see [CI](docs/scaffold.md#ci)),
+Runs the lint and integration checks CI runs, and an advisory dependency audit that
+reports known vulnerabilities without failing. CI runs more (see [CI](docs/scaffold.md#ci)),
 and all of it must pass before merge.
 
 `make test` (`tests/integration.sh`) runs claude-sync against real Syncthing containers and

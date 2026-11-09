@@ -9,7 +9,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "10 7 * * 1" # weekly, Monday 07:10 UTC (offset from scorecard/link-check)
+    - cron: "10 7 * * 1" # weekly, Monday 07:10 UTC (offset from the other weekly runs)
   workflow_dispatch:
 
 permissions:
@@ -121,25 +121,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 2
-      # A PR's merge commit has its base as first parent. With no base (a scheduled or
-      # manual run, a failed fetch) the dev container job runs, rather than risk skipping a change.
+          # A push diffs against the previous tip, which ci/changes.py finds only in the
+          # checked-out history, so push runs check out all of it. '0' is quoted because a
+          # bare 0 is falsy and would give push runs depth 2.
+          fetch-depth: ${{ github.event_name == 'push' && '0' || '2' }}
       - id: diff
         env:
           EVENT: ${{ github.event_name }}
           BEFORE: ${{ github.event.before }}
-        run: |
-          case "$EVENT" in
-            pull_request) base=HEAD^1 ;;
-            push) git fetch -q --depth=1 origin "$BEFORE" && base=$BEFORE ;;
-          esac
-          changed=$([ -z "${base:-}" ] || git diff --name-only "$base" HEAD)
-          # Everything the dev container build reads, make install's manifests included.
-          if [ -z "${base:-}" ] \
-              || grep -qE -e '^\.devcontainer/' -e '^\.github/workflows/ci\.yml$' -e '^Makefile$' -e '^\.claude/settings\.json$' \
-                -e '(^|/)(pyproject\.toml|requirements\.txt|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc)$' <<<"$changed"; then
-            echo devcontainer=true >>"$GITHUB_OUTPUT"
-          fi
+        run: python3 ci/changes.py "$EVENT" "$BEFORE" >>"$GITHUB_OUTPUT"
 
   devcontainer:
     name: Dev container
