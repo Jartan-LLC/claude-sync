@@ -10,7 +10,9 @@ own_volumes "$vol_j" "$vol_l"
 
 # Whether a node's Syncthing is scanning the folder, or waiting to.
 scanning() {
-    [[ $(folder_status "$1" "$2" | jq -r .state) == scan* ]]
+    local state
+    state=$(folder_status "$1" "$2" | jq -r .state) || state="no answer"
+    [[ $state == scan* ]] || { echo "     folder state: $state" >&2; return 1; }
 }
 
 # J: a first scan setup does not wait for, and a join stuck under an old ignore list.
@@ -20,7 +22,7 @@ group_stuck() {
     docker volume create "$vol_l" >/dev/null
     in_target "$mount_l" "echo 'l claude.json' >/t/claude.json && chown -R $owner_l /t"
     # A sparse file takes Syncthing far longer to hash than these checks, and no disk space.
-    in_target "$mount_j" "truncate -s 64G /t/big && chown -R $owner_j /t"
+    in_target "$mount_j" "truncate -s 1024G /t/big && chown -R $owner_j /t"
     out=$(claude_sync "$j" setup --volume "$vol_j" --private)
     check "setup returns while Syncthing still scans" scanning "$j" "$owner_j"
     check "  and says so, with the web UI's address" \
