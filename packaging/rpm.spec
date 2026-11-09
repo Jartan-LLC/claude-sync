@@ -47,7 +47,7 @@ test "$(dist/claude-sync version)" = "claude-sync %{version}"
 
 %files
 %license LICENSE
-%doc README.md CHANGELOG.md docs/commands.md docs/own-syncthing.md docs/pairing.md docs/recovering-files.md
+%doc README.md CHANGELOG.md docs/caveats.md docs/commands.md docs/own-syncthing.md docs/pairing.md docs/recovering-files.md
 %{_bindir}/claude-sync
 # An upgrade keeps a user's edits to the .repo file. The key is not config, so each release
 # replaces it, which is how a new key reaches users.

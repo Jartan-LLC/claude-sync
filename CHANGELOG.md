@@ -56,6 +56,8 @@ Put a breaking change first under its heading, starting with "Breaking:".
   day, with a systemd user timer, while you are logged in; a day missed runs at your next
   login. Later runs of `setup` and `upgrade` keep it; `setup --no-backup` and `uninstall`
   remove it. Hosts without systemd's user manager, such as macOS, refuse it.
+- A caveats page, `docs/caveats.md`, covers the limits of sharing one `~/.claude` between
+  devices and what to do about each; the RPM installs it with the other docs pages.
 
 ### Changed
 
