@@ -42,17 +42,29 @@ chmod +x ~/.local/bin/claude-sync
 a workflow in this repository built the file; each release also lists its SHA-256 in
 `claude-sync.sha256`.
 
-On Fedora, or another distribution that installs RPMs with `dnf`, install the release's
-package instead:
+On Fedora, EL 8, 9 or 10, or another distribution that installs RPMs with `dnf`, install the
+release's package instead:
 
 ```bash
 sudo dnf install \
     https://github.com/Jartan-LLC/claude-sync/releases/latest/download/claude-sync.noarch.rpm
 ```
 
-The package is not signed, so `dnf` warns that it skipped its OpenPGP check. To check it
-first, download it and run `gh attestation verify` on it as on the single file, then
-`sudo dnf install ./claude-sync.noarch.rpm`.
+`dnf` checks no signature on a package installed from a URL, so it prints `Warning: skipped
+OpenPGP checks for 1 package`. To check it first, download it and run `gh attestation verify`
+on it as on the single file, then `sudo dnf install ./claude-sync.noarch.rpm`.
+
+The package adds claude-sync's dnf repository, so `dnf` installs each later release as an
+upgrade. The key that signs the packages and the repository has the fingerprint
+`82BAD8A8DE12B859075DFADAE399D5A015054B82`; `gpg --show-keys /etc/pki/rpm-gpg/RPM-GPG-KEY-claude-sync` prints the
+fingerprints of the keys the package installed. A machine that updates with no one at a
+terminal, such as through `dnf-automatic`, can't answer `dnf`'s prompt to trust the key, so
+after installing the package:
+
+- Fedora 45 and later: nothing to do;
+- older Fedora: run `sudo rpmkeys --import /etc/pki/rpm-gpg/RPM-GPG-KEY-claude-sync && sudo dnf -y makecache`
+  once;
+- EL: run `sudo rpmkeys --import /etc/pki/rpm-gpg/RPM-GPG-KEY-claude-sync` once.
 
 ## Quickstart
 
@@ -103,8 +115,12 @@ Two installs upgrade differently:
 
 - claude-sync 0.1.1 and earlier have no `upgrade`: download claude-sync again as in
   [Install](#install), then run `claude-sync upgrade`.
-- With the RPM, rerun the `dnf install` line from [Install](#install), then run
-  `CLAUDE_SYNC_NAME=NAME claude-sync setup`, with no target, for each instance NAME.
+- With the RPM, run `sudo dnf upgrade --refresh claude-sync`, then
+  `CLAUDE_SYNC_NAME=NAME claude-sync setup`, with no target, for each instance NAME. `dnf`
+  installs a breaking release too, without its manual steps, so read the notes of each
+  release it crosses. An RPM installed before claude-sync had a dnf repository (0.1.1 and
+  earlier, and 0.2.0-rc.1) has none to upgrade from: rerun the `dnf install` line from
+  [Install](#install) once, and `dnf upgrade` works from then on.
 
 ## Uninstall
 

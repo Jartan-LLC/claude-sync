@@ -89,7 +89,8 @@ instances an earlier run missed.
 - It checks the download against the release's `claude-sync.sha256`. To check its
   attestation too, run `gh attestation verify` afterwards, as in
   [Install](../README.md#install).
-- An RPM install is upgraded with `dnf` (see [Upgrade](../README.md#upgrade)).
+- An RPM install is upgraded with `sudo dnf upgrade --refresh claude-sync` (see
+  [Upgrade](../README.md#upgrade)).
 
 ## status
 
@@ -277,7 +278,7 @@ this host that comes first, such as whether the instance is set up.
 | `runs from a checkout` | Update the checkout with git, then run `setup` to apply it |
 | `not running from a file` | Save claude-sync to a file, as the README's [Install](../README.md#install) section does, and run that |
 | `kept volume` | Docker's reason comes before it. The rest of the instance is removed; once no container uses the volume, remove it with the command the message gives |
-| `belongs to the RPM package` | Upgrade with `dnf` as in [Upgrade](../README.md#upgrade) |
+| `belongs to the RPM package` | Run `sudo dnf upgrade --refresh claude-sync` as in [Upgrade](../README.md#upgrade) |
 | `cannot get the list of claude-sync's releases` | Check that this host reaches `api.github.com`; GitHub also [limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api) how many such requests one address can make without a login |
 | `cannot write to` ... `where claude-sync is` | Run `upgrade` as the user who owns that directory |
 | `does not match the release's SHA-256` or `is not version` | Nothing was changed; run `upgrade` again later, and report it if it keeps failing |

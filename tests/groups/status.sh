@@ -88,7 +88,7 @@ group_status() {
     check "  and shows the rest" grep -qE "^Device ID: +$id_sx\$" <<<"$out"
     check "  succeeding" [ "$status" = 0 ]
     check "status of an RPM install says to upgrade with dnf" \
-        grep -qE '^Newer release: +claude-sync 0\.4\.1; upgrade it with dnf' \
+        grep -qE '^Newer release: +claude-sync 0\.4\.1; upgrade it with sudo dnf upgrade --refresh claude-sync,' \
         <<<"$(env PATH="$sdir/rpm:$PATH" CLAUDE_SYNC_RELEASES_API="file://$sdir/releases.json" \
             CLAUDE_SYNC_NAME="$sx" "$sdir/claude-sync" status)"
     # The checkout's own script, whatever claude-sync the suite tests.

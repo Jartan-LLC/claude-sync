@@ -60,7 +60,10 @@ array, so a job you write or uncomment goes in both. A step added to an existing
 a Node check in `lint`, needs no `check` change.
 
 The `rpm` job runs on every change while `packaging/rpm.spec` exists: it builds the RPM,
-running the spec's `%check`, and installs it in Fedora.
+running the spec's `%check`, and installs it in Fedora. While `packaging/dnf.repo` also exists,
+the `dnf-repo` job builds a test dnf repository with `packaging/dnf-repo.sh` and checks in
+Fedora that `dnf` installs and upgrades from it and refuses unsigned packages and tampered
+metadata; `ci/dnf-repo-test.sh` lists its checks.
 
 The dev container job runs only when a change touches one of its build inputs, which
 `_DEVCONTAINER_INPUTS` in `ci/changes.py` lists. `ci/requirements.txt` is among them, because
@@ -71,12 +74,14 @@ weekly run, not on its PR.
 
 ## Publishing
 
-A `v*` tag runs these workflows:
+A `v*` tag runs these workflows, and `pages.yml` also runs on each push to `main`:
 
 | Workflow | Publishes |
 |---|---|
-| `release.yml` | a GitHub Release whose notes are the tag's `CHANGELOG.md` section (`## [1.2.0]` for `v1.2.0`) with its hard-wrapped lines joined, or GitHub's generated notes, with a warning in the run, when there is no `CHANGELOG.md` or that section is missing, empty or holds only HTML comments. It builds the single-file claude-sync, runs the integration tests against it, and attaches it with its `claude-sync.sha256`, both with a build provenance attestation that `gh attestation verify` checks. A pre-release tag, written in SemVer as [RELEASING.md](../RELEASING.md) requires (`v1.2.0-rc.1`), makes a pre-release. A full release becomes Latest only when no full release has a higher version. Runs go one at a time, in push order: a tag's run waits until the previous tag's run finishes. The Release is created only once the single file, the RPM and their attestations all succeed. It needs no secret or setup |
+| `release.yml` | a GitHub Release whose notes are the tag's `CHANGELOG.md` section (`## [1.2.0]` for `v1.2.0`) with its hard-wrapped lines joined, or GitHub's generated notes, with a warning in the run, when there is no `CHANGELOG.md` or that section is missing, empty or holds only HTML comments. It builds the single-file claude-sync, runs the integration tests against it, and attaches it with its `claude-sync.sha256`, both with a build provenance attestation that `gh attestation verify` checks. A pre-release tag, written in SemVer as [RELEASING.md](../RELEASING.md) requires (`v1.2.0-rc.1`), makes a pre-release. A full release becomes Latest only when no full release has a higher version. Runs go one at a time, in push order: a tag's run waits until the previous tag's run finishes. The Release is created only once the single file, the RPM, their attestations and, while `packaging/dnf.repo` exists, the `sign` job all succeed |
 | `rpm.yml`, run by `release.yml` | `claude-sync.noarch.rpm` on the GitHub Release, built from the tag by `packaging/rpm.sh` in Fedora and installed there first, with a build provenance attestation. A failed build creates no Release |
+| `release.yml`'s `sign` job | while `packaging/dnf.repo` exists, and once the single file's build has passed, the RPM signed with the key in the `rpm-signing` environment and, on a full release, `claude-sync-dnf-repo.tar.gz` on the GitHub Release: the dnf repository's signed metadata, indexing that release's RPM and those of the earlier full releases published most recently, by date rather than version, up to `KEEP` in the job. A failed or rejected `sign` job creates no Release |
+| `pages.yml`, after each `release.yml` run that succeeds, and each push to `main` | the GitHub Pages site: while `packaging/dnf.repo` exists, the dnf repository under `rpm/`, unpacked from the Latest release's `claude-sync-dnf-repo.tar.gz`. Its `verify` job then installs the package from the Latest release and fails unless the live repository, its signature checked, lists that release as the newest version. Until a release has the bundle the site has no `rpm/`; after that, a Latest release without one fails the run |
 
 ## Syncing template updates
 

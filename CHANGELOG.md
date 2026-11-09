@@ -16,6 +16,10 @@ Put a breaking change first under its heading, starting with "Breaking:".
 
 ### Added
 
+- The RPM is signed, and installs claude-sync's dnf repository, so
+  `sudo dnf upgrade --refresh claude-sync` installs each new release. An RPM installed
+  before this release has no repository to upgrade from: rerun the `dnf install` line from
+  the README's Install section once.
 - `claude-sync upgrade` installs the newest release that is not breaking, then applies it
   to every running instance on the host, keeping each one's target, ports and settings. It
   links a breaking release's notes instead of installing it, and refuses an RPM install,

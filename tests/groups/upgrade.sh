@@ -131,7 +131,7 @@ EOF
         check "upgrade run from no file ($how) is refused" fails_with "not running from a file" \
             upgrade_fileless "$how"
     done
-    check "upgrade of a file an RPM installed is refused" fails_with "upgrade it with dnf" \
+    check "upgrade of a file an RPM installed is refused" fails_with "upgrade it with sudo dnf upgrade --refresh claude-sync," \
         with_releases missing.json env PATH="$up/rpm:$up/shim:$PATH" "$up/install/claude-sync" upgrade
     check "a download that fails its SHA-256 check is refused" fails_with "SHA-256" upgrade_here bad.json
     check "  leaving the installed file as it was" cmp -s "$up/install/claude-sync" "$up/old/claude-sync"

@@ -6,7 +6,7 @@
 readonly stamp=claude-sync-version
 # GitHub's list of releases; the tests point it at a file.
 readonly releases_api=${CLAUDE_SYNC_RELEASES_API:-https://api.github.com/repos/Jartan-LLC/claude-sync/releases?per_page=100}
-readonly rpm_upgrade="upgrade it with dnf as you installed it, then run CLAUDE_SYNC_NAME=NAME claude-sync setup for each running instance NAME that claude-sync list shows"
+readonly rpm_upgrade="upgrade it with sudo dnf upgrade --refresh claude-sync, then run CLAUDE_SYNC_NAME=NAME claude-sync setup for each running instance NAME that claude-sync list shows"
 # Set by check_releases.
 releases="" release_safe="" release_breaking=""
 

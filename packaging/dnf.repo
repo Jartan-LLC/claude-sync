@@ -1,0 +1,13 @@
+[@NAME@]
+name=@NAME@
+baseurl=https://jartan-llc.github.io/claude-sync/rpm/
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-@NAME@
+auto_import_local_keys=1
+metadata_expire=6h
+# EL's dnf fails every command on a repository it can't reach or verify unless this is set;
+# Fedora's dnf5 already skips one, with a warning. The .repo is config the RPM won't replace,
+# so it has to be right in the first release that ships it.
+skip_if_unavailable=1

@@ -1,3 +1,4 @@
+# The Pages workflow's workflow_run trigger names this workflow by this name.
 name: Create GitHub Release
 
 on:
@@ -106,9 +107,11 @@ jobs:
   # Signs the RPM, and on a full release builds the dnf repository's signed metadata for it
   # and the earlier full releases published most recently, so dnf downgrade and dnf history
   # undo have the previous version. A pre-release stays out of the repository.
+  # Unlike scaffold's, it also waits for build, the integration-tested single file: a tag whose
+  # build failed gets no signed RPM or metadata, not even in a run artifact.
   sign:
-    needs: [notes, rpm]
-    if: needs.notes.outputs.dnf_repo == 'true'
+    needs: [notes, build, rpm]
+    if: needs.notes.outputs.dnf_repo == 'true' && needs.build.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: rpm-signing
