@@ -1,60 +1,8 @@
 # Project tooling
 
-For contributors: what the dev container, CI, publishing and Liza do in this repository,
-and how to keep them and the scaffold template they came from current.
-
-## What's included
-
-| Area | Contents |
-|------|----------|
-| `.devcontainer/` | Reproducible dev environment — Python 3.12, Node.js LTS, Docker, GitHub CLI, and the [enchantments](https://github.com/Jartan-LLC/enchantments) Features: Claude Code, the GitHub CLI login, grimoire's plugins, Liza and its agent toolchain. The grimoire Feature installs its plugins at local scope in each clone, skipping any that the repo's `.claude/settings.json` or the clone's `settings.local.json` sets to `false`; `claude plugins disable <id>@grimoire --scope local` sets it for one clone. To drop a Feature, follow the Removal section on its page, where it has one ([the Features list](https://github.com/Jartan-LLC/enchantments#features) links each page), then remove its entry and its `devcontainer-lock.json` key. `post-create.sh` runs `make install`, which installs the gate tools into the system Python, as CI does: `containerEnv` sets `UV_SYSTEM_PYTHON`, so the container has no project `.venv` |
-| `.claude/` | Claude Code configuration — enabled plugins (skills & agents from the grimoire marketplace) |
-| `.github/` | CI pipeline (lint incl. workflow security lint via actionlint/zizmor, integration tests against the source and the built file, an RPM build in Fedora, dev container build + verify; Node steps commented), Dependabot auto-patching, release (the single file and the RPM, attested) + OpenSSF Scorecard workflows, a weekly external-link-check workflow that tracks findings in one issue and closes it on a clean run, issue/PR + code-of-conduct + security templates |
-| `ci/requirements.txt`, `.python-version`, `.codespellrc` | `ci/requirements.txt` exact-pins the tools that run the gate, and the one uv version CI, the devcontainer and `make` all use. `.python-version` sets the Python of `ci.yml`'s lint job; `uv venv` reads it too. `.codespellrc` configures codespell |
-| `Makefile`, `.pre-commit-config.yaml` | Task runner (`make install`/`lint`/`test`/`build`/`check`, backed by [uv](https://docs.astral.sh/uv/), installing into the checkout's `.venv`, else the active environment, else the devcontainer's system Python) + the single lint source (codespell, shellcheck, markdownlint, lychee, actionlint, zizmor, build, hygiene) that `make lint` and CI both run, and the source of the linters' versions (the link-check workflow pins lychee separately) |
-| `AGENTS.md` | Symlink to `CLAUDE.md` for vendor-neutral agent tools (Cursor, Copilot, …); tools that don't follow `@` imports won't load `GUARDRAILS.md` |
-| `CHANGELOG.md`, `CONTRIBUTING.md` | Keep-a-Changelog skeleton and a contributor guide |
-| `.env.example`, `.prettierrc` | Env-var template and Prettier config (for JS/TS work) |
-| `.editorconfig` | Language-aware formatting — 4-space Python, 2-space JS/TS, tabs for Makefiles |
-| `.gitattributes` | Syntax-aware diffs, LF checkout on every platform |
-| `.gitignore` | Comprehensive patterns for Node, Python, Docker, IDEs, env files, build artifacts |
-| `CLAUDE.md` | Imports the project rules; corrections, verification commands, skill index |
-| `GUARDRAILS.md` | Project rules ranked by how firmly each holds (never / ask first / default / preference) — the tiers Liza agents enforce |
-
-## Syncing template updates
-
-You can still pull in later improvements to the template. How depends on how your repository started.
-
-```bash
-# One-time, either way: add the template as an 'upstream' remote
-git remote add upstream https://github.com/Jartan-LLC/scaffold.git  # this template's repo
-git fetch upstream
-```
-
-**If you used *Use this template*** — the button on the template's GitHub page — GitHub started your history
-fresh, so there is nothing to merge: `git merge upstream/main` stops at `fatal: refusing to merge
-unrelated histories`. Port changes by hand instead, and keep the newest upstream commit you have
-dealt with — ported or deliberately skipped — in `.scaffold-sync` at your repository root:
-
-```bash
-# First time only: the template commit your repository was created from
-git rev-list -1 --before="$(git log --reverse --format=%cI | head -1)" upstream/main > .scaffold-sync
-
-git log --oneline --reverse "$(cat .scaffold-sync)"..upstream/main  # not yet dealt with, oldest first
-git show <sha>                          # the change to port; apply the equivalent by hand
-echo <sha> > .scaffold-sync             # once everything up to <sha> is ported or skipped
-```
-
-Commit `.scaffold-sync` with the port, so the file always matches what the repository contains.
-
-**If you forked this repository**, the history is shared and the merge works:
-
-```bash
-git checkout -b template-update
-git merge upstream/main   # resolve conflicts, keeping your customizations
-```
-
-Open a PR either way, so CI runs before the changes land.
+For contributors: what CI, publishing and Liza do in this repository, which started from
+[scaffold](https://github.com/Jartan-LLC/scaffold), a GitHub template repository, and how to
+pull in later scaffold changes.
 
 ## Liza
 
@@ -63,6 +11,12 @@ The `liza` Feature activates Liza in each clone when the container is created, a
 the next container create activates it again. To opt out of either Feature, follow the
 Removal steps on its page ([liza](https://github.com/Jartan-LLC/enchantments/blob/main/src/liza/README.md),
 [liza-toolchain](https://github.com/Jartan-LLC/enchantments/blob/main/src/liza-toolchain/README.md)).
+
+The grimoire Feature installs grimoire's plugins at local scope in each clone, skipping any
+that `.claude/settings.json` or the clone's `settings.local.json` sets to `false`.
+`claude plugins disable <id>@grimoire --scope local` turns one off for one clone, and
+[its page](https://github.com/Jartan-LLC/enchantments/blob/main/src/grimoire/README.md)
+covers removal.
 
 Each Claude session selects its mode at start; start a new session to switch.
 
@@ -100,13 +54,17 @@ the rest of the run: checkpoints, the operator session, logs.
 
 ## CI
 
-`ci.yml`'s `lint`, `integration` and `rpm` jobs and the dev container build gate the
-`check` aggregator. Adding or removing a gating job also means updating its `check.needs`
-and results entries. The Node checks are commented steps inside `lint`: uncomment them
-there, with no `check` change needed.
+`ci.yml`'s `check` job passes when every job in its `needs` list passed or was skipped. A
+job joins or leaves that gate through two entries in `check`, `needs` and the `results`
+array, so a job you write or uncomment goes in both. A step added to an existing job, such as
+a Node check in `lint`, needs no `check` change.
 
-In `.github/dependabot.yml`, remove the ecosystems you don't use, add the ones you need,
-and adjust `directory` where manifests aren't at the root.
+The dev container job runs only when a change touches one of its build inputs, which
+`_DEVCONTAINER_INPUTS` in `ci/changes.py` lists. `ci/requirements.txt` is among them, because
+`post-create.sh` reads uv's pin from it; `.claude/settings.json`, which the grimoire Feature
+reads when the container builds, is not. Scheduled and manual runs run every job, so a change
+that breaks only the dev container build through a file outside that list shows at the
+weekly run, not on its PR.
 
 ## Publishing
 
@@ -115,3 +73,41 @@ claude-sync, runs the integration tests against it, and creates a GitHub Release
 generated notes, the file, its `claude-sync.sha256` and the RPM that `packaging/rpm.sh`
 builds in a Fedora container. It also records a build provenance attestation for the file
 and the RPM, which `gh attestation verify` checks. It needs no secret or setup.
+
+## Syncing template updates
+
+claude-sync was created with *Use this template*, so `.scaffold-sync` holds the newest
+scaffold commit it has ported or skipped. List the scaffold commits after it:
+
+```bash
+git remote add upstream https://github.com/Jartan-LLC/scaffold.git  # once per clone
+git fetch upstream
+git log --oneline --reverse "$(cat .scaffold-sync)"..upstream/main  # not yet dealt with, oldest first
+```
+
+Oldest first, port each commit you want, and skip the others by leaving them out:
+
+```bash
+git cherry-pick -n <sha>   # stages the commit's change without committing it
+```
+
+- `cherry-pick` merges three ways, across the unrelated history *Use this template* creates.
+  Resolve each conflict before the next pick, then adapt the change to this project. Where
+  scaffold's side of a conflict holds a `TODO(/onboard)` marker or a placeholder, keep this
+  project's side.
+- A file this project deleted comes up as a `modify/delete` conflict. `git rm <path>` keeps it
+  deleted, and the rest of the commit applies.
+- Pick one commit at a time. A range (`A..B`) stops at its first conflict and won't continue
+  over the staged result.
+- `-n` makes no commit, so scaffold's subjects, and the `(#NNN)` numbers in them, which name
+  scaffold's issues, stay out of this project's history.
+- Scaffold's `main` is linear, so every commit picks without `-m`.
+
+Then record the newest commit you ported or skipped, and commit `.scaffold-sync` with the
+port, so the file always matches what the repository contains:
+
+```bash
+git rev-parse <sha> > .scaffold-sync
+```
+
+Open a PR, so CI runs before the changes land.
