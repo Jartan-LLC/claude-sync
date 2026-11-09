@@ -50,7 +50,7 @@ Make a key once the `rpm-signing` environment exists ([The environment](#the-env
    ```
 
    - RSA-4096 works on every Fedora and EL client. An Ed25519 key fails on EL 8, which
-     `RELEASING.md`'s Updates through dnf lists as supported, as does its copy in the README.
+     [Installing](install.md#choose-a-method) lists as supported.
    - dnf never learns that a key was revoked, so an expiry adds no safety, and an expired key
      stops every user's updates.
    - A passphrase would be a second secret in the same environment, behind the same approval.
@@ -66,8 +66,8 @@ Make a key once the `rpm-signing` environment exists ([The environment](#the-env
    (`gpgconf --kill gpg-agent; rm -rf "$GNUPGHOME"`). It holds the secret key, and the
    revocation certificate gpg wrote to `openpgp-revocs.d/FINGERPRINT.rev`, which
    [If the key leaks](#if-the-key-leaks) needs.
-4. Write the key's fingerprint, or the new key's after a leak, in [Installing](install.md#the-signing-key),
-   so users can check the key the package installs.
+4. Write the key's fingerprint, or the new key's after a leak, in
+   [Installing](install.md#the-signing-key), so users can check the key the package installs.
 
 ## Rotating the key
 
@@ -84,8 +84,8 @@ two releases at least:
 
    Commit the file through a pull request, and release as usual: the old key still signs.
 2. At least 3 months and 2 releases later, switch the secret to the new key, from its offline
-   copy, and write the new fingerprint in place of the old one in `RELEASING.md`'s Installing
-   the RPM section and README:
+   copy, and write the new fingerprint in place of the old one in
+   [Installing](install.md#the-signing-key):
 
    ```text
    GNUPGHOME=<the new key's copy> gpg --armor --export-secret-keys NEW_FINGERPRINT |
@@ -93,7 +93,8 @@ two releases at least:
    ```
 
 A user who installs none of the releases in between stops getting updates, with only a warning in
-dnf's output, until they install from the release URL again, as [Installing](install.md#rpm) says. Leave the old key in `packaging/RPM-GPG-KEY` until the new key has signed every
+dnf's output, until they install from the release URL again, as [Installing](install.md#rpm) says.
+Leave the old key in `packaging/RPM-GPG-KEY` until the new key has signed every
 release in the dnf repository, which holds the latest full release and the earlier full releases
 published most recently, by date rather than version, as many as `KEEP` in `release.yml`'s `sign`
 job says: the job leaves an earlier release out of the repository once the file no longer holds the

@@ -31,8 +31,8 @@ a workflow in this repository built the file; each release also lists its SHA-25
 
 ### Remove the single file
 
-Run [`claude-sync uninstall`](commands.md#uninstall) for each instance first, then delete the
-file: `rm ~/.local/bin/claude-sync`.
+Run [`CLAUDE_SYNC_NAME=NAME claude-sync uninstall`](commands.md#uninstall) for each instance NAME
+that `claude-sync list` shows, then delete the file: `rm ~/.local/bin/claude-sync`.
 
 ## RPM
 
@@ -82,8 +82,8 @@ A machine that updates with no one at a terminal, such as through `dnf-automatic
 
 ### Remove the RPM
 
-Run [`claude-sync uninstall`](commands.md#uninstall) for each instance first, then
-`sudo dnf remove claude-sync`.
+Run [`CLAUDE_SYNC_NAME=NAME claude-sync uninstall`](commands.md#uninstall) for each instance NAME
+that `claude-sync list` shows, then `sudo dnf remove claude-sync`.
 
 ## Upgrading
 

@@ -92,9 +92,10 @@ claude-sync upgrade
 It installs the newest release that is not breaking and applies it to every running
 instance; for a breaking release it links the release notes, which say how to upgrade by
 hand. With the RPM, run `sudo dnf upgrade --refresh claude-sync` instead, then
-`CLAUDE_SYNC_NAME=NAME claude-sync setup`, with no target, for each instance NAME.
-[Upgrading](docs/install.md#upgrading) covers claude-sync 0.1.1 and earlier, older RPMs and
-breaking releases.
+`CLAUDE_SYNC_NAME=NAME claude-sync setup`, with no target, for each instance NAME; `dnf`
+installs a breaking release too, without its manual steps, so read the notes of each release
+it crosses. [Upgrading](docs/install.md#upgrading) covers claude-sync 0.1.1 and earlier,
+older RPMs and breaking releases.
 
 ## Uninstall
 
@@ -126,6 +127,8 @@ A directory deleted on another device is deleted here too, with any of these fil
 
 ## Documentation
 
+- [Installing](docs/install.md): every install method, checking a download, the RPM's
+  signing key, upgrading and removing claude-sync
 - [Pairing devices](docs/pairing.md): joining, `--keep`, adding and removing devices,
   private networks
 - [Commands](docs/commands.md): every command and flag, ports, several instances on one
