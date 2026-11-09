@@ -71,6 +71,7 @@ Put a breaking change first under its heading, starting with "Breaking:".
 
 ### Fixed
 
+- The RPM installs `docs/caveats.md` with the other docs pages.
 - `claude-sync upgrade`, and `setup` when it would schedule the daily backup, both new since
   0.1.1, refuse when claude-sync is not running from a file (`bash -s`, `bash -c`, `bash <(...)`),
   instead of naming a file that is not claude-sync as the program to replace or to run every
