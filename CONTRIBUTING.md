@@ -133,6 +133,10 @@ new list when it runs `setup` from a claude-sync that has it (see the README's
 ## Conventions
 
 - Commits follow [Conventional Commits](https://www.conventionalcommits.org/)
-  (`feat:`, `fix:`, `docs:`, `refactor:`, `chore:`).
+  (`feat:`, `fix:`, `docs:`, `refactor:`, `chore:`). So do PR titles, which a squash
+  merge can use as the commit subject.
+- A commit message says why the change was made; the diff already shows what changed.
+- A PR description answers the [pull request template](.github/PULL_REQUEST_TEMPLATE.md)'s
+  prompts.
 - User-facing changes go in `CHANGELOG.md` under `## [Unreleased]`.
 - Report security issues privately via [SECURITY.md](.github/SECURITY.md), not a public issue.

@@ -1,10 +1,11 @@
 # Project Guardrails
 
-The project rules, ranked by how firmly each holds. `CLAUDE.md` imports this file, so
-every Claude Code session loads it; Liza agents also enforce the tiers (Liza's `CORE.md`).
+The project rules, ranked by how firmly each holds. `AGENTS.md` names this file as the
+rules for every agent, and imports it for Claude Code; Liza agents also enforce the tiers
+(Liza's `CORE.md`).
 
 ## Tier 0 (Inviolable)
-<!-- Constraints that must NEVER be violated. Triggers mandatory halt (RESET). -->
+<!-- A violation halts the work (Liza's RESET state). -->
 
 - Never put secrets or credentials in tracked files.
 - Never commit Syncthing device IDs, Tailscale addresses, Claude account emails, or anything
@@ -13,13 +14,12 @@ every Claude Code session loads it; Liza agents also enforce the tiers (Liza's `
 ## Tier 1 (Hard Constraints)
 <!-- Suspended only with explicit waiver. -->
 
-- Run the Verify command in `CLAUDE.md` before declaring work done or submitting it for
+- Run the Verify command in `AGENTS.md` before declaring work done or submitting it for
   review.
 - Ask first before changing public API signatures or database schemas, deleting files, or
   removing features.
-- Commit or push only when explicitly asked or instructed by a command. A Liza workflow
-  step that commits counts as that instruction; none counts for pushing or opening pull
-  requests, which stay human-initiated.
+- Commit only when explicitly asked or instructed by a command. A Liza workflow step that
+  commits counts as that instruction.
 - State the reason for every dependency you add.
 
 ## Tier 2 (Strong Defaults)
@@ -32,11 +32,12 @@ every Claude Code session loads it; Liza agents also enforce the tiers (Liza's `
 - Don't wrap things the underlying library already expresses clearly.
 - Don't speculate about fixes — investigate first, then propose.
 - Don't hardcode derived counts in comments — they drift silently.
-- Comments state only the load-bearing why. Rationale goes in the commit message; a PR
-  body carries only the gotchas.
+- Comments state only the load-bearing why.
+- Commit messages, PR titles and PR descriptions follow the Conventions in `CONTRIBUTING.md`.
 
 ## Tier 3 (Preferences)
-<!-- Degraded gracefully. -->
+<!-- Degraded gracefully. Kept when empty: the heading is what prompts adding a preference
+at this tier. -->
 
 ---
 

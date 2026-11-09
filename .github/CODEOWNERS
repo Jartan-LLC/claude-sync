@@ -4,6 +4,7 @@
 * @JartanFTW
 
 # Protect AI assistant and CI configuration
+AGENTS.md @JartanFTW
 CLAUDE.md @JartanFTW
 .claude/ @JartanFTW
 .github/ @JartanFTW
