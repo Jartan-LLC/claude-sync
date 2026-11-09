@@ -47,7 +47,7 @@ install:  ## Install every tracked Python and Node manifest, then wire the pre-c
 	elif [ -n "$$(git config core.hooksPath)" ]; then echo "core.hooksPath is set; skipping pre-commit install"; \
 	else pre-commit install; fi
 
-lint:  ## Lint all files via pre-commit (codespell, shellcheck, markdownlint, lychee, actionlint, zizmor, build, hygiene)
+lint:  ## Lint all files via pre-commit
 	pre-commit run --all-files
 
 test:  ## Run the integration tests against real Syncthing containers (needs Docker)

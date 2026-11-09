@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/Jartan-LLC/claude-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/Jartan-LLC/claude-sync/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Jartan-LLC/claude-sync/badge)](https://scorecard.dev/viewer/?uri=github.com/Jartan-LLC/claude-sync)
+[![License](https://img.shields.io/badge/license-MIT-blue)](https://github.com/Jartan-LLC/claude-sync/blob/main/LICENSE)
+[![Open in Dev Containers](https://img.shields.io/static/v1?label=Dev%20Containers&message=Open&color=blue)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/Jartan-LLC/claude-sync)
 
 Continuous sync of `~/.claude` across devices: change a setting or write a memory on one
 machine, and it is there on the others.

@@ -1,5 +1,5 @@
 # markdownlint config — lints Markdown structure/consistency (Prettier is off for
-# Markdown; this does NOT reformat). Tune rules to taste.
+# Markdown; this does NOT reformat).
 config:
   default: true
   MD013: false # line length — tables and prose legitimately run long

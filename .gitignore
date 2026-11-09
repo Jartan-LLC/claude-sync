@@ -4,7 +4,7 @@ node_modules/
 __pycache__/
 *.py[cod]
 *.egg-info/
-# Leading / matches the root only, so same-named source dirs (src/app/data/) are tracked and packaged
+# Leading / matches the root only (`make build` writes /dist/), so a same-named dir deeper in the tree is still tracked
 /.eggs/
 /dist/
 /build/
@@ -12,7 +12,6 @@ __pycache__/
 # Environment
 .env
 .env.*
-!.env.example
 .venv/
 venv/
 
@@ -46,6 +45,9 @@ htmlcov/
 # Claude workspace (plans, scratch files)
 .claude/workspace/*
 !.claude/workspace/.gitkeep
+
+# Claude git worktrees
+.claude/worktrees/
 
 # Claude local settings (user-specific)
 .claude/settings.local.*
