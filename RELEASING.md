@@ -87,7 +87,12 @@ job failed.
    release as the newest version. A full release becomes Latest only when no full release has a
    higher version. Of the runs this lists, check the one that started when this tag's
    `release.yml` run finished; if that run was cancelled, a later run took its place in the
-   queue: check that one, which deploys the release that was Latest when it ran.
+   queue: check that one, which deploys the release that was Latest when it ran. The site's
+   docs come from the Latest release's tag too, so a docs fix reaches the site with the next
+   release, not a push to `main`; and a docs build that fails at that tag deploys nothing,
+   `rpm/` included, and `verify` doesn't run. Re-run the failed job once the cause is fixed
+   outside the tag, such as a network error; for a fault at the tag, or drift in the docs
+   tools' unpinned dependencies, release again.
 
    ```bash
    gh run list --workflow pages.yml --limit 5

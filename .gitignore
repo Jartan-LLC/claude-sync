@@ -31,6 +31,9 @@ Thumbs.db
 .coverage.*
 coverage.xml
 htmlcov/
+
+# Docs build output (Sphinx)
+docs/_build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

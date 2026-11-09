@@ -1,7 +1,7 @@
 # Caveats
 
 The limits of sharing one `~/.claude` between devices, and what to do about each. The
-[README](../README.md) lists what syncs; [Recovering files](recovering-files.md) covers
+[README](https://github.com/Jartan-LLC/claude-sync/blob/main/README.md) lists what syncs; [Recovering files](recovering-files.md) covers
 getting a file back.
 
 What this page says Claude Code does was observed on Claude Code 2.1.319, on Linux, except

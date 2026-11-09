@@ -9,6 +9,7 @@ config:
 ignores:
   - "node_modules"
   - ".venv" # a worktree's or bare host's venv; its packages ship .md files
+  - "docs/_build"
   - ".claude/workspace"
   - "CLAUDE.md" # only the @AGENTS.md import; no heading by design (MD041)
   - ".github/PULL_REQUEST_TEMPLATE.md" # a fragment; starts with ## by design (MD041)
