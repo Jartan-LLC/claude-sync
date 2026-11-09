@@ -14,6 +14,11 @@ Say what they must do to upgrade, if anything.
 Put a breaking change first under its heading, starting with "Breaking:".
 -->
 
+Upgrading from 0.1.1: with the single file, download claude-sync again as in the README's
+Install section, then run `claude-sync upgrade`. With the RPM, rerun its `dnf install` line
+once, then run `CLAUDE_SYNC_NAME=NAME claude-sync setup` for each instance NAME.
+[Upgrading](https://github.com/Jartan-LLC/claude-sync/blob/main/docs/install.md#upgrading) has the details.
+
 ### Added
 
 - The docs are published at `https://jartan-llc.github.io/claude-sync/`.

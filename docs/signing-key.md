@@ -66,8 +66,8 @@ Make a key once the `rpm-signing` environment exists ([The environment](#the-env
    (`gpgconf --kill gpg-agent; rm -rf "$GNUPGHOME"`). It holds the secret key, and the
    revocation certificate gpg wrote to `openpgp-revocs.d/FINGERPRINT.rev`, which
    [If the key leaks](#if-the-key-leaks) needs.
-4. Write the key's fingerprint, or the new key's after a leak, in `RELEASING.md`'s Installing the
-   RPM section and in README's install text, so users can check the key the package installs.
+4. Write the key's fingerprint, or the new key's after a leak, in [Installing](install.md#the-signing-key),
+   so users can check the key the package installs.
 
 ## Rotating the key
 
@@ -93,8 +93,7 @@ two releases at least:
    ```
 
 A user who installs none of the releases in between stops getting updates, with only a warning in
-dnf's output, until they install from the release URL again, as `RELEASING.md`'s Installing the RPM
-section says. Leave the old key in `packaging/RPM-GPG-KEY` until the new key has signed every
+dnf's output, until they install from the release URL again, as [Installing](install.md#rpm) says. Leave the old key in `packaging/RPM-GPG-KEY` until the new key has signed every
 release in the dnf repository, which holds the latest full release and the earlier full releases
 published most recently, by date rather than version, as many as `KEEP` in `release.yml`'s `sign`
 job says: the job leaves an earlier release out of the repository once the file no longer holds the
