@@ -227,6 +227,16 @@ In a folder that syncs, the restored files reach every device. [Recovering
 files](recovering-files.md#from-a-backup) says what to do after a restore there, and how to
 restore with `tar` alone.
 
+## Environment variables
+
+| Variable | Effect |
+|---|---|
+| `CLAUDE_SYNC_NAME` | The instance a command acts on. Unset, a command acts on the one selected with `use`, or on `claude-sync` when none is selected; see [Several instances on one host](#several-instances-on-one-host) |
+| `XDG_CONFIG_HOME` | When set to an absolute path, claude-sync keeps the instance `use` selects in `$XDG_CONFIG_HOME/claude-sync/instance` and the daily backup timer's units in `$XDG_CONFIG_HOME/systemd/user`. Unset or relative, it uses `~/.config` instead. Set it the same way for every command, or one command won't find what another left there |
+
+The other `CLAUDE_SYNC_*` variables in claude-sync's code are internal: claude-sync sets them
+for Compose, or its tests use them.
+
 ## Errors
 
 claude-sync exits 2 when the command line itself is wrong, such as an unknown argument, a

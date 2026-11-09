@@ -4,11 +4,11 @@
 
 **Do not open a public issue for security vulnerabilities.**
 
-Please report security issues privately using [GitHub's security advisory feature](../../security/advisories/new).
+Please report security issues privately using [GitHub's security advisory feature](https://github.com/Jartan-LLC/claude-sync/security/advisories/new): on this repository's **Security** tab, choose **Report a vulnerability**.
 
-If that link does not open a form, write to the maintainers privately instead — <JonathanCarter@jonathanbuilds.net>.
+If neither opens a form, write to the maintainers privately instead — <JonathanCarter@jonathanbuilds.net>.
 
-Do not post the details publicly — issue, discussion, or pull request — and do not send them to addresses from this repository's commit history: in a fork those belong to the template's authors, not this project's maintainers, and GitHub `noreply` addresses accept no mail.
+Do not post the details publicly — issue, discussion, or pull request. Send them only through a channel named above or one the repository's owner gives you. An address in this repository's commit history belongs to whoever made that commit, so being there does not make it a security contact, and a GitHub `noreply` address accepts no mail.
 
 Include:
 

@@ -277,6 +277,7 @@ write_compose_files() {
     asset compose.yaml >"$compose_dir/compose.yaml"
     asset "compose.$kind.yaml" >"$compose_dir/compose.$kind.yaml"
     compose_files=(-f "$compose_dir/compose.yaml" -f "$compose_dir/compose.$kind.yaml")
+    # The tests add a Compose file of their own.
     [[ -z ${CLAUDE_SYNC_COMPOSE_OVERRIDE:-} ]] || compose_files+=(-f "$CLAUDE_SYNC_COMPOSE_OVERRIDE")
 }
 
