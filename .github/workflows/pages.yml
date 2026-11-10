@@ -1,6 +1,6 @@
 # Deploys the GitHub Pages site from the Latest release: its dnf repository bundle under rpm/,
 # while packaging/dnf.repo exists, and its Sphinx docs, while its tag has docs/conf.py.
-name: Deploy Pages
+name: Docs
 
 on:
   push:
