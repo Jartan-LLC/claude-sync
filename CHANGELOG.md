@@ -14,19 +14,22 @@ Say what they must do to upgrade, if anything.
 Put a breaking change first under its heading, starting with "Breaking:".
 -->
 
+Upgrading from 0.1.1: with the single file, download claude-sync again as in the README's
+Install section, then run `claude-sync upgrade`. With the RPM, rerun its `dnf install` line
+once, then run `CLAUDE_SYNC_NAME=NAME claude-sync setup` for each instance NAME.
+[Upgrading](https://github.com/Jartan-LLC/claude-sync/blob/main/docs/install.md#upgrading) has the details.
+
 ### Added
 
 - The docs are published at `https://jartan-llc.github.io/claude-sync/`.
 - The RPM is signed, and installs claude-sync's dnf repository, so
-  `sudo dnf upgrade --refresh claude-sync` installs each new release. An RPM installed
-  before this release has no repository to upgrade from: rerun the `dnf install` line from
-  the README's Install section once.
+  `sudo dnf upgrade --refresh claude-sync` installs each new release.
 - `claude-sync upgrade` installs the newest release that is not breaking, then applies it
   to every running instance on the host, keeping each one's target, ports and settings. It
   links a breaking release's notes instead of installing it, and refuses an RPM install,
-  which you upgrade with `dnf` as before; the README's Upgrade section has the details.
-  From 0.1.1 or earlier, download claude-sync once more as in the README's Install
-  section, then run `claude-sync upgrade`.
+  which you upgrade with `dnf` as before;
+  [Upgrading](https://github.com/Jartan-LLC/claude-sync/blob/main/docs/install.md#upgrading)
+  has the details.
 - `claude-sync setup` with no `--volume` or `--path` applies the installed version to the
   instance already set up, keeping its target. After upgrading the RPM, run
   `CLAUDE_SYNC_NAME=NAME claude-sync setup` for each instance NAME.

@@ -88,9 +88,9 @@ instances an earlier run missed.
   left as they are.
 - It checks the download against the release's `claude-sync.sha256`. To check its
   attestation too, run `gh attestation verify` afterwards, as in
-  [Install](https://github.com/Jartan-LLC/claude-sync/blob/main/README.md#install).
+  [Check the download](install.md#check-the-download).
 - An RPM install is upgraded with `sudo dnf upgrade --refresh claude-sync` (see
-  [Upgrade](https://github.com/Jartan-LLC/claude-sync/blob/main/README.md#upgrade)).
+  [Upgrading](install.md#upgrading)).
 
 ## status
 
@@ -276,9 +276,9 @@ this host that comes first, such as whether the instance is set up.
 | `is on the list of unpaired devices` | Run `pair` for that device on a device that already syncs, then rerun `pair` here |
 | `this instance was last set up by` | Run the `setup` command the message gives, to apply the installed version |
 | `runs from a checkout` | Update the checkout with git, then run `setup` to apply it |
-| `not running from a file` | Save claude-sync to a file, as the README's [Install](https://github.com/Jartan-LLC/claude-sync/blob/main/README.md#install) section does, and run that |
+| `not running from a file` | Save claude-sync to a file, as [Installing](install.md#single-file) does, and run that |
 | `kept volume` | Docker's reason comes before it. The rest of the instance is removed; once no container uses the volume, remove it with the command the message gives |
-| `belongs to the RPM package` | Run `sudo dnf upgrade --refresh claude-sync` as in [Upgrade](https://github.com/Jartan-LLC/claude-sync/blob/main/README.md#upgrade) |
+| `belongs to the RPM package` | Run `sudo dnf upgrade --refresh claude-sync` as in [Upgrading](install.md#upgrading) |
 | `cannot get the list of claude-sync's releases` | Check that this host reaches `api.github.com`; GitHub also [limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api) how many such requests one address can make without a login |
 | `cannot write to` ... `where claude-sync is` | Run `upgrade` as the user who owns that directory |
 | `does not match the release's SHA-256` or `is not version` | Nothing was changed; run `upgrade` again later, and report it if it keeps failing |

@@ -110,43 +110,5 @@ For a tag with a pre-release version, such as `v0.2.0-rc.1`:
 
 ## Installing the RPM
 
-Users install the RPM, and later upgrade it in place, with:
-
-```bash
-sudo dnf install https://github.com/Jartan-LLC/claude-sync/releases/latest/download/claude-sync.noarch.rpm
-```
-
-`dnf` checks no signature on a package installed from a URL, so it prints `Warning: skipped
-OpenPGP checks for 1 package`. To check that a release built it, download it and verify its
-attestation before installing it:
-
-```bash
-gh release download --repo Jartan-LLC/claude-sync --pattern claude-sync.noarch.rpm
-gh attestation verify claude-sync.noarch.rpm --repo Jartan-LLC/claude-sync
-sudo dnf install ./claude-sync.noarch.rpm
-```
-
-### Updates through dnf
-
-The package adds claude-sync's dnf repository, so `sudo dnf upgrade` installs each new release.
-The repository works with dnf on Fedora and on EL 8, 9 and 10.
-
-The key that signs the packages and the repository has the fingerprint
-`82BAD8A8DE12B859075DFADAE399D5A015054B82`; `gpg --show-keys /etc/pki/rpm-gpg/RPM-GPG-KEY-claude-sync` prints the
-fingerprints of the keys the package installed. [Signing key](docs/signing-key.md) covers making,
-rotating and replacing it.
-
-If dnf prints `>>> repomd.xml GPG signature verification error`, it skipped the repository:
-
-- once, right after a release: dnf read the new files and the old signature; run the command
-  again;
-- every time: the project's signing key changed, and this machine missed the releases that
-  brought the new one; install the package again from the URL above.
-
-A machine that updates with no one at a terminal, such as through `dnf-automatic`, can't answer
-dnf's prompt to trust the key. After installing the package:
-
-- Fedora 45 and later: nothing to do;
-- older Fedora: run
-  `sudo rpmkeys --import /etc/pki/rpm-gpg/RPM-GPG-KEY-claude-sync && sudo dnf -y makecache` once;
-- EL: run `sudo rpmkeys --import /etc/pki/rpm-gpg/RPM-GPG-KEY-claude-sync` once.
+[Installing](docs/install.md#rpm) covers installing the RPM, its signing key, updates
+through `dnf` and removing it.

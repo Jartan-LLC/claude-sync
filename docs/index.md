@@ -8,6 +8,7 @@ and what syncs.
 ```{toctree}
 :maxdepth: 2
 
+install
 commands
 pairing
 caveats
