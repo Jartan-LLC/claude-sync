@@ -130,9 +130,9 @@ A directory deleted on another device is deleted here too, with any of these fil
 
 ## Documentation
 
-The documentation for the latest release is published at
-[jartan-llc.github.io/claude-sync](https://jartan-llc.github.io/claude-sync/). The pages
-below are its source in this repository, and can describe changes not yet released:
+The [docs site](https://jartan-llc.github.io/claude-sync/) documents the latest release. The
+pages below are the same pages as they stand here, and can describe changes not yet
+released:
 
 - [Installing](docs/install.md): every install method, checking a download, the RPM's
   signing key, upgrading and removing claude-sync
