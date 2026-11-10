@@ -9,12 +9,20 @@ own_containers "$listener"
 own_volumes "$vol_e" "$vol_g"
 
 # claude-sync for an instance in the listener's network namespace, where another program
-# holds Syncthing's default ports.
+# holds Syncthing's default ports. A failing call says what it printed and which containers
+# use the instance's config volume, which may be gone by the time anyone looks.
 beside() {
-    local node=$1
+    local node=$1 out status=0
     shift
-    CLAUDE_SYNC_COMPOSE_OVERRIDE=$root/tests/compose.busy.yaml CLAUDE_SYNC_NAME=$node \
-        timeout 300 "$bin" "$@"
+    out=$(CLAUDE_SYNC_COMPOSE_OVERRIDE=$root/tests/compose.busy.yaml CLAUDE_SYNC_NAME=$node \
+        timeout 300 "$bin" "$@") || status=$?
+    [[ -z $out ]] || printf '%s\n' "$out"
+    ((status == 0)) && return 0
+    printf '     %s exited %s; it printed:\n%s\n' "$*" "$status" "$out" >&2
+    docker ps -a --filter "volume=$node-config" \
+        --format "uses $node-config: {{.ID}} {{.Names}} {{.Image}} {{.Status}} {{.Command}}" |
+        sed 's/^/     /' >&2
+    return "$status"
 }
 
 listens_soon() {
