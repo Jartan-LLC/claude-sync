@@ -21,7 +21,7 @@ beside() {
     printf '     %s exited %s; it printed:\n%s\n' "$*" "$status" "$out" >&2
     docker ps -a --filter "volume=$node-config" \
         --format "uses $node-config: {{.ID}} {{.Names}} {{.Image}} {{.Status}} {{.Command}}" |
-        sed 's/^/     /' >&2
+        sed 's/^/     /' >&2 || true
     return "$status"
 }
 
