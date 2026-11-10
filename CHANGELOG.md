@@ -14,6 +14,8 @@ Say what they must do to upgrade, if anything.
 Put a breaking change first under its heading, starting with "Breaking:".
 -->
 
+## [0.2.0] - 2026-11-10
+
 ### Upgrading from 0.1.1
 
 On each device:
@@ -157,6 +159,7 @@ On each device:
   Syncthing applies; a device using its own Syncthing applies it when claude-sync runs
   there.
 
-[Unreleased]: https://github.com/Jartan-LLC/claude-sync/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Jartan-LLC/claude-sync/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Jartan-LLC/claude-sync/releases/tag/v0.2.0
 [0.1.1]: https://github.com/Jartan-LLC/claude-sync/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Jartan-LLC/claude-sync/releases/tag/v0.1.0
