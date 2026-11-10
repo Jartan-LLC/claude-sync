@@ -14,14 +14,24 @@ Say what they must do to upgrade, if anything.
 Put a breaking change first under its heading, starting with "Breaking:".
 -->
 
-Upgrading from 0.1.1: with the single file, download claude-sync again as in the README's
-Install section, then run `claude-sync upgrade`. With the RPM, rerun its `dnf install` line
-once, then run `CLAUDE_SYNC_NAME=NAME claude-sync setup` for each instance NAME.
+### Upgrading from 0.1.1
+
+On each device:
+
+- Single file: download claude-sync again, as in
+  [Single file](https://github.com/Jartan-LLC/claude-sync/blob/main/docs/install.md#single-file),
+  then run `claude-sync upgrade`, which applies it to every running instance.
+- RPM: rerun the `dnf install` line from
+  [RPM](https://github.com/Jartan-LLC/claude-sync/blob/main/docs/install.md#rpm) once, then
+  run `CLAUDE_SYNC_NAME=NAME claude-sync setup` for each instance NAME that
+  `claude-sync list` shows.
+
 [Upgrading](https://github.com/Jartan-LLC/claude-sync/blob/main/docs/install.md#upgrading) has the details.
 
 ### Added
 
-- The docs are published at `https://jartan-llc.github.io/claude-sync/`.
+- The docs are published at `https://jartan-llc.github.io/claude-sync/`, among them a page on
+  the limits of sharing one `~/.claude` between devices and what to do about each.
 - The RPM is signed, and installs claude-sync's dnf repository, so
   `sudo dnf upgrade --refresh claude-sync` installs each new release.
 - `claude-sync upgrade` installs the newest release that is not breaking, then applies it
@@ -29,7 +39,8 @@ once, then run `CLAUDE_SYNC_NAME=NAME claude-sync setup` for each instance NAME.
   links a breaking release's notes instead of installing it, and refuses an RPM install,
   which you upgrade with `dnf` as before;
   [Upgrading](https://github.com/Jartan-LLC/claude-sync/blob/main/docs/install.md#upgrading)
-  has the details.
+  has the details. It needs claude-sync saved as a file: run through `bash -s`, `bash -c` or
+  `bash <(...)`, it refuses.
 - `claude-sync setup` with no `--volume` or `--path` applies the installed version to the
   instance already set up, keeping its target. After upgrading the RPM, run
   `CLAUDE_SYNC_NAME=NAME claude-sync setup` for each instance NAME.
@@ -52,39 +63,33 @@ once, then run `CLAUDE_SYNC_NAME=NAME claude-sync setup` for each instance NAME.
   volume or directory it syncs, with the one commands act on marked.
 - `claude-sync use NAME` makes later commands act on instance NAME without
   `CLAUDE_SYNC_NAME`, until `claude-sync use claude-sync` returns to the default or
-  `uninstall` removes that instance. `CLAUDE_SYNC_NAME`, when set, still wins.
-- `setup`, `pair`, `unpair`, `uninstall` and `backup` say on stderr which instance they act
-  on when it is not `claude-sync`.
+  `uninstall` removes that instance. `CLAUDE_SYNC_NAME`, when set, still wins. `setup`,
+  `pair`, `unpair`, `uninstall` and `backup` say on stderr which instance they act on when
+  it is not `claude-sync`.
 - `claude-sync setup --backup-dir DIR` runs `claude-sync backup DIR` for the instance every
   day, with a systemd user timer, while you are logged in; a day missed runs at your next
   login. Later runs of `setup` and `upgrade` keep it; `setup --no-backup` and `uninstall`
-  remove it. Hosts without systemd's user manager, such as macOS, refuse it.
-- A caveats page, `docs/caveats.md`, covers the limits of sharing one `~/.claude` between
-  devices and what to do about each; the RPM installs it with the other docs pages.
+  remove it. Hosts without systemd's user manager, such as macOS, refuse it. So does a
+  claude-sync not saved as a file.
 
 ### Changed
 
-- A release's notes on GitHub are its section of this file, where they used to be GitHub's
-  list of merged pull requests.
-- A mistake that the command line alone shows now exits 2 and still says what is wrong. A
-  missing argument, which prints the usage, already exited 2. Other mistakes exited 1, as
-  any failure does: an unknown argument, a missing or empty value, options that cannot go
-  together, a value of the wrong form, or an argument to `list`, `status`, `uninstall` or
-  `upgrade`. Other failures still exit 1, among them a check of this host that runs before
-  the mistake is found: `pair` with a malformed device ID on a device not set up says to
-  run setup first.
+- Breaking: a mistake the command line alone shows now exits 2, not 1, and still says what
+  is wrong: an unknown argument, a missing or empty value, options that cannot go together,
+  a value of the wrong form, or an argument to `list`, `status`, `uninstall` or `upgrade`.
+  A script that tests for exit status 1 after such a mistake must test for 2. A missing
+  argument exits 2 as before; other failures still exit 1.
+- The container runs Syncthing 2.1.7, up from 2.1.6;
+  [its release notes](https://github.com/syncthing/syncthing/releases/tag/v2.1.7) list the
+  fixes.
 
 ### Fixed
 
-- `claude-sync upgrade`, and `setup` when it would schedule the daily backup, both new since
-  0.1.1, refuse when claude-sync is not running from a file (`bash -s`, `bash -c`, `bash <(...)`),
-  instead of naming a file that is not claude-sync as the program to replace or to run every
-  day. Save claude-sync to a file and run that.
 - A background job's scratch space, `jobs/<id>/tmp/` in `~/.claude`, no longer syncs. It can
   hold gigabytes in tens of thousands of directories, which every other device copied and
-  kept. Rerun `setup` on each device to get the new ignore list. Each device keeps the copies
-  it already has: delete them by hand while no background job runs. The job's records beside
-  them, `state.json` and `timeline.jsonl`, still sync.
+  kept. The upgrade steps above apply the new ignore list on each device. Each device keeps
+  the copies it already has: delete them by hand while no background job runs. The job's
+  records beside them, `state.json` and `timeline.jsonl`, still sync.
 - On a Syncthing already on the host (`--use-host-syncthing`) that syncs other folders too,
   claude-sync sometimes misread whether a folder or device was in Syncthing's list. Since
   0.1.0 this could make a repeated `setup` fail with `folder "claude-sync": folder has
