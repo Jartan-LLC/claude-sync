@@ -69,8 +69,8 @@ On each device:
 - `claude-sync setup --backup-dir DIR` runs `claude-sync backup DIR` for the instance every
   day, with a systemd user timer, while you are logged in; a day missed runs at your next
   login. Later runs of `setup` and `upgrade` keep it; `setup --no-backup` and `uninstall`
-  remove it. Hosts without systemd's user manager, such as macOS, refuse it. So does a
-  claude-sync not saved as a file.
+  remove it. Hosts without systemd's user manager, such as macOS, refuse it, and so does a
+  claude-sync run through `bash -s`, `bash -c` or `bash <(...)`, not saved as a file.
 
 ### Changed
 
